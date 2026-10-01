@@ -1,0 +1,39 @@
+{
+	"required": true,
+	"package": "dev.myriad.essentials.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"AbstractBlockStateMixin",
+		"ArmorFeatureRendererMixin",
+		"BlockMixin",
+		"BossBarHudMixin",
+		"CameraMixin",
+		"ClientPlayerEntityMixin",
+		"EntityMixin",
+		"EntityRenderDispatcherMixin",
+		"EntityRenderStateMixin",
+		"EntityRendererMixin",
+		"FireworkRocketEntityAccessor",
+		"FluidRendererMixin",
+		"GameRendererMixin",
+		"HandledScreenMixin",
+		"HeldItemRendererMixin",
+		"InGameHudMixin",
+		"InGameOverlayRendererMixin",
+		"LightmapTextureManagerMixin",
+		"LivingEntityAccessor",
+		"LivingEntityMixin",
+		"LivingEntityRendererMixin",
+		"MinecraftClientAccessor",
+		"MinecraftClientMixin",
+		"PlayerEntityMixin",
+		"PlayerInteractEntityC2SPacketAccessor",
+		"PlayerListHudMixin",
+		"TextVisitFactoryMixin",
+		"ToastManagerMixin",
+		"WorldRendererMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

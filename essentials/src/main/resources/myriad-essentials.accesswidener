@@ -1,0 +1,12 @@
+accessWidener v2 named
+# Chams builds its own render layers.
+accessible method net/minecraft/client/render/RenderLayer of (Ljava/lang/String;Lnet/minecraft/client/render/VertexFormat;Lnet/minecraft/client/render/VertexFormat$DrawMode;ILnet/minecraft/client/render/RenderLayer$MultiPhaseParameters;)Lnet/minecraft/client/render/RenderLayer$MultiPhase;
+accessible class net/minecraft/client/render/RenderLayer$MultiPhase
+accessible field net/minecraft/client/render/RenderPhase POSITION_COLOR_PROGRAM Lnet/minecraft/client/render/RenderPhase$ShaderProgram;
+accessible field net/minecraft/client/render/RenderPhase TRANSLUCENT_TRANSPARENCY Lnet/minecraft/client/render/RenderPhase$Transparency;
+accessible field net/minecraft/client/render/RenderPhase ALWAYS_DEPTH_TEST Lnet/minecraft/client/render/RenderPhase$DepthTest;
+accessible field net/minecraft/client/render/RenderPhase LEQUAL_DEPTH_TEST Lnet/minecraft/client/render/RenderPhase$DepthTest;
+accessible field net/minecraft/client/render/RenderPhase DISABLE_CULLING Lnet/minecraft/client/render/RenderPhase$Cull;
+accessible field net/minecraft/client/render/RenderPhase COLOR_MASK Lnet/minecraft/client/render/RenderPhase$WriteMaskState;
+# Packet mining sends sequenced block actions.
+accessible method net/minecraft/client/network/ClientPlayerInteractionManager sendSequencedPacket (Lnet/minecraft/client/world/ClientWorld;Lnet/minecraft/client/network/SequencedPacketCreator;)V

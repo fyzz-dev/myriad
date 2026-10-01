@@ -1,0 +1,35 @@
+base {
+	archivesName = "myriad-example-addon"
+}
+
+dependencies {
+	implementation project(path: ":core", configuration: "namedElements")
+	// Only so `:example-addon:runClient` also boots the stock modules; the addon does not depend on them.
+	runtimeOnly project(path: ":essentials", configuration: "namedElements")
+}
+
+loom {
+	mods {
+		"myriad" {
+			sourceSet("main", ":core")
+		}
+		"myriad-essentials" {
+			sourceSet("main", ":essentials")
+		}
+		"myriad-example" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+loom {
+	runs {
+		client {
+			// ./gradlew :example-addon:runClient -PopenDesktop opens the desktop over the title screen on launch.
+			property("myriad.openDesktop", project.hasProperty("openDesktop").toString())
+		}
+	}
+}
+
+// The example is for reading, not depending on.
+tasks.withType(AbstractPublishToMaven).configureEach { enabled = false }

@@ -1,0 +1,25 @@
+{
+	"schemaVersion": 1,
+	"id": "myriad-essentials",
+	"version": "${version}",
+	"name": "Myriad Essentials",
+	"description": "The stock module set for Myriad. Built purely on the public Myriad addon API; remove it and Myriad runs with no modules.",
+	"authors": [
+		"Myriad contributors"
+	],
+	"license": "CC0-1.0",
+	"environment": "client",
+	"entrypoints": {
+		"myriad": [
+			"dev.myriad.essentials.Essentials"
+		]
+	},
+	"mixins": [
+		"myriad-essentials.mixins.json"
+	],
+	"depends": {
+		"myriad": ">=${version}",
+		"minecraft": "~${minecraft_version}"
+	},
+	"accessWidener": "myriad-essentials.accesswidener"
+}

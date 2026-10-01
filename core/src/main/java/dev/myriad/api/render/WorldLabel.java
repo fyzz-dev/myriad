@@ -1,0 +1,61 @@
+package dev.myriad.api.render;
+
+import dev.myriad.api.Myriad;
+import dev.myriad.api.render.Canvas;
+import dev.myriad.api.render.FontFamily;
+import dev.myriad.api.render.Projection;
+import net.minecraft.util.math.Vec3d;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+
+/** Labels pinned to points in the world (nametags, logout spots, item names), drawn on the 2D overlay. */
+public final class WorldLabel {
+	public record Segment(String text, int color) {
+	}
+
+	/** Where a label ended up on screen, so callers can stack things above it. */
+	public record Placed(float x, float y, float width, float height, float scale) {
+	}
+
+	public enum Background {
+		NONE, PLAIN, ROUNDED
+	}
+
+	private static final float PAD_X = 3, PAD_Y = 1.5f, GAP = 3;
+
+	private WorldLabel() {
+	}
+
+	/** Size multiplier that shrinks labels a little with distance (down to half size at 50+ blocks). */
+	public static float distanceScale(Vec3d world) {
+		double d = Projection.camera().distanceTo(world);
+		return (float) Math.clamp(1.0 - d * 0.01, 0.5, 1.0);
+	}
+
+	/**
+	 * Draws {@code segments} side by side, centred on {@code world} with the label's bottom edge there. Returns null
+	 * when the point is behind the camera or off screen.
+	 */
+	public static @Nullable Placed draw(Canvas c, Vec3d world, float scale, List<Segment> segments, Background bg, int fill, int outline, boolean shadow) {
+		Vec3d s = Projection.toScreen(world);
+		if (s == null || !Projection.onScreen(s, 200)) return null;
+		float size = c.defaultFontSize() * scale;
+		float width = 0;
+		for (int i = 0; i < segments.size(); i++) width += c.textWidth(FontFamily.SANS, size, segments.get(i).text) + (i > 0 ? GAP * scale : 0);
+		float th = c.textHeight(FontFamily.SANS, size);
+		float w = width + PAD_X * 2 * scale, h = th + PAD_Y * 2 * scale;
+		float x = (float) s.x - w / 2, y = (float) s.y - h;
+		if (bg != Background.NONE) {
+			float r = bg == Background.ROUNDED ? Math.min(Myriad.ui().theme().rounding.get(), h / 2) : 0;
+			c.roundRect(x, y, w, h, r, fill);
+			if ((outline >>> 24) != 0) c.outline(x, y, w, h, r, 1, outline);
+		}
+		float cx = x + PAD_X * scale, ty = y + PAD_Y * scale;
+		for (Segment seg : segments) {
+			if (shadow) c.text(FontFamily.SANS, size, seg.text, cx + 0.6f, ty + 0.6f, 0x99000000);
+			cx += c.text(FontFamily.SANS, size, seg.text, cx, ty, seg.color) + GAP * scale;
+		}
+		return new Placed(x, y, w, h, scale);
+	}
+}

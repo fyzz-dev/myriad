@@ -1,0 +1,68 @@
+package com.example.myriadaddon.stats;
+
+import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.ScreenOpenEvent;
+import dev.myriad.api.event.events.TickEvent;
+import dev.myriad.api.event.events.WorldEvent;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.DeathScreen;
+import net.minecraft.util.math.Vec3d;
+
+/**
+ * Tracks this play session (since you last joined a world). It isn't a module: it should always run, so the addon
+ * subscribes it to the event bus once with {@code ctx.events().subscribe(stats)}. Any object with {@code @Subscribe}
+ * methods works; Myriad attributes its errors to this addon.
+ */
+public final class SessionStats {
+	private long joinedAt = System.currentTimeMillis();
+	private double distance;
+	private double topSpeed;
+	private int deaths;
+	private Vec3d last;
+
+	@Subscribe
+	private void onJoin(WorldEvent.Join e) {
+		joinedAt = System.currentTimeMillis();
+		distance = topSpeed = 0;
+		deaths = 0;
+		last = null;
+	}
+
+	@Subscribe
+	private void onTick(TickEvent.Post e) {
+		var player = MinecraftClient.getInstance().player;
+		if (player == null) return;
+		Vec3d pos = player.getPos();
+		if (last != null) {
+			double moved = pos.distanceTo(last);
+			// Ignore teleports and respawns.
+			if (moved < 10) {
+				distance += moved;
+				topSpeed = Math.max(topSpeed, moved * 20);
+			}
+		}
+		last = pos;
+	}
+
+	@Subscribe
+	private void onScreen(ScreenOpenEvent e) {
+		if (e.screen() instanceof DeathScreen) deaths++;
+	}
+
+	public long sessionMillis() {
+		return System.currentTimeMillis() - joinedAt;
+	}
+
+	public double distance() {
+		return distance;
+	}
+
+	/** Blocks per second. */
+	public double topSpeed() {
+		return topSpeed;
+	}
+
+	public int deaths() {
+		return deaths;
+	}
+}

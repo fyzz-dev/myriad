@@ -1,0 +1,21 @@
+base {
+	archivesName = "myriad-essentials"
+}
+
+dependencies {
+	// Essentials is built exactly like a third-party addon: it only sees Myriad's API.
+	implementation project(path: ":core", configuration: "namedElements")
+}
+
+loom {
+	accessWidenerPath = file("src/main/resources/myriad-essentials.accesswidener")
+
+	mods {
+		"myriad" {
+			sourceSet("main", ":core")
+		}
+		"myriad-essentials" {
+			sourceSet sourceSets.main
+		}
+	}
+}

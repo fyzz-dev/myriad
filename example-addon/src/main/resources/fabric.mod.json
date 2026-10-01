@@ -1,0 +1,18 @@
+{
+	"schemaVersion": 1,
+	"id": "myriad-example",
+	"version": "${version}",
+	"name": "Myriad Example Addon",
+	"description": "A complete example addon for the Myriad API: waypoints (module, command, window, HUD, storage), auto tool, chat timestamps and a settings showcase.",
+	"authors": ["Myriad contributors"],
+	"license": "CC0-1.0",
+	"environment": "client",
+	"entrypoints": {
+		"myriad": ["com.example.myriadaddon.ExampleAddon"]
+	},
+	"mixins": ["myriad-example.mixins.json"],
+	"depends": {
+		"myriad": ">=${version}",
+		"minecraft": "~${minecraft_version}"
+	}
+}
