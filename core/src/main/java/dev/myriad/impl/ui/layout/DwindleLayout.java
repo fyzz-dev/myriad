@@ -14,8 +14,10 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
- * Hyprland's default layout: a binary tree where each new window splits the focused one. A split's orientation
- * follows the shape of its box (wide boxes split side by side) unless it was flipped with toggleSplit.
+ * Hyprland's dwindle layout: a binary tree where each new window splits the focused one. A split's direction is
+ * chosen from the shape of the box it splits (wide boxes split side by side) when it is created, and then kept, like
+ * Hyprland with {@code preserve_split = true} (Omarchy's setting). toggleSplit flips only the focused window's own
+ * split, so the windows inside other splits keep their arrangement, which is what makes grids possible.
  */
 public final class DwindleLayout implements Layout {
 	public static final MyriadId ID = MyriadId.of("myriad", "dwindle");
@@ -39,7 +41,7 @@ public final class DwindleLayout implements Layout {
 		Node<W> parent, a, b;
 		W window;
 		float ratio = 0.5f;
-		/** null = automatic, true = side by side, false = stacked. */
+		/** true = side by side, false = stacked; null only until the split is first laid out. */
 		Boolean horizontal;
 		Rect box = Rect.ZERO;
 
@@ -80,6 +82,8 @@ public final class DwindleLayout implements Layout {
 			target.parent = split;
 			leaf.parent = split;
 			split.box = target.box;
+			// Decide the direction now from the box being split; before the first layout it's decided there instead.
+			if (target.box.w() > 0 && target.box.h() > 0) split.horizontal = target.box.w() >= target.box.h();
 		}
 
 		private Node<W> lastLeaf(Node<W> n) {
@@ -128,8 +132,10 @@ public final class DwindleLayout implements Layout {
 			layout(root, area.inset(-gap / 2), out);
 		}
 
+		/** The split's direction, fixing it from {@code box}'s shape the first time it's needed. */
 		private boolean isHorizontal(Node<W> n, Rect box) {
-			return n.horizontal != null ? n.horizontal : box.w() >= box.h();
+			if (n.horizontal == null) n.horizontal = box.w() >= box.h();
+			return n.horizontal;
 		}
 
 		private void layout(Node<W> n, Rect box, BiConsumer<W, Rect> out) {
