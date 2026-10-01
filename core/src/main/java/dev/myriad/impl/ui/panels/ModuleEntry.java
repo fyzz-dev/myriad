@@ -28,15 +28,12 @@ final class ModuleEntry extends Widget {
 	private final Module module;
 	private final Set<Module> expandedSet;
 	private final Animated on, open;
-	private final boolean showSource;
 	private final String source;
 	private VBox body;
 
-	/** @param showSource tag the row with the module's addon (when its category mixes addons) */
-	ModuleEntry(Module module, Set<Module> expandedSet, boolean showSource) {
+	ModuleEntry(Module module, Set<Module> expandedSet) {
 		this.module = module;
 		this.expandedSet = expandedSet;
-		this.showSource = showSource;
 		this.source = AddonNames.of(module);
 		this.on = new Animated(module.isEnabled() ? 1 : 0);
 		this.open = new Animated(expandedSet.contains(module) ? 1 : 0);
@@ -111,10 +108,6 @@ final class ModuleEntry extends Widget {
 		float right = rx - 6;
 		if (module.keybind.get().isSet()) {
 			right = badge(c, module.keybind.get().displayName(), right, y + rowH / 2, theme().textDim.argb(), false) - 4;
-		}
-		if (showSource) {
-			// Mixed categories: say which addon each module comes from.
-			right = badge(c, c.ellipsize(FontFamily.SANS, c.defaultFontSize() * 0.7f, source, Math.max(20, (right - x) * 0.4f)), right, y + rowH / 2, accent, true) - 4;
 		}
 		c.text(c.ellipsize(c.defaultFont(), c.defaultFontSize(), module.name(), right - x - 6), x + 6, ty,
 			ColorUtil.lerp(theme().textDim.argb(), theme().text.argb(), t));

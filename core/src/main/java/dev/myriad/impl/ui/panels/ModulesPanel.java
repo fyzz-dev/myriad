@@ -81,9 +81,7 @@ public final class ModulesPanel extends WidgetPanel {
 			List<Module> modules = Myriad.modules().inCategory(category);
 			if (modules.isEmpty() || (only != null && !only.equals(category))) continue;
 			VBox body = new VBox(2, 0);
-			// Shared categories can mix addons; tag each module with its source when they do.
-			boolean mixed = modules.stream().map(Myriad.modules()::ownerOf).distinct().count() > 1;
-			for (Module m : modules) body.add(new ModuleEntry(m, unfolded, mixed)).visible(() -> matches(m));
+			for (Module m : modules) body.add(new ModuleEntry(m, unfolded)).visible(() -> matches(m));
 			if (only != null) {
 				content.add(body);
 				content.add(new Label("No matching modules").dim()).visible(() -> !filter.isBlank() && modules.stream().noneMatch(this::matches));

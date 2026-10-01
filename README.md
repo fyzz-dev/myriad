@@ -156,8 +156,8 @@ everything it registered is removed, and the game keeps running. The Addons pane
 Following these keeps addons consistent with each other and with the stock modules:
 
 - **Categories.** Use the shared ones (`Categories.COMBAT`, `MOVEMENT`, `RENDER`, `PLAYER`, `WORLD`, `MISC`)
-  whenever they fit. Those windows hold modules from every addon, and each module shows its source as a badge.
-  Register your own category (in `registerCategories`) only for things that fit nowhere else.
+  whenever they fit. Those windows hold modules from every addon; a module's tooltip and expanded card show which
+  addon it comes from. Register your own category (in `registerCategories`) only for things that fit nowhere else.
 - **Shared state** lives in objects you create in `initialize` and pass to constructors, not in static fields.
 - **Colours** default to theme roles (`SettingColor.role(Mode.ACCENT)`, `RED`, `TEXT`, …) so they follow the
   player's theme. A colour the player changes is saved as an override.
