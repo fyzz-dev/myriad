@@ -1,7 +1,6 @@
 package dev.myriad.essentials.mixin;
 
 import dev.myriad.api.module.Modules;
-import dev.myriad.essentials.modules.render.Crosshair;
 import dev.myriad.essentials.modules.render.NoRender;
 import dev.myriad.essentials.modules.render.ShulkerPreview;
 import net.minecraft.client.MinecraftClient;
@@ -43,11 +42,6 @@ public abstract class InGameHudMixin {
 			ItemStack stack = mc.player.getInventory().getStack(i);
 			if (ShulkerPreview.isShulker(stack)) ShulkerPreview.drawIcon(context, stack, x + i * 20 + 2, y);
 		}
-	}
-
-	@Inject(method = "renderCrosshair", at = @At("HEAD"), cancellable = true)
-	private void essentials$crosshair(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-		if (Modules.isActive(Crosshair.class)) ci.cancel();
 	}
 
 	@Inject(method = "renderStatusEffectOverlay", at = @At("HEAD"), cancellable = true)

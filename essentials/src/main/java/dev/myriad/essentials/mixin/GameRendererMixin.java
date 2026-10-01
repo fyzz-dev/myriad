@@ -1,12 +1,8 @@
 package dev.myriad.essentials.mixin;
 
-import dev.myriad.api.module.Modules;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
-import dev.myriad.essentials.modules.render.AspectRatio;
 import dev.myriad.essentials.modules.render.NoRender;
 import dev.myriad.essentials.modules.render.Zoom;
-import net.minecraft.client.render.Camera;
-import org.spongepowered.asm.mixin.injection.ModifyArg;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.ItemStack;
@@ -31,11 +27,5 @@ public abstract class GameRendererMixin {
 	@ModifyReturnValue(method = "getFov", at = @At("RETURN"))
 	private float essentials$zoom(float fov) {
 		return Zoom.apply(fov);
-	}
-
-	@ModifyArg(method = "getBasicProjectionMatrix", at = @At(value = "INVOKE", target = "Lorg/joml/Matrix4f;perspective(FFFF)Lorg/joml/Matrix4f;"), index = 1)
-	private float essentials$aspectRatio(float aspect) {
-		AspectRatio m = Modules.active(AspectRatio.class);
-		return m != null ? m.ratio.getFloat() : aspect;
 	}
 }

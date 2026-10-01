@@ -1,7 +1,6 @@
 package dev.myriad.essentials.mixin;
 
 import dev.myriad.essentials.modules.render.NoRender;
-import dev.myriad.essentials.modules.render.Xray;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.block.AbstractBlock;
@@ -14,11 +13,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(AbstractBlock.AbstractBlockState.class)
 public abstract class AbstractBlockStateMixin {
-	/** Xray and No Render: hidden blocks have no model, which every chunk mesher (vanilla, Indigo) respects. */
+	/** No Render: hidden blocks have no model, which every chunk mesher (vanilla, Indigo) respects. */
 	@Inject(method = "getRenderType", at = @At("HEAD"), cancellable = true)
-	private void essentials$xrayHide(CallbackInfoReturnable<BlockRenderType> cir) {
-		BlockState self = (BlockState) (Object) this;
-		if (!Xray.visible(self) || NoRender.hides(self)) cir.setReturnValue(BlockRenderType.INVISIBLE);
+	private void essentials$hideBlocks(CallbackInfoReturnable<BlockRenderType> cir) {
+		if (NoRender.hides((BlockState) (Object) this)) cir.setReturnValue(BlockRenderType.INVISIBLE);
 	}
 
 	/** No Render: no random model offsets (they reveal block positions). */

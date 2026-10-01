@@ -6,21 +6,13 @@ import dev.myriad.essentials.hud.ArmorPanel;
 import dev.myriad.essentials.hud.OffhandPanel;
 import dev.myriad.essentials.modules.misc.MiddleClick;
 import dev.myriad.essentials.modules.player.AntiAFK;
-import dev.myriad.essentials.modules.player.FireworkExtender;
 import dev.myriad.essentials.modules.player.SpeedMine;
 import dev.myriad.essentials.modules.player.XCarry;
-import dev.myriad.essentials.modules.render.AspectRatio;
-import dev.myriad.essentials.modules.render.BlockHighlight;
-import dev.myriad.essentials.modules.render.Crosshair;
-import dev.myriad.essentials.modules.render.ExtraTab;
-import dev.myriad.essentials.modules.render.LightLevels;
 import dev.myriad.essentials.modules.render.LogoutSpots;
 import dev.myriad.essentials.modules.render.NameProtect;
 import dev.myriad.essentials.modules.render.Nametags;
 import dev.myriad.essentials.modules.render.ShulkerPreview;
 import dev.myriad.essentials.modules.render.Swing;
-import dev.myriad.essentials.modules.render.ViewClip;
-import dev.myriad.essentials.modules.render.Xray;
 import dev.myriad.essentials.modules.render.Zoom;
 import dev.myriad.essentials.hud.CoordinatesPanel;
 import dev.myriad.essentials.hud.InfoPanel;
@@ -32,7 +24,6 @@ import dev.myriad.essentials.modules.combat.Criticals;
 import dev.myriad.essentials.modules.combat.KillAura;
 import dev.myriad.essentials.modules.misc.AutoReconnect;
 import dev.myriad.essentials.modules.movement.ElytraBounce;
-import dev.myriad.essentials.modules.movement.Flight;
 import dev.myriad.essentials.modules.movement.NoSlow;
 import dev.myriad.essentials.modules.movement.Sprint;
 import dev.myriad.essentials.modules.movement.Scaffold;
@@ -41,7 +32,6 @@ import dev.myriad.essentials.modules.movement.Velocity;
 import dev.myriad.essentials.modules.player.AirPlace;
 import dev.myriad.essentials.modules.player.AutoEat;
 import dev.myriad.essentials.modules.player.FastUse;
-import dev.myriad.essentials.modules.player.NoFall;
 import dev.myriad.essentials.modules.render.Chams;
 import dev.myriad.essentials.modules.render.ESP;
 import dev.myriad.essentials.modules.render.FreeLook;
@@ -66,13 +56,12 @@ public final class Essentials implements MyriadAddon {
 			// Combat
 			new KillAura(), new AutoTotem(), new Criticals(), new ChestSwap(),
 			// Movement
-			new Sprint(), new Flight(), new Velocity(), new NoSlow(), new Step(), new Scaffold(), new ElytraBounce(),
+			new Sprint(), new Velocity(), new NoSlow(), new Step(), new Scaffold(), new ElytraBounce(),
 			// Player
-			new NoFall(), new FastUse(), new AutoEat(), new AirPlace(), new SpeedMine(), new XCarry(), new AntiAFK(), new FireworkExtender(),
+			new FastUse(), new AutoEat(), new AirPlace(), new SpeedMine(), new XCarry(), new AntiAFK(),
 			// Render
 			new ESP(), new Tracers(), new Fullbright(), new NoRender(), new Chams(), new Freecam(), new FreeLook(), new ViewModel(),
-			new LogoutSpots(), new ShulkerPreview(), new Xray(), new Zoom(), new Nametags(), new BlockHighlight(), new NameProtect(),
-			new ViewClip(), new Swing(), new Crosshair(), new LightLevels(), new ExtraTab(), new AspectRatio(),
+			new LogoutSpots(), new ShulkerPreview(), new Zoom(), new Nametags(), new NameProtect(), new Swing(),
 			// Misc
 			new AutoReconnect(), new MiddleClick()
 		);

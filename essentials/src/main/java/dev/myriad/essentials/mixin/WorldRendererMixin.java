@@ -1,7 +1,5 @@
 package dev.myriad.essentials.mixin;
 
-import dev.myriad.api.module.Modules;
-import dev.myriad.essentials.modules.render.BlockHighlight;
 import dev.myriad.essentials.modules.render.NoRender;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.Fog;
@@ -12,16 +10,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import net.minecraft.client.render.WorldRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 @Mixin(WorldRenderer.class)
 public abstract class WorldRendererMixin {
-	/** Block Highlight replaces the vanilla outline. */
-	@ModifyVariable(method = "render", at = @At("HEAD"), argsOnly = true, ordinal = 0)
-	private boolean essentials$blockOutline(boolean renderBlockOutline) {
-		return renderBlockOutline && !Modules.isActive(BlockHighlight.class);
-	}
-
 	@Inject(method = "renderWeather", at = @At("HEAD"), cancellable = true)
 	private void essentials$noWeather(FrameGraphBuilder frameGraphBuilder, Vec3d pos, float tickDelta, Fog fog, CallbackInfo ci) {
 		if (NoRender.hides(n -> n.weather)) ci.cancel();
