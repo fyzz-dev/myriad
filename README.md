@@ -108,7 +108,7 @@ adding it back later loses nothing.
 
 An addon is an ordinary Fabric mod with a `myriad` entrypoint. Two projects get you going:
 
-- **myriad-addon-template** (its own repository) is the project to start from: a module, a mixin-driven module and
+- [**myriad-addon-template**](https://github.com/fyzz-dev/myriad-addon-template) is the project to start from: a module, a mixin-driven module and
   a HUD element, wired up and building.
 - [`example-addon/`](example-addon) is the reference. It's a complete feature set (waypoints with a module, command,
   window, HUD element and saved data, plus Auto Tool, Chat Timestamps and a settings showcase) written to be read.
