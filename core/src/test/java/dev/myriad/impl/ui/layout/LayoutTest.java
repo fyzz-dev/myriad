@@ -64,6 +64,54 @@ class LayoutTest {
 	}
 
 	@Test
+	void dwindleToggleSplitOnlyFlipsTheFocusedSplit() {
+		// A screen-shaped area: halves are taller than wide, so splitting a half stacks.
+		Rect screen = new Rect(0, 0, 1000, 800);
+		LayoutState<String> s = new DwindleLayout().createState();
+		Map<String, Rect> r = new LinkedHashMap<>();
+		s.add("a", null);
+		s.arrange(screen, 0, r::put);
+		s.add("b", "a");
+		s.arrange(screen, 0, r::put);
+		s.add("c", "a");
+		s.arrange(screen, 0, r::put);
+		s.add("d", "b");
+		s.arrange(screen, 0, r::put);
+		// A 2x2 grid: a over c on the left, b over d on the right.
+		assertEquals(new Rect(0, 0, 500, 400), r.get("a"));
+		assertEquals(new Rect(0, 400, 500, 400), r.get("c"));
+		assertEquals(new Rect(500, 0, 500, 400), r.get("b"));
+		assertEquals(new Rect(500, 400, 500, 400), r.get("d"));
+
+		// Flipping a/c puts them side by side; b and d stay stacked.
+		s.toggleSplit("c");
+		s.arrange(screen, 0, r::put);
+		assertEquals(new Rect(0, 0, 250, 800), r.get("a"));
+		assertEquals(new Rect(250, 0, 250, 800), r.get("c"));
+		assertEquals(new Rect(500, 0, 500, 400), r.get("b"));
+		assertEquals(new Rect(500, 400, 500, 400), r.get("d"));
+	}
+
+	@Test
+	void dwindleFlippingAParentKeepsItsChildrenSplits() {
+		Rect screen = new Rect(0, 0, 1000, 800);
+		LayoutState<String> s = new DwindleLayout().createState();
+		Map<String, Rect> r = new LinkedHashMap<>();
+		s.add("a", null);
+		s.arrange(screen, 0, r::put);
+		s.add("b", "a");
+		s.arrange(screen, 0, r::put);
+		s.add("c", "b"); // b over c on the right
+		s.arrange(screen, 0, r::put);
+		// Stack a above the b/c split: b/c used to turn side by side here because its box became wide.
+		s.toggleSplit("a");
+		s.arrange(screen, 0, r::put);
+		assertEquals(new Rect(0, 0, 1000, 400), r.get("a"));
+		assertEquals(new Rect(0, 400, 1000, 200), r.get("b"));
+		assertEquals(new Rect(0, 600, 1000, 200), r.get("c"));
+	}
+
+	@Test
 	void dwindleSavesAndLoadsDroppingMissingWindows() {
 		LayoutState<String> s = new DwindleLayout().createState();
 		s.add("a", null);
