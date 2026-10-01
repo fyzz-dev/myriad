@@ -1,0 +1,97 @@
+plugins {
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}" apply false
+}
+
+subprojects {
+	apply plugin: 'net.fabricmc.fabric-loom-remap'
+	apply plugin: 'maven-publish'
+
+	version = rootProject.version
+	group = rootProject.group
+
+	repositories {
+		mavenCentral()
+	}
+
+	loom {
+		runs {
+			configureEach {
+				// All subprojects share one run directory so configs survive switching projects.
+				runDir = "../run"
+			}
+		}
+	}
+
+	dependencies {
+		minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+		mappings "net.fabricmc:yarn:${rootProject.yarn_mappings}:v2"
+		modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+		modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+	}
+
+	processResources {
+		def props = [
+			version          : project.version,
+			minecraft_version: rootProject.minecraft_version,
+			loader_version   : rootProject.loader_version
+		]
+		inputs.properties props
+		filesMatching("fabric.mod.json") {
+			expand props
+		}
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		it.options.release = 21
+		it.options.encoding = "UTF-8"
+	}
+
+	java {
+		withSourcesJar()
+		sourceCompatibility = JavaVersion.VERSION_21
+		targetCompatibility = JavaVersion.VERSION_21
+	}
+
+	jar {
+		from(rootProject.file("LICENSE")) {
+			rename { "${it}_${project.base.archivesName.get()}" }
+		}
+	}
+
+	// `./gradlew publishToMavenLocal` publishes dev.myriad:myriad and dev.myriad:myriad-essentials (with sources) so
+	// addons outside this repo can depend on them; see README → Writing an addon.
+	publishing {
+		publications {
+			create("mavenJava", MavenPublication) {
+				from components.java
+			}
+		}
+	}
+	afterEvaluate {
+		publishing.publications.mavenJava.artifactId = base.archivesName.get()
+	}
+}
+
+// Addons (essentials included) may only use Myriad's public API. dev.myriad.impl is internal and changes without
+// notice, so referencing it from an addon fails the build here rather than breaking players' games later.
+configure(subprojects.findAll { it.name != 'core' }) {
+	def sources = fileTree("src/main/java") { include "**/*.java" }
+	def root = rootDir
+	def checkApiOnly = tasks.register("checkApiOnly") {
+		group = "verification"
+		description = "Fails if this addon references Myriad internals (dev.myriad.impl)."
+		inputs.files(sources)
+		doLast {
+			def bad = []
+			sources.each { f ->
+				f.eachLine { line, n ->
+					if (line.contains("dev.myriad.impl")) bad << "${root.toPath().relativize(f.toPath())}:${n}: ${line.trim()}"
+				}
+			}
+			if (!bad.isEmpty()) {
+				throw new GradleException("Addons may only use Myriad's API (dev.myriad.api.*), but these lines reference internals:\n  " + bad.join("\n  "))
+			}
+		}
+	}
+	tasks.named("compileJava") { dependsOn checkApiOnly }
+}

@@ -1,0 +1,58 @@
+package dev.myriad.api.setting;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
+import dev.myriad.api.util.Keybind;
+import net.minecraft.client.util.InputUtil;
+
+import java.util.Locale;
+import java.util.function.Supplier;
+
+public class KeybindSetting extends Setting<Keybind> {
+	public KeybindSetting(String name, String description, Keybind defaultValue, Supplier<Boolean> visible) {
+		super(name, description, defaultValue, visible);
+	}
+
+	@Override
+	public JsonElement toJson() {
+		return new JsonPrimitive(value.serialize());
+	}
+
+	@Override
+	public void fromJson(JsonElement json) {
+		if (json != null && json.isJsonPrimitive()) set(Keybind.deserialize(json.getAsString()));
+	}
+
+	@Override
+	public boolean parse(String input) {
+		String in = input.trim().toLowerCase(Locale.ROOT);
+		if (in.equals("none") || in.equals("unbind")) {
+			set(Keybind.NONE);
+			return true;
+		}
+		try {
+			InputUtil.Key key = InputUtil.fromTranslationKey("key.keyboard." + in);
+			if (key.getCode() < 0) return false;
+			set(Keybind.key(key.getCode()));
+			return true;
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
+
+	@Override
+	public String valueString() {
+		return value.displayName();
+	}
+
+	public static class Builder extends Setting.Builder<Builder, Keybind, KeybindSetting> {
+		public Builder(String name) {
+			super(name, Keybind.NONE);
+		}
+
+		@Override
+		protected KeybindSetting create() {
+			return new KeybindSetting(name, description, defaultValue, visible);
+		}
+	}
+}

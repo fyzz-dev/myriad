@@ -1,0 +1,86 @@
+package dev.myriad.impl;
+
+import dev.myriad.api.Myriad;
+import dev.myriad.api.addon.AddonContext;
+import dev.myriad.api.addon.MyriadAddon;
+import dev.myriad.api.module.Categories;
+import dev.myriad.api.module.Category;
+import dev.myriad.api.setting.ActionSetting;
+import dev.myriad.api.setting.BoolSetting;
+import dev.myriad.api.setting.ColorSetting;
+import dev.myriad.api.setting.DoubleSetting;
+import dev.myriad.api.setting.EnumSetting;
+import dev.myriad.api.setting.IntSetting;
+import dev.myriad.api.setting.KeybindSetting;
+import dev.myriad.api.setting.RegistryListSetting;
+import dev.myriad.api.setting.StringListSetting;
+import dev.myriad.api.setting.StringSetting;
+import dev.myriad.api.ui.SettingWidgets;
+import dev.myriad.api.ui.widget.Button;
+import dev.myriad.api.ui.widget.ColorPicker;
+import dev.myriad.api.ui.widget.Dropdown;
+import dev.myriad.api.ui.widget.KeybindButton;
+import dev.myriad.api.ui.widget.RegistryPicker;
+import dev.myriad.api.ui.widget.Slider;
+import dev.myriad.api.ui.widget.StringListEditor;
+import dev.myriad.api.ui.widget.TextField;
+import dev.myriad.api.ui.widget.Toggle;
+import dev.myriad.api.ui.widget.Widget;
+import dev.myriad.api.util.Keybind;
+import dev.myriad.api.util.MyriadId;
+import dev.myriad.impl.command.CoreCommands;
+import dev.myriad.impl.ui.CoreThemes;
+import dev.myriad.impl.ui.WindowManager;
+import dev.myriad.impl.ui.bar.CoreBarWidgets;
+import dev.myriad.impl.ui.layout.ColumnsLayout;
+import dev.myriad.impl.ui.layout.DwindleLayout;
+import dev.myriad.impl.ui.layout.MasterLayout;
+import dev.myriad.impl.ui.panels.CorePanels;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
+
+/**
+ * Myriad core registers its own pieces through the same addon API everyone else uses: categories, layouts, themes,
+ * panels, bar widgets, commands, key actions and the setting editors. It registers no modules.
+ */
+public final class CoreAddon implements MyriadAddon {
+	public static final MyriadId OPEN_MENU = MyriadId.of("myriad", "open_menu");
+
+	@Override
+	public void registerCategories(AddonContext ctx) {
+		for (Category c : Categories.DEFAULTS) ctx.registerCategory(c);
+	}
+
+	@Override
+	public void initialize(AddonContext ctx) {
+		WindowManager wm = (WindowManager) Myriad.ui();
+		registerSettingWidgets(ctx.settingWidgets());
+		ctx.registerLayout(new DwindleLayout());
+		ctx.registerLayout(new MasterLayout());
+		ctx.registerLayout(new ColumnsLayout());
+		CoreThemes.register(ctx);
+		CorePanels.register(ctx, wm);
+		CoreBarWidgets.register(ctx, wm);
+		CoreCommands.register(ctx);
+		ctx.registerKeyAction("Open Menu", Keybind.key(GLFW.GLFW_KEY_RIGHT_SHIFT), () -> Myriad.ui().open());
+	}
+
+	private static <E extends Enum<E>> Widget enumDropdown(EnumSetting<E> s) {
+		return new Dropdown<>(() -> List.of(s.values()), s::get, s::set, EnumSetting::displayName);
+	}
+
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static void registerSettingWidgets(SettingWidgets w) {
+		w.register(BoolSetting.class, s -> new Toggle(s::get, s::set), false);
+		w.register(IntSetting.class, s -> new Slider(s::get, v -> s.set((int) Math.round(v)), s.sliderMin(), s.sliderMax(), 0), false);
+		w.register(DoubleSetting.class, s -> new Slider(s::get, s::set, s.sliderMin(), s.sliderMax(), s.decimals()), false);
+		w.register(EnumSetting.class, s -> enumDropdown((EnumSetting) s), false);
+		w.register(StringSetting.class, s -> new TextField(s::get).onSubmit(s::set), false);
+		w.register(StringListSetting.class, StringListEditor::new, true);
+		w.register(ColorSetting.class, s -> new ColorPicker(s::get, s::set), false);
+		w.register(KeybindSetting.class, s -> new KeybindButton(s::get, s::set), false);
+		w.register(ActionSetting.class, s -> new Button("Run", s::run), false);
+		w.register(RegistryListSetting.class, s -> new RegistryPicker<>(s), true);
+	}
+}

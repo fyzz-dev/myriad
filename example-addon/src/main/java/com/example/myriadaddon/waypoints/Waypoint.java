@@ -1,0 +1,43 @@
+package com.example.myriadaddon.waypoints;
+
+import com.google.gson.JsonObject;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
+
+/**
+ * A saved position. Immutable: change one by replacing it in the {@link WaypointStore}.
+ *
+ * @param dimension the dimension id, e.g. {@code minecraft:the_nether}
+ * @param color     ARGB, or 0 to use the Waypoints module's default colour (which follows the theme)
+ */
+public record Waypoint(String name, BlockPos pos, String dimension, int color, boolean visible) {
+	public Vec3d center() {
+		return Vec3d.ofCenter(pos);
+	}
+
+	public Waypoint withVisible(boolean visible) {
+		return new Waypoint(name, pos, dimension, color, visible);
+	}
+
+	public String coords() {
+		return pos.getX() + " " + pos.getY() + " " + pos.getZ();
+	}
+
+	JsonObject toJson() {
+		JsonObject o = new JsonObject();
+		o.addProperty("name", name);
+		o.addProperty("x", pos.getX());
+		o.addProperty("y", pos.getY());
+		o.addProperty("z", pos.getZ());
+		o.addProperty("dimension", dimension);
+		if (color != 0) o.addProperty("color", String.format("#%08X", color));
+		if (!visible) o.addProperty("visible", false);
+		return o;
+	}
+
+	static Waypoint fromJson(JsonObject o) {
+		int color = o.has("color") ? (int) Long.parseLong(o.get("color").getAsString().substring(1), 16) : 0;
+		return new Waypoint(o.get("name").getAsString(), new BlockPos(o.get("x").getAsInt(), o.get("y").getAsInt(), o.get("z").getAsInt()),
+			o.get("dimension").getAsString(), color, !o.has("visible") || o.get("visible").getAsBoolean());
+	}
+}
