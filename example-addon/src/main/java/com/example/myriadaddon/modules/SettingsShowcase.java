@@ -6,13 +6,18 @@ import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.ActionSetting;
+import dev.myriad.api.setting.BlockPosSetting;
 import dev.myriad.api.setting.BoolSetting;
+import dev.myriad.api.setting.ChoiceSetting;
 import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.EnumSetting;
+import dev.myriad.api.setting.FileSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.KeybindSetting;
+import dev.myriad.api.setting.ModuleListSetting;
 import dev.myriad.api.setting.RegistryListSetting;
+import dev.myriad.api.setting.RegistrySetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.setting.StringListSetting;
@@ -21,8 +26,11 @@ import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.effect.StatusEffect;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
+
+import java.util.List;
 
 /**
  * Every built-in setting type, plus this addon's own {@link RangeSetting}, in one place to look things up. It lives
@@ -58,6 +66,17 @@ public final class SettingsShowcase extends Module {
 	private final RegistryListSetting<EntityType<?>> entities = sgLists.entityTypes("Entities").build();
 	private final RegistryListSetting<StatusEffect> effects = sgLists.statusEffects("Effects").build();
 
+	// Single values picked from somewhere: a registry, a position, a runtime list, other modules, a file.
+	private final SettingGroup sgPicks = settings.group("Picks");
+	private final RegistrySetting<Item> buildWith = sgPicks.item("Build With", Items.OBSIDIAN).description("A single item.")
+		.filter(item -> item instanceof BlockItem).build();
+	private final BlockPosSetting origin = sgPicks.blockPos("Origin").description("Type x y z, or press Here.").build();
+	private final ChoiceSetting preset = sgPicks.choice("Preset", () -> List.of("Small", "Medium", "Large")).defaultValue("Medium")
+		.description("A dropdown whose options come from code (files in a folder, saved kits…).").build();
+	private final ModuleListSetting pauseWith = sgPicks.modules("Pause With").description("Pause while any of these are on.")
+		.defaultValue("myriad-essentials:freecam").build();
+	private final FileSetting file = sgPicks.file("File").extensions("txt", "json").description("Browse opens your system's file picker.").build();
+
 	private final SettingGroup sgInput = settings.group("Input");
 	private final KeybindSetting extraKey = sgInput.keybind("Extra Key").description("Held while the module is on: shows a message.").build();
 	private final ActionSetting sayHi = sgInput.action("Say Hi", () -> info("Hi! Count is " + count.get())).build();
@@ -84,6 +103,7 @@ public final class SettingsShowcase extends Module {
 
 	@Subscribe
 	private void onTick(TickEvent.Post e) {
+		if (pauseWith.anyEnabled()) return;
 		boolean down = extraKey.get().isPressed();
 		if (down && !keyWasDown) info("Extra Key pressed; delay is " + delay.valueString());
 		keyWasDown = down;

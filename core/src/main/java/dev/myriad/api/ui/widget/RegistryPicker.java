@@ -2,6 +2,8 @@ package dev.myriad.api.ui.widget;
 
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.setting.RegistryListSetting;
+import dev.myriad.api.setting.RegistrySetting;
+import net.minecraft.registry.Registry;
 import dev.myriad.api.util.ColorUtil;
 import net.minecraft.block.Block;
 import net.minecraft.entity.EntityType;
@@ -22,7 +24,35 @@ import java.util.Locale;
 public class RegistryPicker<T> extends Widget {
 	private static final float LIST_HEIGHT = 120, ENTRY = 12;
 
-	private final RegistryListSetting<T> setting;
+	/** What the picker lists and how picking works: a multi-select list, a single choice, or anything else. */
+	public interface Source<T> {
+		Iterable<T> all();
+
+		boolean accepts(T t);
+
+		boolean contains(T t);
+
+		void toggle(T t);
+
+		/** How many are selected (any non-negative number for single choices). */
+		int size();
+
+		/** The collapsed row's text, e.g. "3 selected". */
+		String label();
+
+		/** Matched by the search box besides the name. */
+		String id(T t);
+
+		String name(T t);
+
+		default ItemStack icon(T t) {
+			if (t instanceof Block b && b.asItem() != Items.AIR) return new ItemStack(b.asItem());
+			if (t instanceof Item i) return new ItemStack(i);
+			return ItemStack.EMPTY;
+		}
+	}
+
+	private final Source<T> setting;
 	private final TextField search;
 	private boolean expanded;
 	private String query = "";
@@ -31,6 +61,95 @@ public class RegistryPicker<T> extends Widget {
 	private int lastSize = -1;
 
 	public RegistryPicker(RegistryListSetting<T> setting) {
+		this(new Source<>() {
+			@Override
+			public Iterable<T> all() {
+				return setting.registry();
+			}
+
+			@Override
+			public boolean accepts(T t) {
+				return setting.accepts(t);
+			}
+
+			@Override
+			public boolean contains(T t) {
+				return setting.contains(t);
+			}
+
+			@Override
+			public void toggle(T t) {
+				setting.toggle(t);
+			}
+
+			@Override
+			public int size() {
+				return setting.get().size();
+			}
+
+			@Override
+			public String label() {
+				return setting.get().size() + " selected";
+			}
+
+			@Override
+			public String id(T t) {
+				return String.valueOf(setting.registry().getId(t));
+			}
+
+			@Override
+			public String name(T t) {
+				return registryName(setting.registry(), t);
+			}
+		});
+	}
+
+	/** One entry of a registry (a single item or block setting): picking an entry selects it. */
+	public static <T> RegistryPicker<T> single(RegistrySetting<T> setting) {
+		return new RegistryPicker<>(new Source<>() {
+			@Override
+			public Iterable<T> all() {
+				return setting.registry();
+			}
+
+			@Override
+			public boolean accepts(T t) {
+				return setting.accepts(t);
+			}
+
+			@Override
+			public boolean contains(T t) {
+				return setting.get() == t;
+			}
+
+			@Override
+			public void toggle(T t) {
+				setting.set(t);
+			}
+
+			@Override
+			public int size() {
+				return 1;
+			}
+
+			@Override
+			public String label() {
+				return registryName(setting.registry(), setting.get());
+			}
+
+			@Override
+			public String id(T t) {
+				return String.valueOf(setting.registry().getId(t));
+			}
+
+			@Override
+			public String name(T t) {
+				return registryName(setting.registry(), t);
+			}
+		});
+	}
+
+	public RegistryPicker(Source<T> setting) {
 		this.setting = setting;
 		this.search = new TextField(() -> query).placeholder("Search…").onChange(s -> {
 			query = s;
@@ -47,30 +166,25 @@ public class RegistryPicker<T> extends Widget {
 	private void refilter() {
 		String q = query.toLowerCase(Locale.ROOT).trim();
 		List<T> sel = new ArrayList<>(), rest = new ArrayList<>();
-		for (T t : setting.registry()) {
+		for (T t : setting.all()) {
 			if (!setting.accepts(t)) continue;
-			if (!q.isEmpty() && !name(t).toLowerCase(Locale.ROOT).contains(q) && !String.valueOf(setting.registry().getId(t)).contains(q)) continue;
+			if (!q.isEmpty() && !setting.name(t).toLowerCase(Locale.ROOT).contains(q) && !setting.id(t).contains(q)) continue;
 			(setting.contains(t) ? sel : rest).add(t);
 		}
 		sel.addAll(rest);
 		filtered = sel;
 		scroll = 0;
-		lastSize = setting.get().size();
+		lastSize = setting.size();
 	}
 
-	private String name(T t) {
+	/** A registry entry's display name (blocks, items, entities and effects), falling back to its id. */
+	public static <T> String registryName(Registry<T> registry, T t) {
 		if (t instanceof Block b) return b.getName().getString();
 		if (t instanceof Item i) return i.getName().getString();
 		if (t instanceof EntityType<?> e) return e.getName().getString();
 		if (t instanceof StatusEffect s) return s.getName().getString();
-		Identifier id = setting.registry().getId(t);
-		return id == null ? t.toString() : id.getPath();
-	}
-
-	private ItemStack icon(T t) {
-		if (t instanceof Block b && b.asItem() != Items.AIR) return new ItemStack(b.asItem());
-		if (t instanceof Item i) return new ItemStack(i);
-		return ItemStack.EMPTY;
+		Identifier id = registry.getId(t);
+		return id == null ? String.valueOf(t) : id.getPath();
 	}
 
 	@Override
@@ -84,7 +198,7 @@ public class RegistryPicker<T> extends Widget {
 	public void render(Canvas c, float mx, float my) {
 		boolean hover = mx >= x && my >= y && mx < x + width && my < y + ROW;
 		c.roundRect(x, y, width, ROW, 4, hover ? theme().surfaceHover.argb() : theme().surface.argb());
-		String label = setting.get().size() + " selected";
+		String label = setting.label();
 		c.text(label, x + 4, y + (ROW - c.textHeight()) / 2, theme().textDim.argb());
 		c.text(expanded ? "" : "", x + width - 10, y + (ROW - c.textHeight()) / 2, theme().textDim.argb());
 		if (!expanded) return;
@@ -103,13 +217,13 @@ public class RegistryPicker<T> extends Widget {
 			boolean h = mx >= x && mx < x + width && my >= ey && my < ey + ENTRY && my >= ly && my < ly + LIST_HEIGHT;
 			if (h) c.rect(x, ey, width, ENTRY, theme().surfaceHover.argb());
 			c.roundRect(x + 3, ey + 3, 6, 6, 2, sel ? theme().accent.argb() : ColorUtil.withAlpha(theme().textDim.argb(), 80));
-			ItemStack stack = icon(t);
+			ItemStack stack = setting.icon(t);
 			float tx = x + 13;
 			if (!stack.isEmpty()) {
 				c.item(stack, tx, ey + 1, 10);
 				tx += 12;
 			}
-			c.text(c.ellipsize(c.defaultFont(), c.defaultFontSize() * 0.9f, name(t), width - (tx - x) - 4) , tx, ey + (ENTRY - c.textHeight()) / 2, sel ? theme().text.argb() : theme().textDim.argb());
+			c.text(c.ellipsize(c.defaultFont(), c.defaultFontSize() * 0.9f, setting.name(t), width - (tx - x) - 4) , tx, ey + (ENTRY - c.textHeight()) / 2, sel ? theme().text.argb() : theme().textDim.argb());
 		}
 		c.pop();
 	}

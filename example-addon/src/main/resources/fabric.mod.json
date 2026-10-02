@@ -6,6 +6,10 @@
 	"description": "A complete example addon for the Myriad API: waypoints (module, command, window, HUD, storage), auto tool, chat timestamps and a settings showcase.",
 	"authors": ["Myriad contributors"],
 	"license": "CC0-1.0",
+	"contact": {
+		"sources": "https://github.com/fyzz-dev/myriad",
+		"issues": "https://github.com/fyzz-dev/myriad/issues"
+	},
 	"environment": "client",
 	"entrypoints": {
 		"myriad": ["com.example.myriadaddon.ExampleAddon"]

@@ -60,4 +60,20 @@ public interface Inventory {
 	 * Returns -1 if you have none or it couldn't be moved.
 	 */
 	int ensureInHotbar(Predicate<ItemStack> predicate, int preferredSlot);
+
+	// The moves below click in your own inventory screen, which works without opening it (as vanilla's number keys
+	// do). They need no container to be open, and return false otherwise or for bad slots. Indexes are inventory
+	// indexes (see Slots): 0-8 hotbar, 9-35 main, 36-39 armour (feet..head), 40 off hand.
+
+	/** Moves the stack at {@code from} to {@code to}, swapping with whatever is there (merging if they stack). */
+	boolean move(int from, int to);
+
+	/** Swaps {@code inventoryIndex} with the off hand (like pressing F over it), e.g. to put a totem there. */
+	boolean swapWithOffhand(int inventoryIndex);
+
+	/** Shift-clicks {@code inventoryIndex}: armour goes onto you, other items between the hotbar and main inventory. */
+	boolean quickMove(int inventoryIndex);
+
+	/** Throws out the stack at {@code inventoryIndex} (or one item). */
+	boolean drop(int inventoryIndex, boolean wholeStack);
 }

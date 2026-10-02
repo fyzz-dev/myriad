@@ -3,19 +3,8 @@ package dev.myriad.impl.service;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.service.Placement;
 import dev.myriad.api.service.Rotations;
-import net.minecraft.block.AbstractChestBlock;
-import net.minecraft.block.AnvilBlock;
-import net.minecraft.block.BedBlock;
-import net.minecraft.block.Block;
+import dev.myriad.api.util.BlockInfo;
 import net.minecraft.block.BlockState;
-import net.minecraft.block.BlockWithEntity;
-import net.minecraft.block.ButtonBlock;
-import net.minecraft.block.CraftingTableBlock;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.LeverBlock;
-import net.minecraft.block.NoteBlock;
-import net.minecraft.block.TrapdoorBlock;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.Hand;
@@ -97,19 +86,12 @@ public final class PlacementManager implements Placement {
 		for (Direction dir : Direction.values()) {
 			BlockPos neighbour = pos.offset(dir);
 			BlockState state = mc.world.getBlockState(neighbour);
-			if (state.isReplaceable() || (isClickable(state.getBlock()) && !mc.player.isSneaking())) continue;
+			if (state.isReplaceable() || (BlockInfo.isClickable(state) && !mc.player.isSneaking())) continue;
 			Direction face = dir.getOpposite();
 			Vec3d hitVec = Vec3d.ofCenter(neighbour).add(Vec3d.of(face.getVector()).multiply(0.5));
 			out.add(new BlockHitResult(hitVec, face, neighbour, false));
 		}
 		out.sort(Comparator.comparingDouble(h -> eyes.squaredDistanceTo(h.getPos())));
 		return out;
-	}
-
-	/** Blocks that open or react when right-clicked; clicking them would interact instead of place. */
-	private static boolean isClickable(Block b) {
-		return b instanceof BlockWithEntity || b instanceof AbstractChestBlock<?> || b instanceof DoorBlock || b instanceof TrapdoorBlock
-			|| b instanceof FenceGateBlock || b instanceof ButtonBlock || b instanceof LeverBlock || b instanceof CraftingTableBlock
-			|| b instanceof AnvilBlock || b instanceof BedBlock || b instanceof NoteBlock;
 	}
 }

@@ -2,9 +2,12 @@ package dev.myriad.api.util;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
+import net.minecraft.item.consume.UseAction;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 
 /**
  * The player's actions, done the way vanilla does them (cooldowns reset, sequence numbers kept, events posted), plus
@@ -41,6 +44,43 @@ public final class Interactions {
 	public static ActionResult useItem(Hand hand) {
 		if (!ready()) return ActionResult.FAIL;
 		return mc().interactionManager.interactItem(mc().player, hand);
+	}
+
+	/**
+	 * Starts breaking the block at {@code pos} on {@code side} (as a left click would), breaking it at once if it's
+	 * instant. Keep calling {@link #continueBreaking} each tick for slower blocks. Returns false if nothing happened.
+	 */
+	public static boolean startBreaking(BlockPos pos, Direction side) {
+		return ready() && mc().interactionManager.attackBlock(pos, side);
+	}
+
+	/** Continues breaking {@code pos}, as holding left click does each tick. */
+	public static boolean continueBreaking(BlockPos pos, Direction side) {
+		return ready() && mc().interactionManager.updateBlockBreakingProgress(pos, side);
+	}
+
+	public static void stopBreaking() {
+		if (ready()) mc().interactionManager.cancelBlockBreaking();
+	}
+
+	public static boolean isMining() {
+		return ready() && mc().interactionManager.isBreakingBlock();
+	}
+
+	/** Eating or drinking right now. */
+	public static boolean isEating() {
+		var p = mc().player;
+		if (p == null || !p.isUsingItem()) return false;
+		var action = p.getActiveItem().getUseAction();
+		return action == UseAction.EAT || action == UseAction.DRINK;
+	}
+
+	/**
+	 * The usual "should this feature wait?" check: true while eating or drinking (if {@code whileEating}) or mining
+	 * (if {@code whileMining}). Combat features pause like this so they don't interrupt the player.
+	 */
+	public static boolean shouldPause(boolean whileEating, boolean whileMining) {
+		return (whileEating && isEating()) || (whileMining && isMining());
 	}
 
 	/** Swings the hand: the server sees it, and the client animates it. */

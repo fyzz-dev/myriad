@@ -39,6 +39,21 @@ public final class Addon {
 		return metadata().getAuthors().stream().map(Person::getName).toList();
 	}
 
+	/** The website from {@code contact.homepage} in fabric.mod.json. */
+	public Optional<String> homepage() {
+		return metadata().getContact().get("homepage");
+	}
+
+	/** The source repository from {@code contact.sources} in fabric.mod.json. */
+	public Optional<String> sources() {
+		return metadata().getContact().get("sources");
+	}
+
+	/** Where to report problems, from {@code contact.issues} in fabric.mod.json. */
+	public Optional<String> issues() {
+		return metadata().getContact().get("issues");
+	}
+
 	public Optional<String> iconPath() {
 		return metadata().getIconPath(64);
 	}

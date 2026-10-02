@@ -64,6 +64,11 @@ public final class ContainerTracker implements Containers {
 		}
 	}
 
+	public void onSlot(int syncId, int slot) {
+		if (current == null || current.syncId() != syncId || slot < 0) return;
+		Myriad.events().post(new ContainerEvent.SlotUpdated(current, slot));
+	}
+
 	// ---- tracking ---------------------------------------------------------------------------------------------------
 
 	@Subscribe

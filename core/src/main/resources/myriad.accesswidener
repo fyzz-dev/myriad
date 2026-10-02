@@ -8,3 +8,6 @@ accessible field net/minecraft/client/MinecraftClient itemUseCooldown I
 accessible field net/minecraft/entity/LivingEntity jumpingCooldown I
 accessible field net/minecraft/entity/LivingEntity lastAttackedTicks I
 accessible field net/minecraft/network/packet/c2s/play/PlayerInteractEntityC2SPacket entityId I
+# Replaceable chat lines (Myriad.chat with an id).
+accessible field net/minecraft/client/gui/hud/ChatHud messages Ljava/util/List;
+accessible method net/minecraft/client/gui/hud/ChatHud refresh ()V

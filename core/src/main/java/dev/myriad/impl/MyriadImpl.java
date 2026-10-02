@@ -251,10 +251,25 @@ public final class MyriadImpl implements MyriadApi {
 		sendChat(message);
 	}
 
+	@Override
+	public void chat(Text message, String id) {
+		ConsoleLog.add(message.getString());
+		if (!mc.isOnThread()) {
+			mc.execute(() -> sendChat(message, id));
+			return;
+		}
+		sendChat(message, id);
+	}
+
 	private void sendChat(Text message) {
+		sendChat(message, null);
+	}
+
+	private void sendChat(Text message, String id) {
 		if (mc.inGameHud == null || mc.player == null) return;
 		int accent = windowManager.theme().accent.get().color() & 0xFFFFFF;
-		MutableText prefix = Text.literal("[Myriad] ").styled(s -> s.withColor(TextColor.fromRgb(accent)));
-		mc.inGameHud.getChatHud().addMessage(prefix.append(message));
+		MutableText line = Text.literal("[Myriad] ").styled(s -> s.withColor(TextColor.fromRgb(accent))).append(message);
+		if (id == null) mc.inGameHud.getChatHud().addMessage(line);
+		else ChatLines.add(line, id);
 	}
 }

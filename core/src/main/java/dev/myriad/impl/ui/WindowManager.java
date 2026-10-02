@@ -23,6 +23,8 @@ import dev.myriad.api.util.Keybind;
 import dev.myriad.api.util.MyriadId;
 import dev.myriad.impl.render.UiRenderer;
 import dev.myriad.impl.ui.layout.DwindleLayout;
+import dev.myriad.impl.ui.panels.CorePanels;
+import dev.myriad.impl.ui.panels.DialogPanel;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import org.lwjgl.glfw.GLFW;
@@ -40,6 +42,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * The Hyprland-inspired window manager behind {@link Desktop}: workspaces with tiling layouts and floating windows,
@@ -156,16 +159,23 @@ public final class WindowManager implements Desktop {
 		hudElement(type).ifPresent(this::closeWindow);
 	}
 
-	/** Opens the HUD Elements editor as a floating window on the HUD workspace, unless it's already there. */
+	/** Opens the HUD window as a floating window on the HUD workspace, unless it's already there. */
 	private void ensureHudEditor() {
 		MyriadId id = dev.myriad.impl.ui.panels.CorePanels.HUD_ELEMENTS;
 		if (find(id, new JsonObject()).isPresent()) return;
 		openPanel(id, new JsonObject(), HUD_WORKSPACE, true).ifPresent(win -> {
 			WindowImpl w = (WindowImpl) win;
-			float wd = 150, ht = Math.min(220, screenH * 0.5f);
+			// Wide enough for an element's options to unfold inline.
+			float wd = Math.min(200, screenW * 0.3f), ht = Math.min(300, screenH * 0.6f);
 			w.floatRect = new Rect(screenW - wd - 20, barHeight() + 20, wd, ht);
 			w.placed = false;
 		});
+	}
+
+	@Override
+	public void confirm(String title, String message, String confirmLabel, Runnable onConfirm, Runnable onCancel) {
+		if (!isOpen()) open();
+		openPanel(CorePanels.DIALOG, DialogPanel.prepare(title, message, confirmLabel, onConfirm, onCancel), active == HUD_WORKSPACE ? 1 : active, true);
 	}
 
 	@Override
@@ -911,33 +921,42 @@ public final class WindowManager implements Desktop {
 	void tickDesktop() {
 	}
 
-	private int omarchyPoll;
-	private String omarchySignature = "";
+	private int livePoll;
+	private String liveSignature = "";
+	private MyriadId liveTheme;
 
-	/** While the "Omarchy" theme is active, re-applies it whenever the system theme changes (checked every two seconds). */
-	private void followOmarchy() {
-		if (!themes.active().id().equals(CoreThemes.OMARCHY_CURRENT)) {
-			omarchySignature = "";
+	/** Re-applies the active theme when it follows something outside the game (Theme.live) and that changed. */
+	private void followLiveTheme() {
+		ThemeManager.Entry active = themes.active();
+		Supplier<String> live = active.preset() == null ? null : active.preset().live();
+		if (live == null) {
+			liveTheme = null;
 			return;
 		}
-		if (++omarchyPoll % 40 != 0) return;
-		String sig;
+		if (!active.id().equals(liveTheme)) {
+			// The theme was applied when it was picked; start watching from here.
+			liveTheme = active.id();
+			liveSignature = safeSignature(live);
+			return;
+		}
+		if (++livePoll % 40 != 0) return;
+		String sig = safeSignature(live);
+		if (sig.equals(liveSignature)) return;
+		liveSignature = sig;
+		themes.reapply();
+	}
+
+	private static String safeSignature(Supplier<String> live) {
 		try {
-			java.nio.file.Path colors = OmarchyThemes.CURRENT.resolve("colors.toml");
-			sig = OmarchyThemes.currentName().orElse("") + "@" + java.nio.file.Files.getLastModifiedTime(colors).toMillis();
-		} catch (Exception e) {
-			return;
+			return String.valueOf(live.get());
+		} catch (Throwable t) {
+			return "";
 		}
-		if (sig.equals(omarchySignature)) return;
-		boolean first = omarchySignature.isEmpty();
-		omarchySignature = sig;
-		// The theme was applied when it was picked; only re-apply on a real change.
-		if (!first) themes.reapply();
 	}
 
 	/** Every client tick (in game or not). */
 	public void tick() {
-		followOmarchy();
+		followLiveTheme();
 		themes.tick();
 		for (WindowImpl w : new ArrayList<>(windows)) {
 			if (w.workspace == active || w.isHudElement()) safe(w, w.panel::tick);
@@ -1482,6 +1501,8 @@ public final class WindowManager implements Desktop {
 		o.add("workspaces", ws);
 		JsonArray wins = new JsonArray();
 		for (WindowImpl w : windows) {
+			// Dialogs hold callbacks that don't survive a restart.
+			if (w.panel instanceof DialogPanel) continue;
 			JsonObject j = new JsonObject();
 			j.addProperty("uid", w.uid);
 			j.addProperty("type", w.type.id().toString());
@@ -1578,8 +1599,8 @@ public final class WindowManager implements Desktop {
 		previous = active;
 		int version = o.has("version") ? o.get("version").getAsInt() : 1;
 		if (version < LAYOUT_VERSION) {
-			// One-time upgrade: adopt the Omarchy look if it's available.
-			if (version < 2 && OmarchyThemes.isInstalled()) themes.apply(CoreThemes.OMARCHY_CURRENT);
+			// One-time upgrade: adopt a theme an addon prefers (e.g. one matching the system), if any.
+			if (version < 2) themes.firstRunPreference().ifPresent(themes::apply);
 			for (WindowImpl w : new ArrayList<>(windows)) if (w.workspace != HUD_WORKSPACE) {
 				detach(w);
 				windows.remove(w);
@@ -1602,24 +1623,11 @@ public final class WindowManager implements Desktop {
 			prefs.add("general", general);
 			if (legacy.has("input")) prefs.add("input", legacy.get("input"));
 			theme.preferences.fromJson(prefs);
-			JsonObject colors = legacy.has("colors") ? legacy.getAsJsonObject("colors") : new JsonObject();
-			boolean followed = colors.has("follow_omarchy_theme") && colors.get("follow_omarchy_theme").getAsBoolean();
-			if (followed && themes.get(CoreThemes.OMARCHY_CURRENT).isPresent()) {
-				// Colours came from Omarchy; keep the rest (gaps, rounding, animations…) as edits to the Omarchy theme.
-				themes.apply(CoreThemes.OMARCHY_CURRENT);
-				JsonObject rest = legacy.deepCopy();
-				rest.remove("colors");
-				rest.remove("palette");
-				themes.adoptEdits(rest);
-			} else {
-				themes.importLegacy("Custom", legacy);
-			}
+			themes.importLegacy("Custom", legacy);
 			return;
 		}
 		if (o.has("preferences") && o.get("preferences").isJsonObject()) theme.preferences.fromJson(o.getAsJsonObject("preferences"));
 		MyriadId id = t != null && t.isJsonPrimitive() ? MyriadId.parse(t.getAsString()) : ThemeManager.DEFAULT;
-		// Older versions had a preset per installed Omarchy theme; they're all "Omarchy" now.
-		if (id.namespace().equals("myriad") && id.path().startsWith("omarchy_") && themes.get(id).isEmpty()) id = CoreThemes.OMARCHY_CURRENT;
 		if (!themes.apply(id)) themes.apply(ThemeManager.DEFAULT);
 	}
 
@@ -1664,11 +1672,7 @@ public final class WindowManager implements Desktop {
 	private void firstRun() {
 		updateScale();
 		theme.preferences.resetAll();
-		if (OmarchyThemes.isInstalled() && themes.get(CoreThemes.OMARCHY_CURRENT).isPresent()) {
-			themes.apply(CoreThemes.OMARCHY_CURRENT);
-		} else {
-			themes.apply(ThemeManager.DEFAULT);
-		}
+		themes.apply(themes.firstRunPreference().orElse(ThemeManager.DEFAULT));
 		defaultWorkspaces();
 		for (PanelType t : Myriad.panels()) if (t.defaultHud() != null) addHudElement(t);
 		for (WindowImpl w : windows) w.opacity.snap(1);

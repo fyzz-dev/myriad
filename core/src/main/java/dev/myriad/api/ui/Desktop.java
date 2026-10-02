@@ -59,4 +59,14 @@ public interface Desktop {
 	void applyTheme(MyriadId theme);
 
 	SettingWidgets settingWidgets();
+
+	/**
+	 * Asks the player to confirm something ("Delete 40 waypoints?") in a small floating window, opening the menu if
+	 * it's closed. {@code onCancel} (may be null) also runs if the window is closed without answering.
+	 */
+	void confirm(String title, String message, String confirmLabel, Runnable onConfirm, Runnable onCancel);
+
+	default void confirm(String title, String message, Runnable onConfirm) {
+		confirm(title, message, "Confirm", onConfirm, null);
+	}
 }

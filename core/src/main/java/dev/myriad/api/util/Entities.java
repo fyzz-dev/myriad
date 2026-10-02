@@ -7,9 +7,14 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.entity.mob.Monster;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.GameMode;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Predicate;
 
 /**
  * Entity helpers for combat and render features: classifying entities the same way everywhere (so "hostiles" means
@@ -75,6 +80,36 @@ public final class Entities {
 	public static Vec3d predict(Entity e, int ticks) {
 		Vec3d moved = e.getPos().subtract(e.prevX, e.prevY, e.prevZ);
 		return e.getPos().add(moved.multiply(ticks));
+	}
+
+	/** {@code player}'s latency from the tab list, or 0 if unknown. */
+	public static int ping(PlayerEntity player) {
+		var handler = mc().getNetworkHandler();
+		var entry = handler == null ? null : handler.getPlayerListEntry(player.getUuid());
+		return entry == null ? 0 : entry.getLatency();
+	}
+
+	/** {@code player}'s game mode from the tab list, or null if unknown. */
+	public static @Nullable GameMode gameMode(PlayerEntity player) {
+		var handler = mc().getNetworkHandler();
+		var entry = handler == null ? null : handler.getPlayerListEntry(player.getUuid());
+		return entry == null ? null : entry.getGameMode();
+	}
+
+	/** Whether any entity matching {@code filter} overlaps {@code box} (e.g. would block a placement). */
+	public static boolean intersects(Box box, Predicate<Entity> filter) {
+		var world = mc().world;
+		if (world == null) return false;
+		for (Entity e : world.getOtherEntities(null, box, filter)) if (e.isAlive()) return true;
+		return false;
+	}
+
+	/** Whether {@code pos} is inside the client's render distance (chunks there are loaded and drawn). */
+	public static boolean inRenderDistance(BlockPos pos) {
+		var player = mc().player;
+		if (player == null) return false;
+		int chunks = mc().options.getClampedViewDistance();
+		return Math.abs((pos.getX() >> 4) - player.getChunkPos().x) <= chunks && Math.abs((pos.getZ() >> 4) - player.getChunkPos().z) <= chunks;
 	}
 
 	/** {@link #predict} applied to the bounding box. */

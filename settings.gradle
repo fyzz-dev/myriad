@@ -11,4 +11,4 @@ pluginManagement {
 
 rootProject.name = 'myriad-root'
 
-include 'core', 'essentials', 'example-addon'
+include 'core', 'essentials', 'omarchy', 'example-addon'

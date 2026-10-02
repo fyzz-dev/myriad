@@ -68,4 +68,6 @@ public interface MyriadApi {
 	Desktop ui();
 
 	void chat(Text message);
+
+	void chat(Text message, String id);
 }
