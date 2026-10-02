@@ -16,7 +16,13 @@ import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 
-/** Collects {@code Renderer3D} shapes during Render3DEvent and draws them in a few batches afterwards. */
+/**
+ * Collects {@code Renderer3D} shapes during Render3DEvent and draws them in a few batches afterwards.
+ * <p>
+ * Shapes are stored relative to the camera, subtracted while still in doubles. Absolute world coordinates don't fit in
+ * a float far from spawn (at 1,000,000 a float only resolves 1/16 of a block), which makes boxes jitter as the camera
+ * moves and lose their corners.
+ */
 public final class WorldRenderQueue {
 	private static final Layer DEPTH = new Layer();
 	private static final Layer XRAY = new Layer();
@@ -25,6 +31,7 @@ public final class WorldRenderQueue {
 	private static final FloatArrayList TRACER_WIDTHS = new FloatArrayList();
 	private static final float DEFAULT_LINE_WIDTH = 2f;
 	private static float lineWidth = DEFAULT_LINE_WIDTH;
+	private static double originX, originY, originZ;
 
 	private WorldRenderQueue() {
 	}
@@ -33,13 +40,21 @@ public final class WorldRenderQueue {
 		return throughWalls ? XRAY : DEPTH;
 	}
 
+	/** Sets the camera position shapes are stored relative to; called before Render3DEvent is posted. */
+	public static void begin(Vec3d camera) {
+		originX = camera.x;
+		originY = camera.y;
+		originZ = camera.z;
+	}
+
 	public static void lineWidth(float width) {
 		lineWidth = width;
 	}
 
 	public static void boxFill(Box b, int color, boolean throughWalls) {
 		Layer l = layer(throughWalls);
-		float x0 = (float) b.minX, y0 = (float) b.minY, z0 = (float) b.minZ, x1 = (float) b.maxX, y1 = (float) b.maxY, z1 = (float) b.maxZ;
+		float x0 = (float) (b.minX - originX), y0 = (float) (b.minY - originY), z0 = (float) (b.minZ - originZ);
+		float x1 = (float) (b.maxX - originX), y1 = (float) (b.maxY - originY), z1 = (float) (b.maxZ - originZ);
 		// six faces, four vertices each
 		l.quad(x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, color);
 		l.quad(x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, color);
@@ -65,22 +80,21 @@ public final class WorldRenderQueue {
 	}
 
 	public static void tracer(Vec3d to, int color) {
-		TRACERS.add((float) to.x);
-		TRACERS.add((float) to.y);
-		TRACERS.add((float) to.z);
+		TRACERS.add((float) (to.x - originX));
+		TRACERS.add((float) (to.y - originY));
+		TRACERS.add((float) (to.z - originZ));
 		TRACER_COLORS.add(color);
 		TRACER_WIDTHS.add(lineWidth);
 	}
 
 	/** Draws everything queued; called after Render3DEvent with the camera rotation on the model-view stack. */
 	public static void flush(Camera camera) {
-		Vec3d cam = camera.getPos();
-		// Tracers start just in front of the camera along its look vector.
+		// Tracers start just in front of the camera along its look vector (the camera is the origin here).
 		if (!TRACERS.isEmpty()) {
-			Vec3d look = Vec3d.fromPolar(camera.getPitch(), camera.getYaw()).multiply(0.5).add(cam);
+			Vec3d look = Vec3d.fromPolar(camera.getPitch(), camera.getYaw()).multiply(0.5);
 			for (int i = 0; i < TRACER_COLORS.size(); i++) {
 				lineWidth = TRACER_WIDTHS.getFloat(i);
-				XRAY.line(look.x, look.y, look.z, TRACERS.getFloat(i * 3), TRACERS.getFloat(i * 3 + 1), TRACERS.getFloat(i * 3 + 2), TRACER_COLORS.getInt(i), TRACER_COLORS.getInt(i));
+				XRAY.relativeLine((float) look.x, (float) look.y, (float) look.z, TRACERS.getFloat(i * 3), TRACERS.getFloat(i * 3 + 1), TRACERS.getFloat(i * 3 + 2), TRACER_COLORS.getInt(i), TRACER_COLORS.getInt(i));
 			}
 		}
 
@@ -91,9 +105,14 @@ public final class WorldRenderQueue {
 
 		RenderSystem.enableDepthTest();
 		RenderSystem.depthFunc(GL11.GL_LEQUAL);
-		DEPTH.draw(cam);
+		// Pulled towards the camera so shapes lying on a block face (hole fills, block outlines) don't z-fight with it.
+		RenderSystem.enablePolygonOffset();
+		RenderSystem.polygonOffset(-1f, -10f);
+		DEPTH.draw();
+		RenderSystem.polygonOffset(0f, 0f);
+		RenderSystem.disablePolygonOffset();
 		RenderSystem.disableDepthTest();
-		XRAY.draw(cam);
+		XRAY.draw();
 
 		RenderSystem.enableDepthTest();
 		RenderSystem.depthMask(true);
@@ -122,24 +141,30 @@ public final class WorldRenderQueue {
 			quadColors.add(color);
 		}
 
+		/** A line between two absolute world positions. */
 		void line(double ax, double ay, double az, double bx, double by, double bz, int ca, int cb) {
-			lines.add((float) ax); lines.add((float) ay); lines.add((float) az);
-			lines.add((float) bx); lines.add((float) by); lines.add((float) bz);
+			relativeLine((float) (ax - originX), (float) (ay - originY), (float) (az - originZ),
+				(float) (bx - originX), (float) (by - originY), (float) (bz - originZ), ca, cb);
+		}
+
+		/** A line between two camera-relative positions. */
+		void relativeLine(float ax, float ay, float az, float bx, float by, float bz, int ca, int cb) {
+			lines.add(ax); lines.add(ay); lines.add(az);
+			lines.add(bx); lines.add(by); lines.add(bz);
 			lineColors.add(ca);
 			lineColors.add(cb);
 			lineWidths.add(lineWidth);
 		}
 
-		void draw(Vec3d cam) {
+		void draw() {
 			Matrix4f m = new Matrix4f();
-			float ox = (float) cam.x, oy = (float) cam.y, oz = (float) cam.z;
 			if (!quadColors.isEmpty()) {
 				BufferBuilder buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
 				for (int q = 0; q < quadColors.size(); q++) {
 					int c = quadColors.getInt(q);
 					for (int v = 0; v < 4; v++) {
 						int i = q * 12 + v * 3;
-						buf.vertex(m, quads.getFloat(i) - ox, quads.getFloat(i + 1) - oy, quads.getFloat(i + 2) - oz).color(c);
+						buf.vertex(m, quads.getFloat(i), quads.getFloat(i + 1), quads.getFloat(i + 2)).color(c);
 					}
 				}
 				var built = buf.endNullable();
@@ -158,8 +183,8 @@ public final class WorldRenderQueue {
 				for (int l = 0; l < lineColors.size() / 2; l++) {
 					if (lineWidths.getFloat(l) != width) continue;
 					int i = l * 6;
-					float ax = lines.getFloat(i) - ox, ay = lines.getFloat(i + 1) - oy, az = lines.getFloat(i + 2) - oz;
-					float bx = lines.getFloat(i + 3) - ox, by = lines.getFloat(i + 4) - oy, bz = lines.getFloat(i + 5) - oz;
+					float ax = lines.getFloat(i), ay = lines.getFloat(i + 1), az = lines.getFloat(i + 2);
+					float bx = lines.getFloat(i + 3), by = lines.getFloat(i + 4), bz = lines.getFloat(i + 5);
 					float nx = bx - ax, ny = by - ay, nz = bz - az;
 					float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
 					if (len < 1e-5f) continue;

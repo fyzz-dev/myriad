@@ -135,14 +135,14 @@ public class ShulkerPreview extends Module {
 		}
 
 		int[] p = position(ax, ay);
-		Myriad.ui().draw(ctx, c -> drawPanel(c, shulker, items, p[0], p[1]));
 		ItemStack under = hoveredItem(items, p[0], p[1], mouseX, mouseY);
-		if (under != null) {
-			ctx.getMatrices().push();
-			ctx.getMatrices().translate(0, 0, 400);
-			ctx.drawItemTooltip(mc.textRenderer, under, mouseX, mouseY);
-			ctx.getMatrices().pop();
-		}
+		// Raised like a vanilla tooltip: the panel itself writes no depth, so without this its item icons depth-test
+		// against the slot items underneath and come out mixed with them.
+		ctx.getMatrices().push();
+		ctx.getMatrices().translate(0, 0, 400);
+		Myriad.ui().draw(ctx, c -> drawPanel(c, shulker, items, p[0], p[1]));
+		if (under != null) ctx.drawItemTooltip(mc.textRenderer, under, mouseX, mouseY);
+		ctx.getMatrices().pop();
 		return true;
 	}
 

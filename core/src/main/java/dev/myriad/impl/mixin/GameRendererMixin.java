@@ -44,6 +44,7 @@ public abstract class GameRendererMixin {
 		modelView.pushMatrix();
 		modelView.mul(positionMatrix);
 		try {
+			WorldRenderQueue.begin(camera.getPos());
 			// Same tick delta the camera and entities were drawn with this frame.
 			Myriad.events().post(new Render3DEvent(matrices, camera, tickCounter.getTickDelta(true)));
 			WorldRenderQueue.flush(camera);
