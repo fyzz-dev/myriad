@@ -9,7 +9,6 @@ that jar and Myriad still boots, with an empty module list.
 
 ```
 core/           mod id "myriad"             the platform: API, event bus, config, commands, renderer, menu
-omarchy/        mod id "myriad-omarchy"     optional: a theme that follows your Omarchy system theme
 essentials/     mod id "myriad-essentials"  the stock modules + HUD elements (an ordinary addon)
 example-addon/  mod id "myriad-example"     the reference addon: a complete feature set, written to be read
 ```
@@ -29,7 +28,8 @@ Requires JDK 21+.
 ```
 
 To install, put `myriad-<v>.jar` in `mods/` (with Fabric API), then add `myriad-essentials-<v>.jar` and any other
-addons next to it. On [Omarchy](https://omarchy.org), add `myriad-omarchy-<v>.jar` too.
+addons next to it. On [Omarchy](https://omarchy.org), add
+[myriad-omarchy](https://github.com/fyzz-dev/myriad-omarchy) too.
 
 ## The menu
 
@@ -54,7 +54,7 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
   - **Your themes**: **New** or **Duplicate** makes a theme you can rename and give an author. Each one is a file in
     `.minecraft/myriad/themes/`. To share it, send the `.json`; the other person drops it in that folder and presses
     **Reload**.
-  - **Omarchy**: with the `myriad-omarchy` addon there's also an "Omarchy" theme that always matches your system
+  - **Omarchy**: with the [myriad-omarchy](https://github.com/fyzz-dev/myriad-omarchy) addon there's also an "Omarchy" theme that always matches your system
     theme, switching whenever you run `omarchy-theme-set`. It's what a fresh install starts with on Omarchy.
   - **Theme roles**: colours come from a palette (accent, secondary, red, green, yellow, blue, magenta, cyan) that
     modules use as defaults, so ESP, tracers, categories, notifications and the module list follow the theme. A
