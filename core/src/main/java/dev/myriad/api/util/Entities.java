@@ -66,4 +66,20 @@ public final class Entities {
 	public static Vec3d lerpedCenter(Entity e, float tickDelta) {
 		return lerpedBox(e, tickDelta).getCenter();
 	}
+
+	/**
+	 * Where {@code e} will be in {@code ticks} ticks if it keeps moving as it did last tick (a straight-line guess;
+	 * good enough to lead shots or place crystals where a player is going). Uses the observed movement rather than
+	 * velocity, which the client doesn't know for other players.
+	 */
+	public static Vec3d predict(Entity e, int ticks) {
+		Vec3d moved = e.getPos().subtract(e.prevX, e.prevY, e.prevZ);
+		return e.getPos().add(moved.multiply(ticks));
+	}
+
+	/** {@link #predict} applied to the bounding box. */
+	public static Box predictBox(Entity e, int ticks) {
+		Vec3d offset = predict(e, ticks).subtract(e.getPos());
+		return e.getBoundingBox().offset(offset);
+	}
 }

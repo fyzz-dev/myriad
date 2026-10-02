@@ -7,6 +7,7 @@ import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.ModuleRegistry;
 import dev.myriad.api.registry.Registry;
+import dev.myriad.api.service.Containers;
 import dev.myriad.api.service.Friends;
 import dev.myriad.api.service.Inventory;
 import dev.myriad.api.service.KeyAction;
@@ -14,6 +15,7 @@ import dev.myriad.api.service.Notifications;
 import dev.myriad.api.service.Placement;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.service.ServerStats;
+import dev.myriad.api.service.Tasks;
 import dev.myriad.api.ui.BarWidget;
 import dev.myriad.api.ui.Desktop;
 import dev.myriad.api.ui.PanelType;
@@ -58,6 +60,10 @@ public interface MyriadApi {
 	Friends friends();
 
 	ServerStats server();
+
+	Containers containers();
+
+	Tasks tasks();
 
 	Desktop ui();
 

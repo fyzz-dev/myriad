@@ -1,6 +1,9 @@
 package dev.myriad.api.service;
 
+import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
+
+import java.util.List;
 
 /**
  * Shared block placement for modules like Scaffold, Surround or Auto Trap: finds a solid neighbour face to click,
@@ -26,6 +29,19 @@ public interface Placement {
 	 * Returns true if the placement was sent.
 	 */
 	boolean place(BlockPos pos, int hotbarSlot, Options options);
+
+	/**
+	 * Places by clicking exactly {@code hit} (a face of an existing block), for when the face or the click position
+	 * matters: stairs, slabs, logs and other blocks whose orientation follows where you click. Range, rotation, swing
+	 * and cooldowns follow {@code options}; the target position is {@code hit}'s block offset by its face.
+	 */
+	boolean place(BlockHitResult hit, int hotbarSlot, Options options);
+
+	/**
+	 * Every neighbour face that could be clicked to put a block at {@code pos}, nearest to the eyes first. Empty
+	 * when nothing solid touches it (only air placement would work).
+	 */
+	List<BlockHitResult> clickTargets(BlockPos pos);
 
 	/** True for a short while after {@link #place} targeted {@code pos}. */
 	boolean isOnCooldown(BlockPos pos);

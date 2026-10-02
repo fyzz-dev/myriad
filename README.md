@@ -207,9 +207,11 @@ logged against its addon and then disabled.
 Core events: `TickEvent.Pre/Post`, `Render2DEvent` (with a `canvas()` in GUI pixels), `Render3DEvent`,
 `PacketEvent.Send/Receive` (cancellable and replaceable, with bundles split into their packets),
 `MovementPacketsEvent` (rewrite what's sent), `InputEvent` (press movement keys for one tick), `MouseLookEvent`
-(scale or cancel turning), `BlockBreakEvent.Start/Progress` (take over block breaking), `CameraEvent`, `KeyEvent`,
-`MouseButtonEvent`, `MouseScrollEvent`, `CharEvent`, `ChatSendEvent`, `ScreenOpenEvent`, `WorldEvent.Join/Leave`,
-`ModuleToggleEvent`, `WindowResizeEvent`, `GameReadyEvent` and `ShutdownEvent`.
+(scale or cancel turning), `BlockBreakEvent.Start/Progress` (take over block breaking), `AttackEvent` (cancellable,
+before any attack goes out), `EntityEvent.Added/Removed`, `BlockUpdateEvent` (server block changes, old and new state),
+`ContainerEvent.Opened/Loaded/Closed`, `CameraEvent`, `KeyEvent`, `MouseButtonEvent`, `MouseScrollEvent`,
+`CharEvent`, `ChatSendEvent`, `ScreenOpenEvent`, `WorldEvent.Join/Leave`, `ModuleToggleEvent`, `WindowResizeEvent`,
+`GameReadyEvent` and `ShutdownEvent`.
 
 ### Services and helpers
 
@@ -218,21 +220,51 @@ Shared services keep addons from fighting over the same state:
 | | |
 |---|---|
 | `Myriad.rotations()` | per-tick server-side rotation requests; the highest priority wins |
-| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, and `hold(owner, slot, ticks)` to keep the server on a slot across ticks |
-| `Myriad.placement()` | block placement with neighbour clicks, rotation, silent swap and per-block cooldowns |
-| `Myriad.server()` | server TPS and per-player totem pops (`ServerStats.popColor(n)` for the shared colour scale) |
+| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, `hold(owner, slot, ticks)`; `bestInHotbar(score)`, `count`, `moveToHotbar`, `ensureInHotbar` |
+| `Myriad.placement()` | placing blocks: neighbour clicks, rotation, silent swap, cooldowns; `clickTargets(pos)` and `place(hit, …)` when the clicked face matters (stairs, logs, slabs) |
+| `Myriad.containers()` | `open(pos, timeout)` a chest/barrel/shulker and get a `View` once its contents arrive: `find`, `count`, `quickMove`, `swapWithHotbar`, `drop`, `close` |
+| `Myriad.tasks()` | work over ticks: `later`, `every`, and `sequence` (run / wait / waitUntil with timeouts). A module's tasks are cancelled when it's disabled |
+| `Myriad.server()` | server TPS, your ping, per-player totem pops |
 | `Myriad.friends()`, `Myriad.notifications()` | friends list; toasts |
 | `ctx.storage()` | your addon's own folder with atomic JSON reads and writes |
 
-Helpers in the API, so addons don't each re-derive them:
+Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 
 | | |
 |---|---|
-| `api.util.Entities` | `kind`/`isHostile`/`isPassive` (one definition of "hostile" everywhere), `isFriend`, render-interpolated boxes |
-| `api.util.Damage` | explosion, crystal, fall and melee damage after armour and effects |
-| `api.util.Mining` | mining speed and progress as the server computes them; fastest tool slot |
-| `api.render.WorldLabel` | labels pinned to world positions (nametags, waypoints) |
-| `api.render.Fade`, `Easing`, `Animated`, `Bezier` | animation |
+| `combat.Targets`, `combat.TargetSettings` | finding entities to attack or highlight with shared rules (hostile, neutral-when-angry, friends, invisibles, walls), sorted by distance, health or angle. `TargetSettings` is the standard "Targets" settings group |
+| `combat.Damage` | explosion, crystal, fall and melee damage after armour, enchantments and effects |
+| `util.Entities` | `kind`, `isHostile`, `isFriend`, render-interpolated boxes, `predict(entity, ticks)` |
+| `util.Reach` | reach and line of sight from the eyes, `aimPoint(entity)`, `hitFor(pos)` (the face to click to open or break a block) |
+| `util.Interactions` | attack, use, interact with a block, swing; attack charge, item-use and jump cooldowns |
+| `util.Packets` | `send`, `sendSilently` (skips events, for your own tricks), `sendSequenced` (block and item actions) |
+| `util.Mining` | mining speed and progress as the server computes them; fastest tool slot |
+| `util.Positions` | `sphere`, `cube`, `box` of block positions (nearest first), neighbours, face centres |
+| `util.MathUtil` | angles to a point, angle differences, look and ground direction vectors, closest point on a box, lerp/map/snap |
+| `util.Movement` | which way the movement keys point, horizontal speed, setting speed along the input |
+| `util.Slots` | player inventory indexes ↔ screen slot ids |
+| `util.Timer`, `util.Format`, `util.Texts` | delays and cooldowns; distances, durations, compact numbers; clickable chat (run a Myriad command, copy, hover) |
+| `render.Renderer3D` | boxes, real block shapes, single faces, lines, circles, tracers |
+| `render.WorldLabel`, `render.FadeMap`, `render.RenderStates` | labels on world positions (text and item icons); highlights that fade in and out; the entity behind a render state in renderer mixins |
+| `command.arguments.Arguments` | argument types: `blockPos` (with `~`), `item`, `block`, `entityType`, any registry, `enumValue`, `duration`, `choice`/`suggesting`, `module`, `player` |
+
+### Building bigger addons
+
+How the pieces fit the kinds of addons people build:
+
+- **A schematic printer** walks the blocks it still needs with `Positions.sphere` (nearest first), gets materials
+  into the hotbar with `inventory().ensureInHotbar`, and places with `placement().place(hit, slot, options)`, choosing
+  the face from `placement().clickTargets(pos)` to get orientation right. `BlockUpdateEvent` confirms what the server
+  actually placed, `FadeMap` with `Renderer3D.blockShape` shows the plan, and `tasks()` paces it. Integrations with
+  other mods (Litematica, Baritone) belong in the addon: keep any code touching their classes in its own class, and
+  only load it after `FabricLoader.getInstance().isModLoaded("litematica")`.
+- **A storage manager** opens containers with `containers().open(pos)`, reads them in `ContainerEvent.Loaded` (that
+  includes the ones the player opens by hand), and runs multi-step jobs with `tasks().sequence(...)`. It can save what
+  it learns with `ctx.storage()` and mark chests with `WorldLabel.Segment.item(...)` icons.
+- **A crystal PvP suite** picks targets with `TargetSettings`, scores placements with `Damage.crystal` against
+  `Entities.predict` positions, breaks crystals the tick they appear with `EntityEvent.Added` +
+  `Interactions.attack`, rotates through `rotations()`, swaps with `inventory()`, and checks `Reach` before every
+  action. `AttackEvent` lets separate modules react to the same hit.
 
 ### UI
 

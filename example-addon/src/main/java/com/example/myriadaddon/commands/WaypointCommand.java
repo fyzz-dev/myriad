@@ -1,13 +1,16 @@
 package com.example.myriadaddon.commands;
 
-import com.example.myriadaddon.modules.Waypoints;
 import com.example.myriadaddon.waypoints.Waypoint;
 import com.example.myriadaddon.waypoints.WaypointStore;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import dev.myriad.api.command.Command;
+import dev.myriad.api.command.arguments.Arguments;
+import dev.myriad.api.command.arguments.BlockPosArgumentType;
+import dev.myriad.api.util.Format;
+import dev.myriad.api.util.Texts;
 import net.minecraft.command.CommandSource;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
@@ -21,7 +24,7 @@ import java.util.List;
  * <pre>
  * .wp                       list waypoints in this world
  * .wp add Home              at your feet
- * .wp add "Iron Farm" 120 64 -300
+ * .wp add "Iron Farm" 120 64 -300   (or ~ ~ ~ for relative coordinates)
  * .wp remove Home
  * .wp hide Home / .wp show Home
  * .wp clear
@@ -40,14 +43,14 @@ public final class WaypointCommand extends Command {
 		b.executes(c -> list());
 		b.then(literal("list").executes(c -> list()));
 
+		// "pos" accepts "x y z" or "~ ~ ~" relative to you, and suggests where you're standing and looking.
 		b.then(literal("add").then(argument("name", StringArgumentType.string())
 			.executes(c -> {
 				if (mc.player == null) return fail("Join a world first.");
 				return add(StringArgumentType.getString(c, "name"), mc.player.getBlockPos());
 			})
-			.then(argument("x", IntegerArgumentType.integer()).then(argument("y", IntegerArgumentType.integer()).then(argument("z", IntegerArgumentType.integer())
-				.executes(c -> add(StringArgumentType.getString(c, "name"),
-					new BlockPos(IntegerArgumentType.getInteger(c, "x"), IntegerArgumentType.getInteger(c, "y"), IntegerArgumentType.getInteger(c, "z")))))))));
+			.then(argument("pos", Arguments.blockPos())
+				.executes(c -> add(StringArgumentType.getString(c, "name"), BlockPosArgumentType.get(c, "pos"))))));
 
 		b.then(literal("remove").then(argument("waypoint", new WaypointArgumentType(store)).executes(c -> {
 			Waypoint w = WaypointArgumentType.get(c, "waypoint");
@@ -76,11 +79,11 @@ public final class WaypointCommand extends Command {
 		info(all.size() + " waypoint" + (all.size() == 1 ? "" : "s") + ":");
 		String dim = WaypointStore.currentDimension();
 		for (Waypoint w : all) {
-			Text line = Text.literal(" " + w.name()).formatted(w.visible() ? Formatting.WHITE : Formatting.GRAY)
-				.append(Text.literal("  " + w.coords()).formatted(Formatting.GRAY));
-			if (!w.dimension().equals(dim)) line = line.copy().append(Text.literal("  " + w.dimension().replace("minecraft:", "")).formatted(Formatting.DARK_GRAY));
-			else if (mc.player != null) line = line.copy().append(Text.literal("  " + Waypoints.formatDistance(w.center().distanceTo(mc.player.getPos()))).formatted(Formatting.AQUA));
-			info(line);
+			// Texts builds clickable chat: coordinates copy on click, and [remove] runs the command.
+			MutableText line = Text.literal(" " + w.name() + "  ").formatted(w.visible() ? Formatting.WHITE : Formatting.GRAY).append(Texts.coords(w.pos()));
+			if (!w.dimension().equals(dim)) line.append(Text.literal("  " + w.dimension().replace("minecraft:", "")).formatted(Formatting.DARK_GRAY));
+			else if (mc.player != null) line.append(Text.literal("  " + Format.distance(w.center().distanceTo(mc.player.getPos()))).formatted(Formatting.AQUA));
+			info(line.append("  ").append(Texts.command("[remove]", "waypoint remove " + quote(w.name()))));
 		}
 		return SINGLE_SUCCESS;
 	}
@@ -95,6 +98,10 @@ public final class WaypointCommand extends Command {
 		store.setVisible(w.name(), visible);
 		info((visible ? "Showing " : "Hiding ") + w.name() + ".");
 		return SINGLE_SUCCESS;
+	}
+
+	private static String quote(String name) {
+		return name.contains(" ") ? "\"" + name + "\"" : name;
 	}
 
 	private int fail(String message) {

@@ -21,6 +21,7 @@ import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
+import dev.myriad.api.util.Format;
 import net.minecraft.client.gui.screen.DeathScreen;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
@@ -115,7 +116,7 @@ public final class Waypoints extends Module {
 
 			List<WorldLabel.Segment> segments = new ArrayList<>();
 			segments.add(new WorldLabel.Segment(w.name(), colorOf(w)));
-			if (distance.get()) segments.add(new WorldLabel.Segment(formatDistance(dist), theme().text.argb()));
+			if (distance.get()) segments.add(new WorldLabel.Segment(Format.distance(dist), theme().text.argb()));
 			if (coords.get()) segments.add(new WorldLabel.Segment(w.coords(), theme().textDim.argb()));
 			float s = scale.getFloat() * WorldLabel.distanceScale(at);
 			WorldLabel.draw(e.canvas(), at, s, segments, background.get(), theme().windowBackground.argb(), ColorUtil.withAlpha(colorOf(w), 120), true);
@@ -127,10 +128,6 @@ public final class Waypoints extends Module {
 		if (!(e.screen() instanceof DeathScreen) || !deathWaypoints.get() || !inGame()) return;
 		store.put("Death", mc.player.getBlockPos());
 		info("Saved where you died as \"Death\".");
-	}
-
-	public static String formatDistance(double blocks) {
-		return blocks >= 1000 ? String.format("%.1fkm", blocks / 1000) : String.format("%.0fm", blocks);
 	}
 
 	private static ThemeSettings theme() {

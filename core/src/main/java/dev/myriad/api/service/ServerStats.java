@@ -16,6 +16,9 @@ public interface ServerStats {
 	/** Average ticks per second over the last ~20 seconds, from the spacing of time updates; 20 until known. */
 	float tps();
 
+	/** Your latency to the server in milliseconds, as the tab list shows it; 0 in singleplayer or before it's known. */
+	int ping();
+
 	/** Totems {@code player} has used since they last died (reset when you join a world). */
 	int totemPops(UUID player);
 

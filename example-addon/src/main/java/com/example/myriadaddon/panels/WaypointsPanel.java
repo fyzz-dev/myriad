@@ -1,6 +1,5 @@
 package com.example.myriadaddon.panels;
 
-import com.example.myriadaddon.modules.Waypoints;
 import com.example.myriadaddon.waypoints.Waypoint;
 import com.example.myriadaddon.waypoints.WaypointStore;
 import dev.myriad.api.Myriad;
@@ -12,6 +11,7 @@ import dev.myriad.api.ui.widget.Label;
 import dev.myriad.api.ui.widget.TextField;
 import dev.myriad.api.ui.widget.Toggle;
 import dev.myriad.api.ui.widget.VBox;
+import dev.myriad.api.util.Format;
 
 import java.util.List;
 import java.util.Objects;
@@ -92,7 +92,7 @@ public final class WaypointsPanel extends WidgetPanel {
 
 	private String details(Waypoint w) {
 		if (mc.player == null || !w.dimension().equals(WaypointStore.currentDimension())) return w.coords() + "  " + w.dimension().replace("minecraft:", "");
-		return w.coords() + "  " + Waypoints.formatDistance(w.center().distanceTo(mc.player.getPos()));
+		return w.coords() + "  " + Format.distance(w.center().distanceTo(mc.player.getPos()));
 	}
 
 	private void addHere() {

@@ -25,7 +25,10 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class PlacementManager implements Placement {
@@ -41,54 +44,66 @@ public final class PlacementManager implements Placement {
 
 	@Override
 	public boolean canPlace(BlockPos pos, Options o) {
+		return spaceFree(pos, o) && (o.airPlace() || !clickTargets(pos).isEmpty());
+	}
+
+	/** Replaceable, in range, off cooldown, and no entity in the way. */
+	private boolean spaceFree(BlockPos pos, Options o) {
 		if (mc.player == null || mc.world == null || isOnCooldown(pos)) return false;
 		BlockState state = mc.world.getBlockState(pos);
 		if (!state.isReplaceable()) return false;
 		if (mc.player.getEyePos().squaredDistanceTo(Vec3d.ofCenter(pos)) > o.range() * o.range()) return false;
-		if (!mc.world.getOtherEntities(null, new Box(pos), e -> e.isAlive() && e.canHit() || e == mc.player && e.getBoundingBox().intersects(new Box(pos))).isEmpty()) return false;
-		return o.airPlace() || clickTarget(pos) != null;
+		return mc.world.getOtherEntities(null, new Box(pos), e -> e.isAlive() && e.canHit() || e == mc.player && e.getBoundingBox().intersects(new Box(pos))).isEmpty();
 	}
 
 	@Override
 	public boolean place(BlockPos pos, int hotbarSlot, Options o) {
 		if (hotbarSlot < 0 || hotbarSlot > 8 || !canPlace(pos, o)) return false;
-		BlockHitResult hit = clickTarget(pos);
-		if (hit == null) hit = new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false);
-		BlockHitResult target = hit;
+		List<BlockHitResult> targets = clickTargets(pos);
+		BlockHitResult hit = targets.isEmpty() ? new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false) : targets.getFirst();
+		click(pos, hit, hotbarSlot, o);
+		return true;
+	}
+
+	@Override
+	public boolean place(BlockHitResult hit, int hotbarSlot, Options o) {
+		BlockPos pos = hit.getBlockPos().offset(hit.getSide());
+		if (hotbarSlot < 0 || hotbarSlot > 8 || !spaceFree(pos, o)) return false;
+		click(pos, hit, hotbarSlot, o);
+		return true;
+	}
+
+	private void click(BlockPos pos, BlockHitResult target, int hotbarSlot, Options o) {
 		if (o.rotate()) {
 			float[] angles = Myriad.rotations().anglesTo(target.getPos());
 			// Face the block now, so the server sees the right rotation for this placement packet.
 			mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(angles[0], angles[1], mc.player.isOnGround(), mc.player.horizontalCollision));
 			Myriad.rotations().request(this, angles[0], angles[1], Rotations.PRIORITY_HIGH);
 		}
-		Runnable click = () -> {
+		Runnable action = () -> {
 			mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, target);
 			if (o.swing()) mc.player.swingHand(Hand.MAIN_HAND);
 		};
-		Myriad.inventory().silentSwap(hotbarSlot, click);
+		Myriad.inventory().silentSwap(hotbarSlot, action);
 		cooldowns.put(pos.toImmutable(), System.currentTimeMillis());
 		if (cooldowns.size() > 256) cooldowns.values().removeIf(t -> System.currentTimeMillis() - t > COOLDOWN_MS);
-		return true;
 	}
 
-	/** The neighbour face to click to put a block at {@code pos}, closest to the eyes; null if there's none. */
-	private BlockHitResult clickTarget(BlockPos pos) {
+	@Override
+	public List<BlockHitResult> clickTargets(BlockPos pos) {
+		List<BlockHitResult> out = new ArrayList<>();
+		if (mc.player == null || mc.world == null) return out;
 		Vec3d eyes = mc.player.getEyePos();
-		BlockHitResult best = null;
-		double bestDist = Double.MAX_VALUE;
 		for (Direction dir : Direction.values()) {
 			BlockPos neighbour = pos.offset(dir);
 			BlockState state = mc.world.getBlockState(neighbour);
 			if (state.isReplaceable() || (isClickable(state.getBlock()) && !mc.player.isSneaking())) continue;
 			Direction face = dir.getOpposite();
 			Vec3d hitVec = Vec3d.ofCenter(neighbour).add(Vec3d.of(face.getVector()).multiply(0.5));
-			double d = eyes.squaredDistanceTo(hitVec);
-			if (d < bestDist) {
-				bestDist = d;
-				best = new BlockHitResult(hitVec, face, neighbour, false);
-			}
+			out.add(new BlockHitResult(hitVec, face, neighbour, false));
 		}
-		return best;
+		out.sort(Comparator.comparingDouble(h -> eyes.squaredDistanceTo(h.getPos())));
+		return out;
 	}
 
 	/** Blocks that open or react when right-clicked; clicking them would interact instead of place. */

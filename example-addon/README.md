@@ -33,7 +33,7 @@ numbered steps.
 | `modules/ChatTimestamps.java` + `mixin/ChatHudMixin.java` | the standard mixin-driven module: a static hook using `Modules.active(...)` |
 | `modules/SettingsShowcase.java` | every setting type, `visible`, `onChanged`, `sliderRange`, keybinds, action buttons |
 | `settings/RangeSetting.java` | a custom setting type (its widget is registered in `ExampleAddon`) |
-| `commands/WaypointCommand.java` | Brigadier sub-commands and typed arguments |
+| `commands/WaypointCommand.java` | Brigadier sub-commands, `Arguments.blockPos()` (with `~`), and clickable chat from `Texts` |
 | `commands/WaypointArgumentType.java` | a custom argument type with suggestions and error messages |
 | `panels/WaypointsPanel.java` | a `WidgetPanel` window: text fields, toggles, buttons, collapsible sections, rebuilding when data changes |
 | `hud/SessionStatsHud.java`, `hud/NearestWaypointHud.java` | `TextHudPanel` HUD elements with the standard style options and a title-screen preview |

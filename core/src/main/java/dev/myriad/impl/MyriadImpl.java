@@ -9,11 +9,13 @@ import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.ModuleRegistry;
 import dev.myriad.api.registry.Registry;
+import dev.myriad.api.service.Containers;
 import dev.myriad.api.service.Friends;
 import dev.myriad.api.service.Inventory;
 import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.service.Notifications;
 import dev.myriad.api.service.Rotations;
+import dev.myriad.api.service.Tasks;
 import dev.myriad.api.setting.Setting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.ui.BarWidget;
@@ -26,10 +28,12 @@ import dev.myriad.impl.command.CommandManager;
 import dev.myriad.impl.config.ConfigManagerImpl;
 import dev.myriad.impl.event.MyriadEventBus;
 import dev.myriad.impl.keybind.KeybindManager;
+import dev.myriad.impl.service.ContainerTracker;
 import dev.myriad.impl.service.FriendsManager;
 import dev.myriad.impl.service.InventoryManager;
 import dev.myriad.impl.service.NotificationManager;
 import dev.myriad.impl.service.RotationManager;
+import dev.myriad.impl.service.TaskScheduler;
 import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.ui.panels.ConsoleLog;
 import net.minecraft.client.MinecraftClient;
@@ -63,6 +67,8 @@ public final class MyriadImpl implements MyriadApi {
 	private final dev.myriad.impl.service.PlacementManager placement = new dev.myriad.impl.service.PlacementManager();
 	private final FriendsManager friends = new FriendsManager(config.root());
 	private final dev.myriad.impl.service.ServerStatsTracker serverStats = new dev.myriad.impl.service.ServerStatsTracker();
+	private final ContainerTracker containers = new ContainerTracker();
+	private final TaskScheduler tasks = new TaskScheduler();
 	private final WindowManager windowManager = new WindowManager();
 	private final CommandManager commandManager = new CommandManager(commands);
 	private final KeybindManager keybindManager = new KeybindManager();
@@ -99,6 +105,8 @@ public final class MyriadImpl implements MyriadApi {
 		events.subscribe(rotations);
 		events.subscribe(inventory);
 		events.subscribe(serverStats);
+		events.subscribe(containers);
+		events.subscribe(tasks);
 		events.subscribe(keybindManager);
 		events.subscribe(commandManager);
 
@@ -212,6 +220,20 @@ public final class MyriadImpl implements MyriadApi {
 	@Override
 	public dev.myriad.api.service.ServerStats server() {
 		return serverStats;
+	}
+
+	@Override
+	public Containers containers() {
+		return containers;
+	}
+
+	@Override
+	public Tasks tasks() {
+		return tasks;
+	}
+
+	public ContainerTracker containerTracker() {
+		return containers;
 	}
 
 	@Override

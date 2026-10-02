@@ -1,14 +1,19 @@
 package dev.myriad.impl.mixin;
 
-import dev.myriad.api.Myriad;
-import dev.myriad.api.event.events.PacketEvent;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.myriad.api.Myriad;
+import dev.myriad.api.event.events.AttackEvent;
+import dev.myriad.api.event.events.PacketEvent;
+import dev.myriad.impl.network.PacketGate;
 import io.netty.channel.ChannelHandlerContext;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.entity.Entity;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.PacketCallbacks;
 import net.minecraft.network.packet.BundlePacket;
 import net.minecraft.network.packet.Packet;
+import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -30,7 +35,15 @@ public abstract class ClientConnectionMixin {
 
 	@Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/PacketCallbacks;Z)V", at = @At("HEAD"), cancellable = true)
 	private void myriad$onSend(Packet<?> packet, @Nullable PacketCallbacks callbacks, boolean flush, CallbackInfo ci) {
-		if (MYRIAD_RESENDING.get() || !Myriad.isReady()) return;
+		if (MYRIAD_RESENDING.get() || PacketGate.isSilent() || !Myriad.isReady()) return;
+		if (packet instanceof PlayerInteractEntityC2SPacket interact && PacketGate.isAttack(interact) && Myriad.events().hasListeners(AttackEvent.class)) {
+			MinecraftClient mc = MinecraftClient.getInstance();
+			Entity target = mc.world == null ? null : mc.world.getEntityById(interact.entityId);
+			if (target != null && Myriad.events().post(new AttackEvent(target)).isCancelled()) {
+				ci.cancel();
+				return;
+			}
+		}
 		PacketEvent.Send event = Myriad.events().post(new PacketEvent.Send(packet));
 		if (event.isCancelled()) {
 			ci.cancel();
