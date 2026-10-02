@@ -1,11 +1,11 @@
 package com.example.myriadaddon.hud;
 
-import com.example.myriadaddon.modules.Waypoints;
 import com.example.myriadaddon.waypoints.Waypoint;
 import com.example.myriadaddon.waypoints.WaypointStore;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.ui.hud.HudStyle;
 import dev.myriad.api.ui.hud.TextHudPanel;
+import dev.myriad.api.util.Format;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
@@ -38,7 +38,7 @@ public final class NearestWaypointHud extends TextHudPanel {
 			return;
 		}
 		Waypoint w = nearest.get();
-		String value = Waypoints.formatDistance(w.center().distanceTo(eye));
+		String value = Format.distance(w.center().distanceTo(eye));
 		if (arrow.get()) value += " " + arrowTo(w.center(), eye);
 		out.add(w.name(), value);
 		if (coords.get()) out.value(w.coords());

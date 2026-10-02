@@ -1,10 +1,10 @@
 package com.example.myriadaddon.hud;
 
-import com.example.myriadaddon.modules.Waypoints;
 import com.example.myriadaddon.stats.SessionStats;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.ui.hud.HudStyle;
 import dev.myriad.api.ui.hud.TextHudPanel;
+import dev.myriad.api.util.Format;
 
 /**
  * A HUD element built on {@link TextHudPanel}: it only supplies lines. Sizing, right-alignment when placed on the
@@ -29,7 +29,7 @@ public final class SessionStatsHud extends TextHudPanel {
 			long s = stats.sessionMillis() / 1000;
 			out.add("Session", String.format("%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60));
 		}
-		if (distance.get()) out.add("Travelled", Waypoints.formatDistance(stats.distance()));
+		if (distance.get()) out.add("Travelled", Format.distance(stats.distance()));
 		if (topSpeed.get()) out.add("Top Speed", String.format("%.1f b/s", stats.topSpeed()));
 		if (deaths.get()) out.add("Deaths", String.valueOf(stats.deaths()));
 	}

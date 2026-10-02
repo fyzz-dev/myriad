@@ -1,6 +1,7 @@
 package dev.myriad.essentials.modules.combat;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.combat.Damage;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
@@ -12,7 +13,6 @@ import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.setting.SettingGroup;
-import dev.myriad.api.util.Damage;
 import net.minecraft.block.BedBlock;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.component.DataComponentTypes;

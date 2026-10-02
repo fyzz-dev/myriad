@@ -273,15 +273,7 @@ public class Scaffold extends Module {
 
 	/** Hotbar slot with the most usable blocks, or -1. */
 	private int bestSlot() {
-		int best = -1, bestCount = 0;
-		for (int i = 0; i < 9; i++) {
-			ItemStack s = mc.player.getInventory().getStack(i);
-			if (usable(s) && s.getCount() > bestCount) {
-				best = i;
-				bestCount = s.getCount();
-			}
-		}
-		return best;
+		return Myriad.inventory().bestInHotbar(s -> usable(s) ? s.getCount() : 0);
 	}
 
 	private int blockCount() {

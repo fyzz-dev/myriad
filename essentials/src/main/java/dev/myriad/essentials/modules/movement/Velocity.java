@@ -188,7 +188,8 @@ public class Velocity extends Module {
 	}
 
 	private static boolean critActive() {
-		return System.currentTimeMillis() - Criticals.lastCrit < 100;
+		Criticals criticals = Modules.get(Criticals.class);
+		return criticals != null && criticals.hoppedWithin(100);
 	}
 
 	private synchronized void queueReconcile(Vec3d delta) {

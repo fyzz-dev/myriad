@@ -1,4 +1,4 @@
-package dev.myriad.api.util;
+package dev.myriad.api.combat;
 
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.client.MinecraftClient;

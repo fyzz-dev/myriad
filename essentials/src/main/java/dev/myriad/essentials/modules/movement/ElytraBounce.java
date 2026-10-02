@@ -10,14 +10,14 @@ import dev.myriad.api.module.Modules;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
-import dev.myriad.essentials.modules.player.SpeedMine;
 import dev.myriad.api.util.Mining;
+import dev.myriad.api.util.Packets;
+import dev.myriad.essentials.modules.player.SpeedMine;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.registry.tag.BlockTags;
@@ -276,8 +276,8 @@ public class ElytraBounce extends Module {
 		Direction face = Direction.getFacing(travelDir.x, 0, travelDir.z);
 		if (speedMine != null && state.getHardness(mc.world, p) >= 0) return speedMine.offerMine(p);
 		if (isPortal(state)) {
-			mc.interactionManager.sendSequencedPacket(mc.world, seq -> new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, p, face, seq));
-			mc.interactionManager.sendSequencedPacket(mc.world, seq -> new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, p, face, seq));
+			Packets.sendSequenced(seq -> new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, p, face, seq));
+			Packets.sendSequenced(seq -> new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, p, face, seq));
 			mc.player.swingHand(Hand.MAIN_HAND);
 			return true;
 		}
@@ -300,17 +300,7 @@ public class ElytraBounce extends Module {
 
 	/** Best hotbar tool, preferring pickaxes. */
 	private int bestToolSlot(BlockState state) {
-		int best = -1;
-		double bestScore = -1;
-		for (int i = 0; i < 9; i++) {
-			ItemStack s = mc.player.getInventory().getStack(i);
-			if (s.isEmpty()) continue;
-			double score = s.getMiningSpeedMultiplier(state) + (s.isIn(ItemTags.PICKAXES) ? 100 : 0);
-			if (score > bestScore) {
-				bestScore = score;
-				best = i;
-			}
-		}
+		int best = Myriad.inventory().bestInHotbar(s -> s.isEmpty() ? 0 : s.getMiningSpeedMultiplier(state) + (s.isIn(ItemTags.PICKAXES) ? 100 : 0));
 		return best >= 0 ? best : Mining.fastestSlot(state, 0, 9);
 	}
 

@@ -11,7 +11,7 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.SettingColor;
-import dev.myriad.essentials.mixin.MinecraftClientAccessor;
+import dev.myriad.api.util.Interactions;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.Hand;
@@ -67,10 +67,9 @@ public class AirPlace extends Module {
 		renderPos = hit == null ? null : BlockPos.ofFloored(hit.getPos());
 
 		if (!mc.options.useKey.isPressed() || hit == null || mc.player.isUsingItem()) return;
-		MinecraftClientAccessor acc = (MinecraftClientAccessor) mc;
-		if (acc.myriad$getItemUseCooldown() != 0 || airPlaceTicks != 0) return;
+		if (Interactions.itemUseCooldown() != 0 || airPlaceTicks != 0) return;
 
-		acc.myriad$setItemUseCooldown(PLACE_COOLDOWN_TICKS);
+		Interactions.setItemUseCooldown(PLACE_COOLDOWN_TICKS);
 		airPlaceTicks = PLACE_COOLDOWN_TICKS;
 		cancelVanillaUse = true;
 

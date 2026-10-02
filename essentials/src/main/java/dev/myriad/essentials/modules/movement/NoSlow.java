@@ -10,7 +10,8 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.SettingGroup;
-import dev.myriad.essentials.mixin.LivingEntityAccessor;
+import dev.myriad.api.util.Interactions;
+import dev.myriad.api.util.Packets;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.CobwebBlock;
 import net.minecraft.block.SweetBerryBushBlock;
@@ -97,12 +98,12 @@ public class NoSlow extends Module {
 	private void onTick(TickEvent.Pre e) {
 		if (!inGame()) return;
 		var p = mc.player;
-		if (jumpDelay.get()) ((LivingEntityAccessor) p).myriad$setJumpingCooldown(0);
+		if (jumpDelay.get()) Interactions.setJumpCooldown(0);
 		if (items.get() == ItemsMode.GRIM_V2 && p.isUsingItem() && !p.isSneaking()) {
 			if (p.getActiveHand() == Hand.OFF_HAND && reusable(p.getMainHandStack())) {
-				mc.interactionManager.sendSequencedPacket(mc.world, id -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, id, p.getYaw(), p.getPitch()));
+				Packets.sendSequenced(id -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, id, p.getYaw(), p.getPitch()));
 			} else if (reusable(p.getOffHandStack())) {
-				mc.interactionManager.sendSequencedPacket(mc.world, id -> new PlayerInteractItemC2SPacket(Hand.OFF_HAND, id, p.getYaw(), p.getPitch()));
+				Packets.sendSequenced(id -> new PlayerInteractItemC2SPacket(Hand.OFF_HAND, id, p.getYaw(), p.getPitch()));
 			}
 		}
 		if (inventoryMove.get() && screenAllowsMove()) {

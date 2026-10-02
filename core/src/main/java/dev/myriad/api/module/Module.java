@@ -124,6 +124,7 @@ public abstract class Module implements Identified {
 			}
 		} else {
 			Myriad.events().unsubscribe(this);
+			Myriad.tasks().cancel(this);
 			try {
 				onDisable();
 			} catch (Throwable t) {

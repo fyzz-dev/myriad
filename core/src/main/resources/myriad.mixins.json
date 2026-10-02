@@ -9,11 +9,15 @@
 		"ClientPlayNetworkHandlerMixin",
 		"ClientPlayerEntityMixin",
 		"ClientPlayerInteractionManagerMixin",
+		"ClientWorldMixin",
 		"EntityMixin",
+		"EntityRenderStateMixin",
+		"EntityRendererMixin",
 		"GameRendererMixin",
 		"KeyboardMixin",
 		"MinecraftClientMixin",
 		"MouseMixin",
+		"ScreenMixin",
 		"WorldRendererMixin"
 	],
 	"injectors": {

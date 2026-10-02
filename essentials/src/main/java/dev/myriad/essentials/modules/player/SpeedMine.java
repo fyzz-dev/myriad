@@ -7,7 +7,8 @@ import dev.myriad.api.event.events.Render3DEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
-import dev.myriad.api.module.Modules;
+import dev.myriad.api.render.Easing;
+import dev.myriad.api.render.Fade;
 import dev.myriad.api.render.Renderer3D;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.ColorSetting;
@@ -17,9 +18,8 @@ import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ColorUtil;
-import dev.myriad.api.render.Easing;
-import dev.myriad.api.render.Fade;
 import dev.myriad.api.util.Mining;
+import dev.myriad.api.util.Packets;
 import net.minecraft.block.BlockState;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
 import net.minecraft.util.hit.BlockHitResult;
@@ -62,7 +62,6 @@ public class SpeedMine extends Module {
 	public enum Goal {
 		MANUAL, QUEUE, EXTERNAL
 	}
-
 
 	private static final int DECOY_Y = 999;
 	private static final double GRIM_MIN_EYE = 0.4, GRIM_MAX_EYE = 1.62;
@@ -434,7 +433,7 @@ public class SpeedMine extends Module {
 
 	private void send(PlayerActionC2SPacket.Action action, BlockPos target, Direction face) {
 		if (action == PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK) lastStopMs = System.currentTimeMillis();
-		mc.interactionManager.sendSequencedPacket(mc.world, sequence -> new PlayerActionC2SPacket(action, target, face, sequence));
+		Packets.sendSequenced(sequence -> new PlayerActionC2SPacket(action, target, face, sequence));
 	}
 
 	private void clearMine() {

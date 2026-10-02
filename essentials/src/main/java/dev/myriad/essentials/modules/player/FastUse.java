@@ -8,7 +8,7 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.RegistryListSetting;
-import dev.myriad.essentials.mixin.MinecraftClientAccessor;
+import dev.myriad.api.util.Interactions;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -48,8 +48,7 @@ public class FastUse extends Module {
 		}
 		if (startDelay.get() && System.currentTimeMillis() - firstPress < 500) return;
 		if (!applies(mc.player.getMainHandStack()) && !applies(mc.player.getOffHandStack())) return;
-		MinecraftClientAccessor acc = (MinecraftClientAccessor) mc;
-		if (acc.myriad$getItemUseCooldown() > delay.get()) acc.myriad$setItemUseCooldown(delay.get());
+		if (Interactions.itemUseCooldown() > delay.get()) Interactions.setItemUseCooldown(delay.get());
 	}
 
 	private boolean applies(ItemStack stack) {

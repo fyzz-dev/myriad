@@ -1,6 +1,8 @@
 package dev.myriad.essentials.modules.combat;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.combat.TargetSettings;
+import dev.myriad.api.combat.Targets;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.Render3DEvent;
 import dev.myriad.api.event.events.TickEvent;
@@ -15,26 +17,13 @@ import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ColorUtil;
-import dev.myriad.essentials.mixin.LivingEntityAccessor;
 import dev.myriad.api.util.Entities;
+import dev.myriad.api.util.Interactions;
+import dev.myriad.api.util.Reach;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.ExperienceOrbEntity;
-import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.EntityAttributeModifier;
 import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.boss.WitherEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.mob.Angerable;
-import net.minecraft.entity.mob.EndermanEntity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.mob.Monster;
-import net.minecraft.entity.mob.WardenEntity;
-import net.minecraft.entity.mob.ZombifiedPiglinEntity;
-import net.minecraft.entity.passive.AnimalEntity;
-import net.minecraft.entity.passive.MerchantEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -43,9 +32,7 @@ import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.util.Hand;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -76,19 +63,8 @@ public class KillAura extends Module {
 	private final BoolSetting pauseWhileUsing = sgGeneral.bool("Pause While Using").description("Don't attack while eating or using an item.").defaultValue(true).build();
 	private final DoubleSetting maceFallStart = sgGeneral.doubleSetting("Mace Fall Start").description("Hold the mace from this fall distance, ready to smash.").defaultValue(1).range(0, 1.5).decimals(1).build();
 
-	private final SettingGroup sgTargets = settings.group("Targets");
-	private final BoolSetting players = sgTargets.bool("Players").defaultValue(true).build();
-	private final BoolSetting bosses = sgTargets.bool("Bosses").description("Withers, wardens, the ender dragon.").build();
-	private final BoolSetting animals = sgTargets.bool("Animals").build();
-	private final BoolSetting villagers = sgTargets.bool("Villagers").build();
-	private final BoolSetting hostiles = sgTargets.bool("Hostiles").build();
-	private final BoolSetting onlyAngry = sgTargets.bool("Only Angry").description("Neutral mobs only once they're angry.").visible(hostiles::get).build();
-	private final BoolSetting projectiles = sgTargets.bool("Projectiles").description("Hit fireballs and shulker bullets.").build();
-	private final BoolSetting ignoreInvisibles = sgTargets.bool("Ignore Invisibles").build();
-	private final BoolSetting ignoreNamed = sgTargets.bool("Ignore Named").description("Skip mobs with a name tag.").build();
-	private final BoolSetting ignoreCreative = sgTargets.bool("Ignore Creative").build();
-	private final BoolSetting friends = sgTargets.bool("Friends").description("Also attack friends.").build();
-	private final BoolSetting throughWalls = sgTargets.bool("Through Walls").defaultValue(true).build();
+	// The standard targets group, shared with every combat module (same names, so saved settings carry over).
+	private final TargetSettings targets = new TargetSettings(settings, Targets.Type.PLAYERS);
 
 	private final SettingGroup sgRender = settings.group("Render");
 	private final BoolSetting render = sgRender.bool("Render").description("Box the current target, and fade out boxes on recent hits.").defaultValue(true).build();
@@ -141,7 +117,7 @@ public class KillAura extends Module {
 		}
 		if (render.get() && !onSwing.get()) renderTarget = target;
 		attackThisTick = canAttack();
-		if (rotate.get() && (attackThisTick || rotateHold.get())) Myriad.rotations().lookAt(this, aimPoint(target), Rotations.PRIORITY_HIGH);
+		if (rotate.get() && (attackThisTick || rotateHold.get())) Myriad.rotations().lookAt(this, Reach.aimPoint(target), Rotations.PRIORITY_HIGH);
 	}
 
 	/** Attack after the movement packet, so the server already has our rotation. */
@@ -161,7 +137,7 @@ public class KillAura extends Module {
 		if (sprinting) net.sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
 		mc.interactionManager.attackEntity(mc.player, t);
 		if (pull) {
-			float[] r = Myriad.rotations().anglesTo(aimPoint(t));
+			float[] r = Myriad.rotations().anglesTo(Reach.aimPoint(t));
 			net.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(MathHelper.wrapDegrees(r[0] + 180), r[1], mc.player.isOnGround(), mc.player.horizontalCollision));
 		}
 		if (sprinting) net.sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_SPRINTING));
@@ -174,54 +150,7 @@ public class KillAura extends Module {
 	// ---- targets ----------------------------------------------------------------------------------------------------
 
 	private Entity findTarget() {
-		double r = attackRange();
-		Entity best = null;
-		double bestDist = r * r;
-		for (Entity entity : mc.world.getEntities()) {
-			if (!validBase(entity) || !validType(entity)) continue;
-			double d = mc.player.squaredDistanceTo(aimPoint(entity));
-			if (d <= bestDist) {
-				best = entity;
-				bestDist = d;
-			}
-		}
-		return best;
-	}
-
-	private boolean validBase(Entity e) {
-		if (e == mc.player || !e.isAlive() || !e.isAttackable() || e instanceof ExperienceOrbEntity) return false;
-		if (e instanceof LivingEntity l && l.isDead()) return false;
-		if (ignoreInvisibles.get() && e.isInvisible()) return false;
-		if (ignoreNamed.get() && e.hasCustomName() && !(e instanceof PlayerEntity)) return false;
-		if (!throughWalls.get() && !mc.player.canSee(e)) return false;
-		if (e instanceof PlayerEntity p) {
-			if (!friends.get() && Entities.isFriend(p)) return false;
-			if (ignoreCreative.get() && p.isCreative()) return false;
-		}
-		return true;
-	}
-
-	private boolean validType(Entity e) {
-		if (e instanceof PlayerEntity) return players.get();
-		if (e instanceof WitherEntity || e instanceof WardenEntity || e instanceof EnderDragonEntity) return bosses.get();
-		if (e instanceof ProjectileEntity) return projectiles.get();
-		if (e instanceof MerchantEntity) return villagers.get();
-		if (e instanceof AnimalEntity && !(e instanceof Angerable)) return animals.get();
-		if (e instanceof EndermanEntity enderman) return hostiles.get() && (!onlyAngry.get() || enderman.isProvoked());
-		if (e instanceof ZombifiedPiglinEntity piglin) return hostiles.get() && (!onlyAngry.get() || piglin.isAttacking());
-		if (e instanceof Angerable angerable && !(e instanceof HostileEntity)) {
-			return angerable.getAngerTime() > 0 ? hostiles.get() : animals.get() && !onlyAngry.get();
-		}
-		// Monster covers hostiles that aren't HostileEntity: phantoms, slimes, magma cubes, ghasts, shulkers.
-		if (e instanceof HostileEntity || e instanceof Monster) return hostiles.get();
-		return false;
-	}
-
-	/** The point on the target's box closest to our eyes (hits register anywhere on the box). */
-	private Vec3d aimPoint(Entity e) {
-		Box b = e.getBoundingBox();
-		Vec3d eye = mc.player.getEyePos();
-		return new Vec3d(MathHelper.clamp(eye.x, b.minX, b.maxX), MathHelper.clamp(eye.y, b.minY, b.maxY), MathHelper.clamp(eye.z, b.minZ, b.maxZ));
+		return targets.query().range(attackRange()).best();
 	}
 
 	// ---- weapons and timing -----------------------------------------------------------------------------------------
@@ -273,7 +202,7 @@ public class KillAura extends Module {
 			if (attribute.equals(EntityAttributes.ATTACK_SPEED) && modifier.operation() == EntityAttributeModifier.Operation.ADD_VALUE) speed[0] += modifier.value();
 		});
 		float ticksPerAttack = (float) (20.0 / speed[0]);
-		int last = ((LivingEntityAccessor) mc.player).myriad$getLastAttackedTicks();
+		int last = Interactions.ticksSinceAttack();
 		return MathHelper.clamp((last + base) / ticksPerAttack, 0f, 1f);
 	}
 

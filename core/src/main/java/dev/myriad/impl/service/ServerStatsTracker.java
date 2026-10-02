@@ -66,6 +66,14 @@ public final class ServerStatsTracker implements ServerStats {
 	}
 
 	@Override
+	public int ping() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc.player == null || mc.getNetworkHandler() == null) return 0;
+		var entry = mc.getNetworkHandler().getPlayerListEntry(mc.player.getUuid());
+		return entry == null ? 0 : entry.getLatency();
+	}
+
+	@Override
 	public int totemPops(UUID player) {
 		return pops.getOrDefault(player, 0);
 	}

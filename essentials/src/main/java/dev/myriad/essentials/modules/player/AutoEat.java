@@ -11,7 +11,6 @@ import dev.myriad.api.setting.RegistryListSetting;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.FoodComponent;
 import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.util.Hand;
 
@@ -87,21 +86,13 @@ public class AutoEat extends Module {
 		mc.options.useKey.setPressed(true);
 	}
 
+	/** The most saturating food in the hotbar, then the most filling. */
 	private int bestFood() {
-		int best = -1;
-		float bestSat = -1;
-		int bestNut = -1;
-		for (int i = 0; i < 9; i++) {
-			ItemStack s = mc.player.getInventory().getStack(i);
+		return Myriad.inventory().bestInHotbar(s -> {
 			FoodComponent food = s.get(DataComponentTypes.FOOD);
-			if (food == null || blacklist.contains(s.getItem())) continue;
-			if (food.saturation() > bestSat || (food.saturation() == bestSat && food.nutrition() > bestNut)) {
-				best = i;
-				bestSat = food.saturation();
-				bestNut = food.nutrition();
-			}
-		}
-		return best;
+			if (food == null || blacklist.contains(s.getItem())) return 0;
+			return 1 + food.saturation() * 1000 + food.nutrition();
+		});
 	}
 
 	private void finish() {

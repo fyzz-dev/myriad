@@ -4,6 +4,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.render.Projection;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
@@ -11,7 +12,20 @@ import java.util.List;
 
 /** Labels pinned to points in the world (nametags, logout spots, item names), drawn on the 2D overlay. */
 public final class WorldLabel {
-	public record Segment(String text, int color) {
+	/** A piece of a label: text in a colour, or an item icon ({@link #item}). */
+	public record Segment(String text, int color, ItemStack item) {
+		public Segment(String text, int color) {
+			this(text, color, ItemStack.EMPTY);
+		}
+
+		/** An item icon, drawn the height of the text (e.g. what a chest holds, what a player is holding). */
+		public static Segment item(ItemStack stack) {
+			return new Segment("", 0, stack);
+		}
+
+		boolean isItem() {
+			return !item.isEmpty();
+		}
 	}
 
 	/** Where a label ended up on screen, so callers can stack things above it. */
@@ -42,17 +56,27 @@ public final class WorldLabel {
 		if (s == null || !Projection.onScreen(s, 200)) return null;
 		float size = c.defaultFontSize() * scale;
 		float width = 0;
-		for (int i = 0; i < segments.size(); i++) width += c.textWidth(FontFamily.SANS, size, segments.get(i).text) + (i > 0 ? GAP * scale : 0);
 		float th = c.textHeight(FontFamily.SANS, size);
-		float w = width + PAD_X * 2 * scale, h = th + PAD_Y * 2 * scale;
+		float icon = th * 1.25f;
+		for (int i = 0; i < segments.size(); i++) {
+			Segment seg = segments.get(i);
+			width += (seg.isItem() ? icon : c.textWidth(FontFamily.SANS, size, seg.text)) + (i > 0 ? GAP * scale : 0);
+		}
+		boolean hasItem = segments.stream().anyMatch(Segment::isItem);
+		float w = width + PAD_X * 2 * scale, h = (hasItem ? icon : th) + PAD_Y * 2 * scale;
 		float x = (float) s.x - w / 2, y = (float) s.y - h;
 		if (bg != Background.NONE) {
 			float r = bg == Background.ROUNDED ? Math.min(Myriad.ui().theme().rounding.get(), h / 2) : 0;
 			c.roundRect(x, y, w, h, r, fill);
 			if ((outline >>> 24) != 0) c.outline(x, y, w, h, r, 1, outline);
 		}
-		float cx = x + PAD_X * scale, ty = y + PAD_Y * scale;
+		float cx = x + PAD_X * scale, ty = y + PAD_Y * scale + (hasItem ? (icon - th) / 2 : 0);
 		for (Segment seg : segments) {
+			if (seg.isItem()) {
+				c.item(seg.item, cx, y + PAD_Y * scale, icon, true);
+				cx += icon + GAP * scale;
+				continue;
+			}
 			if (shadow) c.text(FontFamily.SANS, size, seg.text, cx + 0.6f, ty + 0.6f, 0x99000000);
 			cx += c.text(FontFamily.SANS, size, seg.text, cx, ty, seg.color) + GAP * scale;
 		}
