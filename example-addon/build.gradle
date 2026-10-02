@@ -6,7 +6,9 @@ dependencies {
 	implementation project(path: ":core", configuration: "namedElements")
 	// Only so `:example-addon:runClient` also boots the stock modules; the addon does not depend on them.
 	runtimeOnly project(path: ":essentials", configuration: "namedElements")
-	runtimeOnly project(path: ":omarchy", configuration: "namedElements")
+	// The Omarchy theme addon lives in its own repository; if it's been built next to this one, load it too.
+	def omarchy = fileTree(dir: rootProject.file("../myriad-omarchy/build/libs"), include: "myriad-omarchy-*.jar", exclude: "*-sources.jar")
+	if (!omarchy.isEmpty()) modLocalRuntime omarchy
 }
 
 loom {
@@ -16,9 +18,6 @@ loom {
 		}
 		"myriad-essentials" {
 			sourceSet("main", ":essentials")
-		}
-		"myriad-omarchy" {
-			sourceSet("main", ":omarchy")
 		}
 		"myriad-example" {
 			sourceSet sourceSets.main
