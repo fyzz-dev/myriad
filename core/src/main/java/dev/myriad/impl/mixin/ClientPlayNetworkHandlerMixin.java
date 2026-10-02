@@ -6,6 +6,7 @@ import dev.myriad.impl.MyriadImpl;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
 import net.minecraft.network.packet.s2c.play.OpenScreenS2CPacket;
+import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -29,6 +30,11 @@ public abstract class ClientPlayNetworkHandlerMixin {
 	@Inject(method = "onInventory", at = @At("TAIL"))
 	private void myriad$containerContents(InventoryS2CPacket packet, CallbackInfo ci) {
 		if (Myriad.isReady() && MyriadImpl.get() != null) MyriadImpl.get().containerTracker().onContents(packet.getSyncId());
+	}
+
+	@Inject(method = "onScreenHandlerSlotUpdate", at = @At("TAIL"))
+	private void myriad$containerSlot(ScreenHandlerSlotUpdateS2CPacket packet, CallbackInfo ci) {
+		if (Myriad.isReady() && MyriadImpl.get() != null) MyriadImpl.get().containerTracker().onSlot(packet.getSyncId(), packet.getSlot());
 	}
 
 	@Inject(method = "sendChatMessage", at = @At("HEAD"), cancellable = true)

@@ -14,7 +14,7 @@ numbered steps.
 | **Waypoints** module: boxes, beams and labels for saved positions; a "Death" waypoint when you die | World category |
 | `.waypoint` / `.wp` command: `list`, `add <name> [x y z]`, `remove`, `hide`, `show`, `clear` | chat or the console (`mod+Return`) |
 | **Waypoints** window: add, hide and delete waypoints | launcher (`mod+Space`) |
-| **Nearest Waypoint** and **Session Stats** HUD elements | HUD workspace → HUD Elements |
+| **Nearest Waypoint** and **Session Stats** HUD elements | HUD workspace → HUD window |
 | **Add Waypoint** (`Alt+B`) and **Open Waypoints** key actions | Keybinds panel (`mod+K`) |
 | **Auto Tool** module: best tool while mining, defers to Essentials' Speed Mine | Player category |
 | **Chat Timestamps** module, driven by a mixin | Misc category |

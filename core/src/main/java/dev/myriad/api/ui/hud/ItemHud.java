@@ -3,6 +3,7 @@ package dev.myriad.api.ui.hud;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.util.ColorUtil;
+import dev.myriad.api.util.ItemInfo;
 import net.minecraft.item.ItemStack;
 
 /** Durability bars, percentages and colours for HUD elements that show items, so they all look alike. */
@@ -15,7 +16,7 @@ public final class ItemHud {
 	}
 
 	public static float percent(ItemStack stack) {
-		return Math.clamp(1f - stack.getDamage() / (float) stack.getMaxDamage(), 0f, 1f);
+		return ItemInfo.durabilityFraction(stack);
 	}
 
 	/** Red at 0%, yellow at 50%, green at 100%. */

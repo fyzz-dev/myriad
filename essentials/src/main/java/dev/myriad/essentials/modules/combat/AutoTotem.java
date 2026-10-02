@@ -23,7 +23,6 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
-import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
@@ -44,8 +43,6 @@ public class AutoTotem extends Module {
 	public enum FoodHand {
 		OFF_HAND, MAIN_HAND
 	}
-
-	private static final int OFFHAND_BUTTON = 40;
 
 	private final IntSetting delay = sgGeneral.intSetting("Delay").description("Ticks to wait between swaps.").defaultValue(0).range(0, 20).build();
 	private final BoolSetting inventoryOnly = sgGeneral.bool("Pause In Containers").description("Don't swap while a chest or other container is open.").defaultValue(true).build();
@@ -125,7 +122,7 @@ public class AutoTotem extends Module {
 		int slot = find(want);
 		if (slot < 0 && want != TOTEM) slot = find(TOTEM);
 		if (slot < 0) return;
-		click(slot, OFFHAND_BUTTON);
+		Myriad.inventory().swapWithOffhand(slot);
 		wait = delay.get();
 	}
 
@@ -188,7 +185,7 @@ public class AutoTotem extends Module {
 		if (!mc.player.getInventory().getStack(hotbar).isOf(Items.TOTEM_OF_UNDYING)) {
 			int src = findMain(TOTEM);
 			if (src >= 0) {
-				click(src, hotbar);
+				Myriad.inventory().moveToHotbar(src, hotbar);
 				wait = delay.get();
 			}
 		}
@@ -227,11 +224,5 @@ public class AutoTotem extends Module {
 
 	private int findMain(Predicate<ItemStack> predicate) {
 		return Myriad.inventory().findInInventory(predicate);
-	}
-
-	/** SWAP-clicks inventory index {@code slot} with hotbar button {@code button} (40 = off hand). */
-	private void click(int slot, int button) {
-		int slotId = slot < 9 ? slot + 36 : slot;
-		mc.interactionManager.clickSlot(mc.player.playerScreenHandler.syncId, slotId, button, SlotActionType.SWAP, mc.player);
 	}
 }

@@ -4,13 +4,17 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.MovementPacketsEvent;
+import dev.myriad.api.event.events.PlayerMoveEvent;
 import net.minecraft.client.input.Input;
-import net.minecraft.util.PlayerInput;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.entity.MovementType;
+import net.minecraft.util.PlayerInput;
+import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
@@ -34,6 +38,13 @@ public abstract class ClientPlayerEntityMixin {
 		if (myriad$event == null) return;
 		myriad$event = null;
 		Myriad.events().post(MovementPacketsEvent.Post.INSTANCE);
+	}
+
+	/** PlayerMoveEvent: lets features change this tick's movement before collisions. */
+	@ModifyVariable(method = "move", at = @At("HEAD"), argsOnly = true)
+	private Vec3d myriad$move(Vec3d movement, MovementType type, Vec3d original) {
+		if (!Myriad.isReady() || !Myriad.events().hasListeners(PlayerMoveEvent.class)) return movement;
+		return Myriad.events().post(new PlayerMoveEvent(type, movement)).movement();
 	}
 
 	/** Posts InputEvent right after the keyboard is read, and applies any changes for this tick. */

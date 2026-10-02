@@ -8,7 +8,7 @@ import net.minecraft.text.Text;
 public final class DesktopScreen extends Screen {
 	private final WindowManager wm;
 
-	DesktopScreen(WindowManager wm) {
+	public DesktopScreen(WindowManager wm) {
 		super(Text.literal("Myriad"));
 		this.wm = wm;
 	}

@@ -8,6 +8,10 @@
 		"Myriad contributors"
 	],
 	"license": "CC0-1.0",
+	"contact": {
+		"sources": "https://github.com/fyzz-dev/myriad",
+		"issues": "https://github.com/fyzz-dev/myriad/issues"
+	},
 	"environment": "client",
 	"entrypoints": {
 		"myriad": [

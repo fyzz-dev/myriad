@@ -1,10 +1,13 @@
 {
 	"required": true,
 	"package": "dev.myriad.impl.mixin",
+	"plugin": "dev.myriad.api.mixin.CompatMixinPlugin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
 		"CameraMixin",
+		"ChatHudMixin",
 		"ChatInputSuggestorMixin",
+		"ClientChunkManagerMixin",
 		"ClientConnectionMixin",
 		"ClientPlayNetworkHandlerMixin",
 		"ClientPlayerEntityMixin",
@@ -14,7 +17,9 @@
 		"EntityRenderStateMixin",
 		"EntityRendererMixin",
 		"GameRendererMixin",
+		"ItemStackMixin",
 		"KeyboardMixin",
+		"LivingEntityMixin",
 		"MinecraftClientMixin",
 		"MouseMixin",
 		"ScreenMixin",

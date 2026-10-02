@@ -19,6 +19,7 @@ import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.Entities;
 import dev.myriad.api.util.Interactions;
+import dev.myriad.api.util.ItemInfo;
 import dev.myriad.api.util.Reach;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
@@ -105,7 +106,7 @@ public class KillAura extends Module {
 			target = null;
 			return;
 		}
-		if (!autoSwap.get() && requireWeapon.get() && !isWeapon(mc.player.getMainHandStack())) {
+		if (!autoSwap.get() && requireWeapon.get() && !ItemInfo.isWeapon(mc.player.getMainHandStack())) {
 			target = null;
 			return;
 		}
@@ -154,10 +155,6 @@ public class KillAura extends Module {
 	}
 
 	// ---- weapons and timing -----------------------------------------------------------------------------------------
-
-	private static boolean isWeapon(ItemStack s) {
-		return s.isIn(ItemTags.SWORDS) || s.isIn(ItemTags.AXES) || s.isOf(Items.TRIDENT) || s.isOf(Items.MACE);
-	}
 
 	private boolean maceReady() {
 		var p = mc.player;

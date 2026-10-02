@@ -21,6 +21,9 @@ public interface ConfigManager {
 	/** Saves the current profile and loads {@code name}, creating it from the current state if it doesn't exist. */
 	void switchProfile(String name);
 
+	/** Reloads the active profile from disk, dropping changes that haven't been saved (e.g. after editing files by hand). */
+	void reload();
+
 	boolean deleteProfile(String name);
 
 	String commandPrefix();

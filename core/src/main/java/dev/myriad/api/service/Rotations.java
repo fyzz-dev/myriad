@@ -14,6 +14,13 @@ public interface Rotations {
 	/** Requests a rotation for the next movement packet. Higher priority wins; ties go to the first request. */
 	void request(Object owner, float yaw, float pitch, int priority);
 
+	/**
+	 * Like {@link #request(Object, float, float, int)}, then runs {@code afterSent} once the movement packet carrying
+	 * this rotation has gone out, so the server already faces where you want when the action arrives (strict servers
+	 * check the rotation of placements and hits). Doesn't run if a higher-priority request wins this tick.
+	 */
+	void request(Object owner, float yaw, float pitch, int priority, Runnable afterSent);
+
 	default void lookAt(Object owner, Vec3d target, int priority) {
 		float[] r = anglesTo(target);
 		request(owner, r[0], r[1], priority);

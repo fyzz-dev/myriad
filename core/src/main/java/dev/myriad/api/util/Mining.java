@@ -1,15 +1,12 @@
 package dev.myriad.api.util;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.effect.StatusEffectUtil;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.ItemStack;
-import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.math.BlockPos;
 
@@ -23,10 +20,7 @@ public final class Mining {
 	}
 
 	public static int efficiency(ItemStack stack) {
-		for (Object2IntMap.Entry<RegistryEntry<Enchantment>> e : stack.getEnchantments().getEnchantmentEntries()) {
-			if (e.getKey().matchesKey(Enchantments.EFFICIENCY)) return e.getIntValue();
-		}
-		return 0;
+		return ItemInfo.enchantmentLevel(stack, Enchantments.EFFICIENCY);
 	}
 
 	/** The inventory slot in [from, to) whose item mines {@code state} fastest, or -1. */

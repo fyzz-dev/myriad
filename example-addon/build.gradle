@@ -6,6 +6,7 @@ dependencies {
 	implementation project(path: ":core", configuration: "namedElements")
 	// Only so `:example-addon:runClient` also boots the stock modules; the addon does not depend on them.
 	runtimeOnly project(path: ":essentials", configuration: "namedElements")
+	runtimeOnly project(path: ":omarchy", configuration: "namedElements")
 }
 
 loom {
@@ -15,6 +16,9 @@ loom {
 		}
 		"myriad-essentials" {
 			sourceSet("main", ":essentials")
+		}
+		"myriad-omarchy" {
+			sourceSet("main", ":omarchy")
 		}
 		"myriad-example" {
 			sourceSet sourceSets.main

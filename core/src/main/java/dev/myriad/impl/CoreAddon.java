@@ -5,20 +5,27 @@ import dev.myriad.api.addon.AddonContext;
 import dev.myriad.api.addon.MyriadAddon;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Category;
+import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.ActionSetting;
+import dev.myriad.api.setting.BlockPosSetting;
 import dev.myriad.api.setting.BoolSetting;
+import dev.myriad.api.setting.ChoiceSetting;
 import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.EnumSetting;
+import dev.myriad.api.setting.FileSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.KeybindSetting;
+import dev.myriad.api.setting.ModuleListSetting;
 import dev.myriad.api.setting.RegistryListSetting;
+import dev.myriad.api.setting.RegistrySetting;
 import dev.myriad.api.setting.StringListSetting;
 import dev.myriad.api.setting.StringSetting;
 import dev.myriad.api.ui.SettingWidgets;
 import dev.myriad.api.ui.widget.Button;
 import dev.myriad.api.ui.widget.ColorPicker;
 import dev.myriad.api.ui.widget.Dropdown;
+import dev.myriad.api.ui.widget.HBox;
 import dev.myriad.api.ui.widget.KeybindButton;
 import dev.myriad.api.ui.widget.RegistryPicker;
 import dev.myriad.api.ui.widget.Slider;
@@ -30,12 +37,14 @@ import dev.myriad.api.util.Keybind;
 import dev.myriad.api.util.MyriadId;
 import dev.myriad.impl.command.CoreCommands;
 import dev.myriad.impl.ui.CoreThemes;
+import dev.myriad.impl.ui.FilePicker;
 import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.ui.bar.CoreBarWidgets;
 import dev.myriad.impl.ui.layout.ColumnsLayout;
 import dev.myriad.impl.ui.layout.DwindleLayout;
 import dev.myriad.impl.ui.layout.MasterLayout;
 import dev.myriad.impl.ui.panels.CorePanels;
+import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
@@ -82,5 +91,68 @@ public final class CoreAddon implements MyriadAddon {
 		w.register(KeybindSetting.class, s -> new KeybindButton(s::get, s::set), false);
 		w.register(ActionSetting.class, s -> new Button("Run", s::run), false);
 		w.register(RegistryListSetting.class, s -> new RegistryPicker<>(s), true);
+		w.register(RegistrySetting.class, s -> RegistryPicker.single(s), true);
+		w.register(ModuleListSetting.class, CoreAddon::modulePicker, true);
+		w.register(ChoiceSetting.class, s -> new Dropdown<>(s::options, s::get, s::set, o -> o), false);
+		w.register(BlockPosSetting.class, s -> {
+			HBox row = new HBox(3);
+			row.addWeighted(new TextField(s::valueString).onSubmit(s::parse), 1);
+			row.addFixed(new Button("Here", () -> {
+				var player = MinecraftClient.getInstance().player;
+				if (player != null) s.set(player.getBlockPos());
+			}), 32).tooltip("Where you're standing");
+			return row;
+		}, false);
+		w.register(FileSetting.class, s -> {
+			HBox row = new HBox(3);
+			row.addWeighted(new TextField(s::get).onSubmit(s::set).placeholder("No file"), 1);
+			row.addFixed(new Button("Browse", () -> FilePicker.open(s)), 40);
+			return row;
+		}, false);
+	}
+
+	/** Module lists reuse the searchable picker over every registered module. */
+	private static Widget modulePicker(ModuleListSetting s) {
+		return new RegistryPicker<>(new RegistryPicker.Source<Module>() {
+			@Override
+			public Iterable<Module> all() {
+				return Myriad.modules().values();
+			}
+
+			@Override
+			public boolean accepts(Module m) {
+				return true;
+			}
+
+			@Override
+			public boolean contains(Module m) {
+				return s.contains(m);
+			}
+
+			@Override
+			public void toggle(Module m) {
+				s.toggle(m);
+			}
+
+			@Override
+			public int size() {
+				return s.get().size();
+			}
+
+			@Override
+			public String label() {
+				return s.get().size() + " selected";
+			}
+
+			@Override
+			public String id(Module m) {
+				return m.id().toString();
+			}
+
+			@Override
+			public String name(Module m) {
+				return m.name();
+			}
+		});
 	}
 }

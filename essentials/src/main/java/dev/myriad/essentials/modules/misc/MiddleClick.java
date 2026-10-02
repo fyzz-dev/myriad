@@ -6,7 +6,9 @@ import dev.myriad.api.event.events.MouseButtonEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
+import dev.myriad.api.util.Interactions;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.EntityHitResult;
@@ -58,17 +60,17 @@ public class MiddleClick extends Module {
 	}
 
 	/** Uses {@code item} from the hotbar without changing the visible slot. */
-	private boolean use(net.minecraft.item.Item item) {
+	private boolean use(Item item) {
 		if (mc.player.getOffHandStack().isOf(item)) {
-			mc.interactionManager.interactItem(mc.player, Hand.OFF_HAND);
-			mc.player.swingHand(Hand.OFF_HAND);
+			Interactions.useItem(Hand.OFF_HAND);
+			Interactions.swing(Hand.OFF_HAND);
 			return true;
 		}
 		int slot = Myriad.inventory().findInHotbar(s -> s.isOf(item));
 		if (slot < 0) return false;
 		Myriad.inventory().silentSwap(slot, () -> {
-			mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-			mc.player.swingHand(Hand.MAIN_HAND);
+			Interactions.useItem(Hand.MAIN_HAND);
+			Interactions.swing(Hand.MAIN_HAND);
 		});
 		return true;
 	}

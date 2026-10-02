@@ -9,11 +9,8 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
-import net.minecraft.block.ShulkerBoxBlock;
+import dev.myriad.api.util.ItemInfo;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.ContainerComponent;
-import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;
@@ -54,16 +51,14 @@ public class ShulkerPreview extends Module {
 	}
 
 	public static boolean isShulker(ItemStack stack) {
-		return stack != null && !stack.isEmpty() && stack.getItem() instanceof BlockItem b && b.getBlock() instanceof ShulkerBoxBlock;
+		return stack != null && ItemInfo.isShulkerBox(stack);
 	}
 
+	/** The box's 27 slots, empty ones included, so the preview grid lines up. */
 	public static List<ItemStack> contents(ItemStack stack) {
 		List<ItemStack> items = new ArrayList<>(27);
-		for (int i = 0; i < 27; i++) items.add(ItemStack.EMPTY);
-		ContainerComponent container = stack.get(DataComponentTypes.CONTAINER);
-		if (container == null) return items;
-		int i = 0;
-		for (ItemStack s : container.stream().limit(27).toList()) items.set(i++, s);
+		for (ItemStack s : ItemInfo.contents(stack)) if (items.size() < 27) items.add(s);
+		while (items.size() < 27) items.add(ItemStack.EMPTY);
 		return items;
 	}
 

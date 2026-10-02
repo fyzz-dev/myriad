@@ -30,8 +30,8 @@ import java.util.stream.Stream;
  * <ul>
  * <li>A user theme file holds every value, so it can be shared: drop it into someone else's themes folder.</li>
  * <li>Editing a built-in preset saves only what differs from the preset, in {@code <namespace>.<preset>.json};
- * resetting the preset deletes that file. A modified "Omarchy" theme still follows Omarchy for everything you
- * didn't change.</li>
+ * resetting the preset deletes that file. An edited live theme (one that follows a system theme) still follows it
+ * for everything you didn't change.</li>
  * </ul>
  */
 public final class ThemeManager {
@@ -66,6 +66,11 @@ public final class ThemeManager {
 
 		public String author() {
 			return author;
+		}
+
+		/** The registered preset this entry is (or is edits to); null for user themes. */
+		public @Nullable Theme preset() {
+			return preset;
 		}
 
 		public boolean isUser() {
@@ -104,7 +109,20 @@ public final class ThemeManager {
 	}
 
 	public Optional<Entry> get(MyriadId id) {
-		return Optional.ofNullable(entries.get(id));
+		return Optional.ofNullable(entries.get(resolve(id)));
+	}
+
+	/** The id a theme is registered under now, following {@link Theme#aliases} for ids it replaced. */
+	public MyriadId resolve(MyriadId id) {
+		if (entries.containsKey(id)) return id;
+		for (Theme t : Myriad.themes()) if (t.aliases().contains(id)) return t.id();
+		return id;
+	}
+
+	/** The registered theme that asked to be used on a fresh install, if any. */
+	public Optional<MyriadId> firstRunPreference() {
+		for (Theme t : Myriad.themes()) if (t.prefersFirstRun()) return Optional.of(t.id());
+		return Optional.empty();
 	}
 
 	public Entry active() {
@@ -148,9 +166,20 @@ public final class ThemeManager {
 		JsonObject values = o.has("settings") && o.get("settings").isJsonObject() ? o.getAsJsonObject("settings") : new JsonObject();
 		if (o.has("base")) {
 			// Saved edits to a built-in preset.
-			Entry base = entries.get(MyriadId.parse(o.get("base").getAsString()));
+			MyriadId baseId = MyriadId.parse(o.get("base").getAsString());
+			Entry base = entries.get(resolve(baseId));
 			if (base != null && base.preset != null) {
+				// A file saved under an id the theme has since replaced moves to its new name.
+				if (!base.id.equals(baseId) && Files.exists(file(base))) return;
 				base.values = values;
+				if (!base.id.equals(baseId)) {
+					save(base);
+					try {
+						Files.deleteIfExists(file);
+					} catch (IOException ex) {
+						LOG.warn("Could not remove {}", file, ex);
+					}
+				}
 				return;
 			}
 			// Edits to a preset that no longer exists (or whose addon is gone): leave the file alone.
@@ -169,7 +198,7 @@ public final class ThemeManager {
 
 	/** Makes {@code id} the active theme and writes all of its values. */
 	public boolean apply(MyriadId id) {
-		Entry e = entries.get(id);
+		Entry e = entries.get(resolve(id));
 		if (e == null) return false;
 		commit();
 		applying = true;
@@ -184,7 +213,7 @@ public final class ThemeManager {
 		return true;
 	}
 
-	/** Re-applies the active theme (e.g. after Omarchy changed it on disk). */
+	/** Re-applies the active theme (e.g. after a live theme's source changed). */
 	public void reapply() {
 		apply(active().id);
 	}
@@ -288,11 +317,6 @@ public final class ThemeManager {
 		create(uniqueName(name));
 	}
 
-	/** Applies {@code values} as edits to the active theme and saves them. */
-	public void adoptEdits(JsonObject values) {
-		applyValues(theme, values);
-		commit();
-	}
 
 	/** Creates a user theme from the current values and makes it active. */
 	public Entry create(String name) {

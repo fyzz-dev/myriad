@@ -1,5 +1,6 @@
 package dev.myriad.impl.command;
 
+import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import dev.myriad.api.Myriad;
@@ -7,12 +8,21 @@ import dev.myriad.api.addon.Addon;
 import dev.myriad.api.addon.AddonContext;
 import dev.myriad.api.addon.AddonState;
 import dev.myriad.api.command.Command;
+import dev.myriad.api.command.arguments.Arguments;
+import dev.myriad.api.module.Category;
 import dev.myriad.api.module.Module;
+import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.setting.Setting;
+import dev.myriad.api.util.FakePlayers;
+import dev.myriad.api.util.Texts;
+import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.ui.ThemeManager;
 import dev.myriad.impl.ui.WindowManager;
+import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.command.CommandSource;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -221,6 +231,121 @@ public final class CoreCommands {
 						Myriad.ui().applyTheme(found.get().id());
 						return SINGLE_SUCCESS;
 					}));
+			}
+		});
+
+		ctx.registerCommand(new Command("modules", "Lists modules by category; click one to toggle it.", "mods") {
+			@Override
+			public void build(LiteralArgumentBuilder<CommandSource> b) {
+				b.executes(c -> {
+					for (Category category : Myriad.categories()) {
+						var modules = Myriad.modules().inCategory(category);
+						if (modules.isEmpty()) continue;
+						MutableText line = Text.literal(category.name() + ": ").formatted(Formatting.GRAY);
+						for (int i = 0; i < modules.size(); i++) {
+							Module m = modules.get(i);
+							if (i > 0) line.append(Text.literal(", ").formatted(Formatting.DARK_GRAY));
+							line.append(Texts.command(m.name(), "toggle " + m.id().path()).formatted(m.isEnabled() ? Formatting.GREEN : Formatting.WHITE));
+						}
+						info(line);
+					}
+					return SINGLE_SUCCESS;
+				});
+			}
+		});
+
+		ctx.registerCommand(new Command("binds", "Lists every keybind: modules and key actions.") {
+			@Override
+			public void build(LiteralArgumentBuilder<CommandSource> b) {
+				b.executes(c -> {
+					int n = 0;
+					for (Module m : Myriad.modules()) {
+						if (!m.keybind.get().isSet()) continue;
+						info(Text.literal(m.keybind.get().displayName()).formatted(Formatting.AQUA).append(Text.literal("  " + m.name()).formatted(Formatting.WHITE)));
+						n++;
+					}
+					for (KeyAction a : Myriad.keyActions()) {
+						if (!a.bind().isSet()) continue;
+						info(Text.literal(a.bind().displayName()).formatted(Formatting.AQUA).append(Text.literal("  " + a.name()).formatted(Formatting.GRAY)));
+						n++;
+					}
+					if (n == 0) info("Nothing is bound. Bind a module with .bind <module> <key>.");
+					return SINGLE_SUCCESS;
+				});
+			}
+		});
+
+		ctx.registerCommand(new Command("say", "Sends a chat message as-is, even one starting with the command prefix.") {
+			@Override
+			public void build(LiteralArgumentBuilder<CommandSource> b) {
+				b.then(argument("message", StringArgumentType.greedyString()).executes(c -> {
+					MyriadImpl.get().commandManager().sendRaw(StringArgumentType.getString(c, "message"));
+					return SINGLE_SUCCESS;
+				}));
+			}
+		});
+
+		ctx.registerCommand(new Command("reload", "Reloads the active profile from disk (after editing config files by hand).") {
+			@Override
+			public void build(LiteralArgumentBuilder<CommandSource> b) {
+				b.executes(c -> {
+					Myriad.config().reload();
+					info("Reloaded profile " + Myriad.config().activeProfile());
+					return SINGLE_SUCCESS;
+				});
+			}
+		});
+
+		ctx.registerCommand(new Command("disconnect", "Leaves the server or world.", "dc") {
+			@Override
+			public void build(LiteralArgumentBuilder<CommandSource> b) {
+				b.executes(c -> {
+					// After the command finishes: disconnecting tears down the chat that's running it.
+					mc.execute(() -> {
+						if (mc.world == null) return;
+						boolean singleplayer = mc.isInSingleplayer();
+						mc.world.disconnect();
+						mc.disconnect(singleplayer ? new TitleScreen() : new MultiplayerScreen(new TitleScreen()));
+					});
+					return SINGLE_SUCCESS;
+				});
+			}
+		});
+
+		ctx.registerCommand(new Command("fakeplayer", "Spawns client-side dummy players for testing (only you see them).", "fp") {
+			@Override
+			public void build(LiteralArgumentBuilder<CommandSource> b) {
+				b.then(literal("add").executes(c -> spawn("Dummy", 20))
+					.then(argument("name", StringArgumentType.word()).executes(c -> spawn(StringArgumentType.getString(c, "name"), 20))
+						.then(argument("health", FloatArgumentType.floatArg(1, 1024)).executes(c ->
+							spawn(StringArgumentType.getString(c, "name"), FloatArgumentType.getFloat(c, "health"))))));
+				b.then(literal("remove").then(argument("name", Arguments.suggesting(() -> FakePlayers.all().stream().map(p -> p.getGameProfile().getName()).toList()))
+					.executes(c -> {
+						String name = StringArgumentType.getString(c, "name");
+						if (FakePlayers.remove(name)) info("Removed " + name);
+						else error("No fake player called " + name);
+						return SINGLE_SUCCESS;
+					})));
+				b.then(literal("clear").executes(c -> {
+					int n = FakePlayers.all().size();
+					FakePlayers.clear();
+					info("Removed " + n + " fake player" + (n == 1 ? "" : "s"));
+					return SINGLE_SUCCESS;
+				}));
+				b.then(literal("list").executes(c -> {
+					if (FakePlayers.all().isEmpty()) info("No fake players.");
+					for (var p : FakePlayers.all()) info(Text.literal(p.getGameProfile().getName() + "  ").append(Texts.coords(p.getBlockPos())));
+					return SINGLE_SUCCESS;
+				}));
+			}
+
+			private int spawn(String name, float health) {
+				if (FakePlayers.spawn(name, health, true) == null) {
+					error("Join a world first.");
+					return 0;
+				}
+				info("Spawned " + name + " with " + health + " health");
+				return SINGLE_SUCCESS;
 			}
 		});
 

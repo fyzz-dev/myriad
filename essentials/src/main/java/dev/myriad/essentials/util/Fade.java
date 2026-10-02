@@ -1,4 +1,4 @@
-package dev.myriad.api.render;
+package dev.myriad.essentials.util;
 
 /** A 0..1 factor that moves towards 1 while on and towards 0 while off, over a fixed duration. */
 public final class Fade {

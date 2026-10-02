@@ -1,5 +1,6 @@
 package dev.myriad.essentials.modules.render;
 
+import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.PacketEvent;
@@ -10,15 +11,15 @@ import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.render.Renderer3D;
+import dev.myriad.api.render.WorldLabel;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
-import dev.myriad.api.Myriad;
-import dev.myriad.api.service.ServerStats;
-import dev.myriad.api.render.WorldLabel;
+import dev.myriad.api.util.Format;
+import dev.myriad.essentials.util.PopColors;
 import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
@@ -190,16 +191,12 @@ public class LogoutSpots extends Module {
 			List<WorldLabel.Segment> segs = new ArrayList<>();
 			segs.add(new WorldLabel.Segment(g.name, 0xFFFFFFFF));
 			segs.add(new WorldLabel.Segment(ago(g.time), 0xFFAAAAAA));
-			if (totemPops.get() && g.pops > 0) segs.add(new WorldLabel.Segment("-" + g.pops, ServerStats.popColor(g.pops)));
+			if (totemPops.get() && g.pops > 0) segs.add(new WorldLabel.Segment("-" + g.pops, PopColors.of(g.pops)));
 			WorldLabel.draw(e.canvas(), top, scale.getFloat() * WorldLabel.distanceScale(top), segs, WorldLabel.Background.ROUNDED, background.argb(), 0, true);
 		}
 	}
 
 	private static String ago(long time) {
-		int s = (int) ((System.currentTimeMillis() - time) / 1000);
-		int h = s / 3600, m = s % 3600 / 60;
-		if (h > 0) return String.format("%dh %02dm", h, m);
-		if (m > 0) return String.format("%dm %02ds", m, s % 60);
-		return s + "s";
+		return Format.duration(System.currentTimeMillis() - time);
 	}
 }

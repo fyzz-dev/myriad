@@ -5,7 +5,7 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.ui.hud.HudStyle;
 import dev.myriad.api.ui.hud.TextHudPanel;
-import net.minecraft.client.network.PlayerListEntry;
+import dev.myriad.api.util.ItemInfo;
 import net.minecraft.world.World;
 
 import java.time.LocalTime;
@@ -34,10 +34,7 @@ public final class InfoPanel extends TextHudPanel {
 	@Override
 	protected void lines(Lines out) {
 		if (fps.get()) out.add("FPS", String.valueOf(mc.getCurrentFps()));
-		if (ping.get() && mc.player != null && mc.getNetworkHandler() != null) {
-			PlayerListEntry e = mc.getNetworkHandler().getPlayerListEntry(mc.player.getUuid());
-			out.add("Ping", (e == null ? 0 : e.getLatency()) + "ms");
-		}
+		if (ping.get() && mc.player != null) out.add("Ping", Myriad.server().ping() + "ms");
 		if (speed.get() && mc.player != null) {
 			double dx = mc.player.getX() - mc.player.prevX, dz = mc.player.getZ() - mc.player.prevZ;
 			double bps = Math.sqrt(dx * dx + dz * dz) * 20;
@@ -54,8 +51,7 @@ public final class InfoPanel extends TextHudPanel {
 		}
 		if (time.get()) out.add("Time", LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")));
 		if (durability.get() && mc.player != null && mc.player.getMainHandStack().isDamageable()) {
-			var s = mc.player.getMainHandStack();
-			out.add("Durability", String.valueOf(s.getMaxDamage() - s.getDamage()));
+			out.add("Durability", String.valueOf(ItemInfo.durability(mc.player.getMainHandStack())));
 		}
 	}
 }

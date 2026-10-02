@@ -8,6 +8,7 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
+import dev.myriad.api.render.PlayerHeads;
 import dev.myriad.api.render.Projection;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.ColorSetting;
@@ -16,7 +17,8 @@ import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.Entities;
-import dev.myriad.api.service.ServerStats;
+import dev.myriad.api.util.ItemInfo;
+import dev.myriad.essentials.util.PopColors;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.entity.EquipmentSlot;
@@ -118,7 +120,7 @@ public class Nametags extends Module {
 		int nameIndex = gamemode.get() ? 1 : 0;
 		for (int i = 0; i < segs.size(); i++) {
 			if (i == nameIndex && face) {
-				drawHead(c, (AbstractClientPlayerEntity) p, cx, ty, th);
+				PlayerHeads.draw(c, p, cx, ty, th);
 				cx += th + GAP * k;
 			}
 			Segment seg = segs.get(i);
@@ -141,16 +143,9 @@ public class Nametags extends Module {
 		if (ping.get()) segs.add(new Segment((entry == null ? 0 : entry.getLatency()) + "ms", 0xFFCCCCCC));
 		if (totemPops.get()) {
 			int pops = Myriad.server().totemPops(p);
-			if (pops > 0) segs.add(new Segment("-" + pops, ServerStats.popColor(pops)));
+			if (pops > 0) segs.add(new Segment("-" + pops, PopColors.of(pops)));
 		}
 		return segs;
-	}
-
-	private static void drawHead(Canvas c, AbstractClientPlayerEntity p, float x, float y, float size) {
-		var skin = p.getSkinTextures().texture();
-		c.texture(skin, x, y, size, size, 8 / 64f, 8 / 64f, 16 / 64f, 16 / 64f, 0xFFFFFFFF);
-		float hat = size * (9 / 8f - 1) / 2;
-		c.texture(skin, x - hat, y - hat, size + hat * 2, size + hat * 2, 40 / 64f, 8 / 64f, 48 / 64f, 16 / 64f, 0xFFFFFFFF);
 	}
 
 	private void drawItems(Canvas c, PlayerEntity p, float centerX, float bottom, float k, float textSize) {
@@ -179,7 +174,7 @@ public class Nametags extends Module {
 			}
 			c.item(st, ix, y, item);
 			if (durability.get() && st.isDamageable() && !main && !off) {
-				float pct = 1f - st.getDamage() / (float) st.getMaxDamage();
+				float pct = ItemInfo.durabilityFraction(st);
 				String t = Math.round(pct * 100) + "%";
 				float ts = textSize * 0.6f;
 				c.text(FontFamily.SANS, ts, t, ix + (item - c.textWidth(FontFamily.SANS, ts, t)) / 2, y + item, ColorUtil.lerp(0xFFFF5555, 0xFF55FF55, pct));

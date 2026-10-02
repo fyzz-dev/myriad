@@ -31,6 +31,21 @@ public abstract class ContainerEvent {
 		}
 	}
 
+	/** One slot changed while the container is open (an item moved, a furnace finished smelting). */
+	public static final class SlotUpdated extends ContainerEvent {
+		private final int slot;
+
+		public SlotUpdated(Containers.View view, int slot) {
+			super(view);
+			this.slot = slot;
+		}
+
+		/** The screen slot id; below {@code view().size()} it's one of the container's own slots. */
+		public int slot() {
+			return slot;
+		}
+	}
+
 	/** The container closed (by you, the server, or a new screen replacing it). */
 	public static final class Closed extends ContainerEvent {
 		public Closed(Containers.View view) {

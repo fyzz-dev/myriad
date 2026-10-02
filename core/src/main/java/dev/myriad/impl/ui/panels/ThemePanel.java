@@ -3,6 +3,7 @@ package dev.myriad.impl.ui.panels;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
+import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.WidgetPanel;
 import dev.myriad.api.ui.widget.Button;
 import dev.myriad.api.ui.widget.Collapsible;
@@ -37,7 +38,7 @@ public final class ThemePanel extends WidgetPanel {
 
 	@Override
 	public void tick() {
-		// The list, names and active theme change from here, commands and Omarchy; rebuild when they do.
+		// The list, names and active theme change from here, from commands and from live themes; rebuild when they do.
 		if (builtVersion != wm.themes().version()) rebuild();
 	}
 
@@ -51,11 +52,14 @@ public final class ThemePanel extends WidgetPanel {
 		for (ThemeManager.Entry e : themes.all()) list.add(new ThemeRow(e));
 		content.add(new Collapsible("Themes", list).hint(() -> themes.all().size() + ""));
 
-		String omarchyHint = dev.myriad.impl.ui.OmarchyThemes.blockedHint();
-		if (omarchyHint != null) {
-			content.add(new Label("Omarchy detected, but this launcher runs the game in a Flatpak sandbox that can't see your theme. "
-				+ "Close the launcher, run this in a terminal, and start it again:").color(() -> wm.theme().yellow.argb()));
-			content.add(new Label(omarchyHint).font(dev.myriad.api.render.FontFamily.MONO, 0).dim());
+		// Themes can explain problems (e.g. a system theme that can't be read). The first line is the message; any
+		// further lines are shown as-is in a monospace font (commands to run, paths).
+		for (Theme t : Myriad.themes()) {
+			String notice = t.notice();
+			if (notice == null || notice.isBlank()) continue;
+			String[] lines = notice.split("\n");
+			content.add(new Label(t.name() + ": " + lines[0]).color(() -> wm.theme().yellow.argb()));
+			for (int i = 1; i < lines.length; i++) content.add(new Label(lines[i]).font(FontFamily.MONO, 0).dim());
 		}
 
 		HBox actions = new HBox(4);

@@ -146,4 +146,13 @@ public final class Myriad {
 	public static void chat(Text message) {
 		api().chat(message);
 	}
+
+	/**
+	 * Like {@link #chat(Text)}, replacing the previous message sent with the same {@code id} instead of adding another
+	 * line: progress ("Printer: 120/450"), status changes, repeated warnings. Ids are global, so prefix them with your
+	 * mod id.
+	 */
+	public static void chat(Text message, String id) {
+		api().chat(message, id);
+	}
 }

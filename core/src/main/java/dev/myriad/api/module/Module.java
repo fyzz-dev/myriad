@@ -134,8 +134,9 @@ public abstract class Module implements Identified {
 		Myriad.events().post(new ModuleToggleEvent(this, enabled));
 		Myriad.config().markDirty();
 		if (feedback && chatFeedback.get() && mc.player != null && !holdMode.get()) {
-			sendChat(Text.literal(name).formatted(Formatting.WHITE).append(Text.literal(enabled ? " enabled" : " disabled")
-				.formatted(enabled ? Formatting.GREEN : Formatting.RED)));
+			// One line per module: toggling it again replaces the line instead of adding another.
+			Myriad.chat(Text.literal(name).formatted(Formatting.WHITE).append(Text.literal(enabled ? " enabled" : " disabled")
+				.formatted(enabled ? Formatting.GREEN : Formatting.RED)), "myriad:toggle:" + id);
 		}
 	}
 

@@ -9,6 +9,7 @@ import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.util.Interactions;
+import dev.myriad.api.util.Timer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -28,7 +29,7 @@ public class FastUse extends Module {
 	private final IntSetting delay = sgGeneral.intSetting("Delay").description("Ticks between uses.").defaultValue(1).range(0, 4).build();
 	private final BoolSetting startDelay = sgGeneral.bool("Start Delay").description("Wait half a second into a held click before speeding up.").build();
 
-	private long firstPress;
+	private final Timer held = new Timer();
 	private boolean pressing;
 
 	public FastUse() {
@@ -44,9 +45,9 @@ public class FastUse extends Module {
 		}
 		if (!pressing) {
 			pressing = true;
-			firstPress = System.currentTimeMillis();
+			held.reset();
 		}
-		if (startDelay.get() && System.currentTimeMillis() - firstPress < 500) return;
+		if (startDelay.get() && !held.passed(500)) return;
 		if (!applies(mc.player.getMainHandStack()) && !applies(mc.player.getOffHandStack())) return;
 		if (Interactions.itemUseCooldown() > delay.get()) Interactions.setItemUseCooldown(delay.get());
 	}

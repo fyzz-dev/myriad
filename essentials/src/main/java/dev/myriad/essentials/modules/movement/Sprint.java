@@ -10,6 +10,7 @@ import dev.myriad.api.module.Modules;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
+import dev.myriad.api.util.Movement;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.util.math.BlockPos;
@@ -92,17 +93,7 @@ public class Sprint extends Module {
 	}
 
 	private float sprintYaw(float yaw) {
-		var in = mc.player.input.playerInput;
-		boolean f = in.forward(), b = in.backward(), l = in.left(), r = in.right();
-		if (f && !b) {
-			if (l && !r) yaw -= 45;
-			else if (r && !l) yaw += 45;
-		} else if (b && !f) {
-			yaw += 180;
-			if (l && !r) yaw += 45;
-			else if (r && !l) yaw -= 45;
-		} else if (l && !r) yaw -= 90;
-		else if (r && !l) yaw += 90;
-		return MathHelper.wrapDegrees(yaw);
+		float moving = Movement.inputYaw(yaw);
+		return MathHelper.wrapDegrees(Float.isNaN(moving) ? yaw : moving);
 	}
 }

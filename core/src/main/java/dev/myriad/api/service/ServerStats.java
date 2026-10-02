@@ -1,11 +1,13 @@
 package dev.myriad.api.service;
 
 import net.minecraft.entity.player.PlayerEntity;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
 /**
- * Facts about the current server that several features want, tracked once by Myriad instead of by each addon.
+ * Facts about the current server and connection that several features want, tracked once by Myriad instead of by
+ * each addon: tick rate, latency, lag and rubberbands, packet rates, and totem pops.
  *
  * <pre>{@code
  * float tps = Myriad.server().tps();
@@ -19,22 +21,36 @@ public interface ServerStats {
 	/** Your latency to the server in milliseconds, as the tab list shows it; 0 in singleplayer or before it's known. */
 	int ping();
 
+	/** The server address you connected with ("play.example.net"), or null in singleplayer or the menus. */
+	@Nullable String address();
+
+	boolean isSingleplayer();
+
+	/** Milliseconds since the server last sent anything. Normally well under a second; climbs while it lags. */
+	long msSinceLastPacket();
+
+	/** Whether the server has sent nothing for {@code ms} milliseconds: pause actions it would ignore anyway. */
+	default boolean isLagging(long ms) {
+		return msSinceLastPacket() >= ms;
+	}
+
+	/** Milliseconds since the server last set your position (a rubberband, or a teleport); very large if never. */
+	long msSinceRubberband();
+
+	/** Whether the server snapped you back within the last {@code ms} milliseconds: back off movement tricks. */
+	default boolean rubberbandedWithin(long ms) {
+		return msSinceRubberband() < ms;
+	}
+
+	/** Packets you sent in the last second (strict servers kick above a few hundred). */
+	int packetsSentPerSecond();
+
+	int packetsReceivedPerSecond();
+
 	/** Totems {@code player} has used since they last died (reset when you join a world). */
 	int totemPops(UUID player);
 
 	default int totemPops(PlayerEntity player) {
 		return totemPops(player.getUuid());
-	}
-
-	/** Green for few pops, through yellow, to red for many: a shared scale so every addon shows pops alike. */
-	static int popColor(int pops) {
-		return switch (Math.min(pops, 6)) {
-			case 0, 1 -> 0xFF55FF55;
-			case 2 -> 0xFFAAFF55;
-			case 3 -> 0xFFFFFF55;
-			case 4 -> 0xFFFFAA55;
-			case 5 -> 0xFFFF7755;
-			default -> 0xFFFF5555;
-		};
 	}
 }

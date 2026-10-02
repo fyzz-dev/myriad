@@ -1,13 +1,13 @@
 package dev.myriad.essentials.modules.movement;
 
+import dev.myriad.api.Myriad;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
+import dev.myriad.api.util.Slots;
 import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.ItemStack;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
-import net.minecraft.screen.slot.SlotActionType;
 
 import java.util.List;
 
@@ -15,8 +15,6 @@ import java.util.List;
  * Swaps your chestplate for an elytra or back again, then turns itself off; bind it to a key.
  */
 public class ChestSwap extends Module {
-	/** Player screen handler slot of the chest armour piece. */
-	private static final int CHEST_SLOT = 6;
 	private static final List<Item> CHESTPLATES = List.of(Items.NETHERITE_CHESTPLATE, Items.DIAMOND_CHESTPLATE, Items.IRON_CHESTPLATE,
 		Items.CHAINMAIL_CHESTPLATE, Items.GOLDEN_CHESTPLATE, Items.LEATHER_CHESTPLATE);
 
@@ -39,36 +37,18 @@ public class ChestSwap extends Module {
 	}
 
 	private void swapIntoChest(int invSlot) {
-		var im = mc.interactionManager;
-		int sync = mc.player.playerScreenHandler.syncId;
-		if (invSlot < 9) {
-			im.clickSlot(sync, CHEST_SLOT, invSlot, SlotActionType.SWAP, mc.player);
-			return;
-		}
-		// Main inventory: bring it through the selected hotbar slot, then put the hotbar item back.
-		int hotbar = mc.player.getInventory().selectedSlot;
-		im.clickSlot(sync, invSlot, hotbar, SlotActionType.SWAP, mc.player);
-		im.clickSlot(sync, CHEST_SLOT, hotbar, SlotActionType.SWAP, mc.player);
-		im.clickSlot(sync, invSlot, hotbar, SlotActionType.SWAP, mc.player);
+		Myriad.inventory().move(invSlot, Slots.CHEST);
 	}
 
-	private int find(Item item) {
-		for (int i = 0; i < 36; i++) if (mc.player.getInventory().getStack(i).isOf(item)) return i;
-		return -1;
+	private static int find(Item item) {
+		return Myriad.inventory().bestInInventory(s -> s.isOf(item) ? 1 : 0);
 	}
 
+	/** The strongest chestplate (earliest in CHESTPLATES), or any chestplate when not preferring the best. */
 	private int findChestplate() {
-		if (!preferBest.get()) {
-			for (int i = 0; i < 36; i++) {
-				ItemStack s = mc.player.getInventory().getStack(i);
-				if (CHESTPLATES.contains(s.getItem())) return i;
-			}
-			return -1;
-		}
-		for (Item item : CHESTPLATES) {
-			int slot = find(item);
-			if (slot >= 0) return slot;
-		}
-		return -1;
+		return Myriad.inventory().bestInInventory(s -> {
+			int i = CHESTPLATES.indexOf(s.getItem());
+			return i < 0 ? 0 : preferBest.get() ? CHESTPLATES.size() - i : 1;
+		});
 	}
 }

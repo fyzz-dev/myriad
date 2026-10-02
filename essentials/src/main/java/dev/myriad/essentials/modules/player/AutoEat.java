@@ -8,6 +8,7 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.RegistryListSetting;
+import dev.myriad.api.util.Interactions;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.FoodComponent;
 import net.minecraft.item.Item;
@@ -66,7 +67,7 @@ public class AutoEat extends Module {
 		foodSlot = slot;
 		ticks = 0;
 		Myriad.inventory().select(slot);
-		mc.interactionManager.interactItem(p, Hand.MAIN_HAND);
+		Interactions.useItem(Hand.MAIN_HAND);
 		if (p.isUsingItem()) {
 			mc.options.useKey.setPressed(true);
 			eating = true;

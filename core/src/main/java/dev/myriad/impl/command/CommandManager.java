@@ -72,10 +72,23 @@ public final class CommandManager {
 		}
 	}
 
+	private boolean sendingRaw;
+
+	/** Sends {@code message} to the server as chat, even if it starts with the command prefix. */
+	public void sendRaw(String message) {
+		if (mc.getNetworkHandler() == null) return;
+		sendingRaw = true;
+		try {
+			mc.getNetworkHandler().sendChatMessage(message);
+		} finally {
+			sendingRaw = false;
+		}
+	}
+
 	@Subscribe(priority = Priority.HIGHEST)
 	private void onChat(ChatSendEvent e) {
 		String prefix = Myriad.config().commandPrefix();
-		if (!e.message().startsWith(prefix)) return;
+		if (sendingRaw || !e.message().startsWith(prefix)) return;
 		e.cancel();
 		mc.inGameHud.getChatHud().addToMessageHistory(e.message());
 		execute(e.message().substring(prefix.length()));

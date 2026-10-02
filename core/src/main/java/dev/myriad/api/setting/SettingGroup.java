@@ -10,6 +10,7 @@ import net.minecraft.registry.Registry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A named, collapsible section of settings. The factory methods return builders that add the built setting to this
@@ -99,6 +100,38 @@ public class SettingGroup {
 
 	public ActionSetting.Builder action(String name, Runnable action) {
 		return bind(new ActionSetting.Builder(name, action));
+	}
+
+	/** A single item, e.g. what to place or hold. */
+	public RegistrySetting.Builder<Item> item(String name, Item defaultValue) {
+		return bind(RegistrySetting.item(name, defaultValue));
+	}
+
+	/** A single block, e.g. what to build with. */
+	public RegistrySetting.Builder<Block> block(String name, Block defaultValue) {
+		return bind(RegistrySetting.block(name, defaultValue));
+	}
+
+	/** A single entry of any registry. */
+	public <T> RegistrySetting.Builder<T> registry(String name, Registry<T> registry, T defaultValue) {
+		return bind(new RegistrySetting.Builder<>(name, registry, defaultValue));
+	}
+
+	public BlockPosSetting.Builder blockPos(String name) {
+		return bind(new BlockPosSetting.Builder(name));
+	}
+
+	/** One of a list of names supplied at runtime (files, kits), shown as a dropdown. */
+	public ChoiceSetting.Builder choice(String name, Supplier<List<String>> options) {
+		return bind(new ChoiceSetting.Builder(name, options));
+	}
+
+	public ModuleListSetting.Builder modules(String name) {
+		return bind(new ModuleListSetting.Builder(name));
+	}
+
+	public FileSetting.Builder file(String name) {
+		return bind(new FileSetting.Builder(name));
 	}
 
 	public <T> RegistryListSetting.Builder<T> registryList(String name, Registry<T> registry) {

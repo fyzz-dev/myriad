@@ -9,6 +9,7 @@ that jar and Myriad still boots, with an empty module list.
 
 ```
 core/           mod id "myriad"             the platform: API, event bus, config, commands, renderer, menu
+omarchy/        mod id "myriad-omarchy"     optional: a theme that follows your Omarchy system theme
 essentials/     mod id "myriad-essentials"  the stock modules + HUD elements (an ordinary addon)
 example-addon/  mod id "myriad-example"     the reference addon: a complete feature set, written to be read
 ```
@@ -28,7 +29,7 @@ Requires JDK 21+.
 ```
 
 To install, put `myriad-<v>.jar` in `mods/` (with Fabric API), then add `myriad-essentials-<v>.jar` and any other
-addons next to it.
+addons next to it. On [Omarchy](https://omarchy.org), add `myriad-omarchy-<v>.jar` too.
 
 ## The menu
 
@@ -40,8 +41,9 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
 - Windows can be **tiled**, **floating** or **fullscreen**. Drag the gaps between tiles to resize them.
 - The **HUD workspace** (the icon after 9 in the bar) holds the in-game HUD. Its windows are drawn in game without
   window decorations. Drag them to move them; they snap to edges and to the centre, and anchor to the nearest screen
-  third. Right-click one for its settings. The **HUD Elements** window there adds and removes elements; Delete removes
-  the hovered one. The launcher can also add and remove elements.
+  third. Right-click one for its settings. The **HUD** window there lists every element like a category lists
+  modules: click one to add or remove it, unfold it for its options. Delete removes the hovered element, and the
+  launcher can also add and remove them.
 - The **launcher** (`Alt+Space`) fuzzy-searches modules (Enter toggles, Shift+Enter or right-click opens settings),
   panels, categories, themes, profiles and workspaces.
 - **Themes**: a theme holds the whole look: gaps, borders (gradient, optional rotation), rounding, blur, shadows,
@@ -52,8 +54,8 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
   - **Your themes**: **New** or **Duplicate** makes a theme you can rename and give an author. Each one is a file in
     `.minecraft/myriad/themes/`. To share it, send the `.json`; the other person drops it in that folder and presses
     **Reload**.
-  - **Omarchy**: when Omarchy is installed there's also an "Omarchy" theme that always matches your system theme,
-    switching whenever you run `omarchy-theme-set`.
+  - **Omarchy**: with the `myriad-omarchy` addon there's also an "Omarchy" theme that always matches your system
+    theme, switching whenever you run `omarchy-theme-set`. It's what a fresh install starts with on Omarchy.
   - **Theme roles**: colours come from a palette (accent, secondary, red, green, yellow, blue, magenta, cyan) that
     modules use as defaults, so ESP, tracers, categories, notifications and the module list follow the theme. A
     colour you change on a module is saved with that module's settings as an override.
@@ -90,7 +92,10 @@ Every binding can be changed in the Keybinds panel.
 
 Prefix `.` (change with `.prefix`). Commands autocomplete in chat and in the console panel.
 `.toggle <module>`, `.bind <module> <key|none>`, `.set <module> [setting] [value]`, `.reset <module>`,
-`.profile [load|delete|save]`, `.friend add|remove|list`, `.theme <preset>`, `.addons`, `.panic`, `.help`, `.menu`.
+`.profile [load|delete|save]`, `.friend add|remove|list`, `.theme <preset>`, `.addons`, `.panic`, `.help`, `.menu`,
+`.modules` (click one to toggle it), `.binds`, `.say <message>` (sends text starting with the prefix as chat),
+`.reload` (re-read the profile from disk), `.disconnect`, and `.fakeplayer add|remove|clear|list` (client-side
+dummies for testing).
 
 Setting ids are scoped to their group. When two groups share a name, use `group.setting`, for example
 `.set esp colors.players #FF00FFAA`.
@@ -166,7 +171,9 @@ Following these keeps addons consistent with each other and with the stock modul
   For a module from an addon you don't compile against, look it up by id:
   `Myriad.modules().get(MyriadId.of("other-addon", "their_module"))`.
 - **Mixins** stay thin. Put the logic in a static method on the module that starts with `Modules.active(...)`, and
-  have the mixin call it. Prefix handler names with your mod id. Prefer an event over a mixin when one exists.
+  have the mixin call it. Prefix handler names with your mod id. Prefer an event over a mixin when one exists. For
+  hooks into other mods (Sodium, Iris), set `"plugin": "dev.myriad.api.mixin.CompatMixinPlugin"` in your mixin config
+  and put them under a `compat.<mod id>` package.
 - **Don't depend on Essentials.** Players can remove it. Everything general it used to keep to itself is in the
   core API now (below).
 
@@ -191,8 +198,10 @@ public final class MyModule extends Module {
 ```
 
 **Settings**: bool, int, double (`range` for the hard limits, `sliderRange` for the slider), enum, string, string
-list, color (fixed, rainbow, or a theme role), keybind, action button, and registry lists (blocks, items, entity
-types, status effects, any registry). `visible(...)` hides a setting until it matters, and `onChanged(...)` reacts
+list, color (fixed, rainbow, or a theme role), keybind, action button, registry lists (blocks, items, entity
+types, status effects, any registry), a single registry entry (`item`, `block`, `registry`), a block position
+(`blockPos`, with a "Here" button), a runtime dropdown (`choice`), other modules (`modules`, e.g. "pause while
+these are on") and a file (`file`, with the system file picker). `visible(...)` hides a setting until it matters, and `onChanged(...)` reacts
 to changes. For a new type, extend `Setting<T>` and register an editor with
 `ctx.settingWidgets().register(MySetting.class, s -> widget, stacked)`. See the example's `RangeSetting`.
 
@@ -206,12 +215,15 @@ logged against its addon and then disabled.
 
 Core events: `TickEvent.Pre/Post`, `Render2DEvent` (with a `canvas()` in GUI pixels), `Render3DEvent`,
 `PacketEvent.Send/Receive` (cancellable and replaceable, with bundles split into their packets),
-`MovementPacketsEvent` (rewrite what's sent), `InputEvent` (press movement keys for one tick), `MouseLookEvent`
-(scale or cancel turning), `BlockBreakEvent.Start/Progress` (take over block breaking), `AttackEvent` (cancellable,
-before any attack goes out), `EntityEvent.Added/Removed`, `BlockUpdateEvent` (server block changes, old and new state),
-`ContainerEvent.Opened/Loaded/Closed`, `CameraEvent`, `KeyEvent`, `MouseButtonEvent`, `MouseScrollEvent`,
-`CharEvent`, `ChatSendEvent`, `ScreenOpenEvent`, `WorldEvent.Join/Leave`, `ModuleToggleEvent`, `WindowResizeEvent`,
-`GameReadyEvent` and `ShutdownEvent`.
+`MovementPacketsEvent` (rewrite what's sent), `PlayerMoveEvent` (change this tick's movement: speed, flight),
+`InputEvent` (press movement keys for one tick), `MouseLookEvent` (scale or cancel turning),
+`BlockBreakEvent.Start/Progress` (take over block breaking), `BlockBrokenEvent` (you broke a block),
+`InteractEvent.Block/Item/EntityTarget` (cancellable right-clicks), `ItemUseEvent.Finished/Stopped`, `AttackEvent`
+(cancellable, before any attack goes out), `EntityEvent.Added/Removed`, `BlockUpdateEvent` (server block changes, old
+and new state), `ChunkEvent.Loaded/Unloaded`, `ContainerEvent.Opened/Loaded/SlotUpdated/Closed`, `ChatReceiveEvent`
+(hide or change incoming chat), `ChatSendEvent`, `ItemTooltipEvent` (add tooltip lines), `CameraEvent`, `KeyEvent`,
+`MouseButtonEvent`, `MouseScrollEvent`, `CharEvent`, `ScreenOpenEvent`, `WorldEvent.Join/Leave`, `ModuleToggleEvent`,
+`WindowResizeEvent`, `GameReadyEvent` and `ShutdownEvent`.
 
 ### Services and helpers
 
@@ -219,13 +231,15 @@ Shared services keep addons from fighting over the same state:
 
 | | |
 |---|---|
-| `Myriad.rotations()` | per-tick server-side rotation requests; the highest priority wins |
-| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, `hold(owner, slot, ticks)`; `bestInHotbar(score)`, `count`, `moveToHotbar`, `ensureInHotbar` |
+| `Myriad.rotations()` | per-tick server-side rotation requests; the highest priority wins. Pass a callback to act once the rotation has been sent |
+| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, `hold(owner, slot, ticks)`; `bestInHotbar(score)`, `count`, `moveToHotbar`, `ensureInHotbar`; `move(from, to)`, `swapWithOffhand`, `quickMove`, `drop` |
 | `Myriad.placement()` | placing blocks: neighbour clicks, rotation, silent swap, cooldowns; `clickTargets(pos)` and `place(hit, …)` when the clicked face matters (stairs, logs, slabs) |
 | `Myriad.containers()` | `open(pos, timeout)` a chest/barrel/shulker and get a `View` once its contents arrive: `find`, `count`, `quickMove`, `swapWithHotbar`, `drop`, `close` |
 | `Myriad.tasks()` | work over ticks: `later`, `every`, and `sequence` (run / wait / waitUntil with timeouts). A module's tasks are cancelled when it's disabled |
-| `Myriad.server()` | server TPS, your ping, per-player totem pops |
+| `Myriad.server()` | TPS, ping, address, lag (`isLagging(ms)`), rubberbands (`rubberbandedWithin(ms)`), packets per second, totem pops |
+| `Myriad.chat(text, id)` | a chat line that replaces the previous one with the same id (progress, status) |
 | `Myriad.friends()`, `Myriad.notifications()` | friends list; toasts |
+| `Myriad.ui().confirm(...)` | a yes/no dialog |
 | `ctx.storage()` | your addon's own folder with atomic JSON reads and writes |
 
 Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
@@ -233,19 +247,24 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 | | |
 |---|---|
 | `combat.Targets`, `combat.TargetSettings` | finding entities to attack or highlight with shared rules (hostile, neutral-when-angry, friends, invisibles, walls), sorted by distance, health or angle. `TargetSettings` is the standard "Targets" settings group |
-| `combat.Damage` | explosion, crystal, fall and melee damage after armour, enchantments and effects |
-| `util.Entities` | `kind`, `isHostile`, `isFriend`, render-interpolated boxes, `predict(entity, ticks)` |
+| `combat.Damage` | explosion, crystal, bed, anchor, fall and melee damage after armour, enchantments and effects; against a predicted position, with chosen blocks treated as air |
+| `util.Entities` | `kind`, `isHostile`, `isFriend`, `ping`/`gameMode` of a player, `intersects(box)`, render distance, render-interpolated boxes, `predict(entity, ticks)` |
+| `util.BlockInfo`, `util.ItemInfo` | unbreakable, instant-break, blast-resistant, storage, clickable blocks; enchantment levels, food, shulker contents, durability, weapon/tool/armour slot |
 | `util.Reach` | reach and line of sight from the eyes, `aimPoint(entity)`, `hitFor(pos)` (the face to click to open or break a block) |
-| `util.Interactions` | attack, use, interact with a block, swing; attack charge, item-use and jump cooldowns |
+| `util.Interactions` | attack, use, interact with a block, start/continue breaking, swing; `shouldPause(eating, mining)`; attack charge, item-use and jump cooldowns |
 | `util.Packets` | `send`, `sendSilently` (skips events, for your own tricks), `sendSequenced` (block and item actions) |
 | `util.Mining` | mining speed and progress as the server computes them; fastest tool slot |
 | `util.Positions` | `sphere`, `cube`, `box` of block positions (nearest first), neighbours, face centres |
 | `util.MathUtil` | angles to a point, angle differences, look and ground direction vectors, closest point on a box, lerp/map/snap |
 | `util.Movement` | which way the movement keys point, horizontal speed, setting speed along the input |
 | `util.Slots` | player inventory indexes ↔ screen slot ids |
-| `util.Timer`, `util.Format`, `util.Texts` | delays and cooldowns; distances, durations, compact numbers; clickable chat (run a Myriad command, copy, hover) |
+| `util.Timer`, `util.RateCounter`, `util.Format`, `util.Texts` | delays and cooldowns; events per second; distances, durations, compact numbers; clickable chat (run a Myriad command, copy, hover) |
+| `util.Async`, `util.Http` | a shared worker pool (and a hop back to the render thread); GET/POST with JSON |
+| `util.FakePlayers` | client-side dummy players for testing combat and render features |
 | `render.Renderer3D` | boxes, real block shapes, single faces, lines, circles, tracers |
-| `render.WorldLabel`, `render.FadeMap`, `render.RenderStates` | labels on world positions (text and item icons); highlights that fade in and out; the entity behind a render state in renderer mixins |
+| `render.WorldLabel`, `render.FadeMap`, `render.RenderStates`, `render.PlayerHeads` | labels on world positions (text and item icons); highlights that fade in and out; the entity behind a render state in renderer mixins; players' faces |
+| `ui.ThemePalette`, `ui.Theme` | build a theme from a terminal palette; themes that follow something live, explain problems, or replace old ids |
+| `mixin.CompatMixinPlugin` | mixins that apply only when another mod is (or isn't) installed: put them in `compat.<mod id>` (or `compat.no_<mod id>`) |
 | `command.arguments.Arguments` | argument types: `blockPos` (with `~`), `item`, `block`, `entityType`, any registry, `enumValue`, `duration`, `choice`/`suggesting`, `module`, `player` |
 
 ### Building bigger addons
@@ -254,17 +273,23 @@ How the pieces fit the kinds of addons people build:
 
 - **A schematic printer** walks the blocks it still needs with `Positions.sphere` (nearest first), gets materials
   into the hotbar with `inventory().ensureInHotbar`, and places with `placement().place(hit, slot, options)`, choosing
-  the face from `placement().clickTargets(pos)` to get orientation right. `BlockUpdateEvent` confirms what the server
-  actually placed, `FadeMap` with `Renderer3D.blockShape` shows the plan, and `tasks()` paces it. Integrations with
-  other mods (Litematica, Baritone) belong in the addon: keep any code touching their classes in its own class, and
-  only load it after `FabricLoader.getInstance().isModLoaded("litematica")`.
-- **A storage manager** opens containers with `containers().open(pos)`, reads them in `ContainerEvent.Loaded` (that
-  includes the ones the player opens by hand), and runs multi-step jobs with `tasks().sequence(...)`. It can save what
-  it learns with `ctx.storage()` and mark chests with `WorldLabel.Segment.item(...)` icons.
+  the face from `placement().clickTargets(pos)` to get orientation right; on strict servers it rotates first and places
+  from the `rotations()` callback. `BlockUpdateEvent` confirms what the server actually placed, `FadeMap` with
+  `Renderer3D.blockShape` shows the plan, `tasks()` paces it, and it pauses while `server().isLagging(...)` or right
+  after a rubberband. A `FileSetting` picks the schematic and a `BlockPosSetting` its origin. Integrations with other
+  mods (Litematica, Baritone) belong in the addon: keep any code touching their classes in its own class, only load it
+  after `FabricLoader.getInstance().isModLoaded("litematica")`, and put mixins into them under `compat.litematica`.
+- **A storage manager** finds containers as chunks arrive (`ChunkEvent.Loaded`, `BlockInfo.isStorage`), opens them
+  with `containers().open(pos)`, reads them in `ContainerEvent.Loaded`/`SlotUpdated` (including ones the player opens
+  by hand), and runs multi-step jobs with `tasks().sequence(...)`. It saves what it learns with `ctx.storage()`, says
+  where an item is with `ItemTooltipEvent`, reads shulkers with `ItemInfo.contents`, and marks chests with
+  `WorldLabel.Segment.item(...)` icons.
 - **A crystal PvP suite** picks targets with `TargetSettings`, scores placements with `Damage.crystal` against
-  `Entities.predict` positions, breaks crystals the tick they appear with `EntityEvent.Added` +
-  `Interactions.attack`, rotates through `rotations()`, swaps with `inventory()`, and checks `Reach` before every
-  action. `AttackEvent` lets separate modules react to the same hit.
+  `Entities.predict` positions (treating blocks it's about to break as air), breaks crystals the tick they appear with
+  `EntityEvent.Added` + `Interactions.attack`, checks `BlockInfo.isBlastResistant` and `Entities.intersects` for
+  placements, rotates through `rotations()`, swaps with `inventory()`, pauses with `Interactions.shouldPause`, and
+  checks `Reach` before every action. `AttackEvent` lets separate modules react to the same hit, and `.fakeplayer`
+  gives you someone to test against in singleplayer.
 
 ### UI
 
@@ -279,6 +304,7 @@ How the pieces fit the kinds of addons people build:
   `HudStyle` and `ItemHud` directly for custom drawing.
 - Panels can declare their own `settings`, which are saved with the window. Open one with
   `Myriad.ui().openPanel(id)`. Top-bar widgets extend `BarWidget`.
+- Add a `contact` block (`homepage`, `sources`, `issues`) to your fabric.mod.json and the Addons panel links to it.
 
 **3D.** Call `Renderer3D.box/line/tracer` from a `Render3DEvent` handler. Everything queued is drawn in one batch;
 `Renderer3D.lineWidth` applies to the lines you queue after it. For labels over the world, use `WorldLabel` or

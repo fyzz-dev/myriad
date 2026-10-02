@@ -8,6 +8,7 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.IntSetting;
+import dev.myriad.api.util.Timer;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.util.Hand;
 
@@ -25,7 +26,7 @@ public class AntiAFK extends Module {
 	private final BoolSetting rotate = sgGeneral.bool("Rotate").description("Turn your head a few degrees.").build();
 	private final DoubleSetting delay = sgGeneral.doubleSetting("Delay").description("Seconds between actions.").defaultValue(2).range(0.25, 20).decimals(2).build();
 
-	private long lastAction;
+	private final Timer actionTimer = new Timer();
 	private int phase, sneakTicks;
 
 	public AntiAFK() {
@@ -34,7 +35,7 @@ public class AntiAFK extends Module {
 
 	@Override
 	protected void onEnable() {
-		lastAction = System.currentTimeMillis();
+		actionTimer.reset();
 		sneakTicks = 0;
 	}
 
@@ -53,10 +54,7 @@ public class AntiAFK extends Module {
 			sneakTicks--;
 			return;
 		}
-		long now = System.currentTimeMillis();
-		if (now - lastAction < delay.get() * 1000) return;
-		lastAction = now;
-		nextAction();
+		if (actionTimer.tick((long) (delay.get() * 1000))) nextAction();
 	}
 
 	private void nextAction() {

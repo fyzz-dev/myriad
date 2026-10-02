@@ -190,6 +190,16 @@ public final class ConfigManagerImpl implements ConfigManager {
 	}
 
 	@Override
+	public void reload() {
+		loading = true;
+		try {
+			loadProfile(profile);
+		} finally {
+			loading = false;
+		}
+	}
+
+	@Override
 	public boolean deleteProfile(String name) {
 		name = sanitize(name);
 		if (name.equals(profile)) return false;

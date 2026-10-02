@@ -6,12 +6,17 @@
 	"description": "An addon-first utility client with a tiling window manager UI. Ships with no modules of its own: everything plugs in through the Myriad API.",
 	"authors": ["Myriad contributors"],
 	"license": "CC0-1.0",
+	"contact": {
+		"sources": "https://github.com/fyzz-dev/myriad",
+		"issues": "https://github.com/fyzz-dev/myriad/issues"
+	},
 	"icon": "assets/myriad/icon.png",
 	"environment": "client",
 	"accessWidener": "myriad.accesswidener",
 	"entrypoints": {
 		"client": ["dev.myriad.impl.MyriadClient"],
-		"myriad": ["dev.myriad.impl.CoreAddon"]
+		"myriad": ["dev.myriad.impl.CoreAddon"],
+		"modmenu": ["dev.myriad.impl.compat.ModMenuIntegration"]
 	},
 	"mixins": ["myriad.mixins.json"],
 	"depends": {

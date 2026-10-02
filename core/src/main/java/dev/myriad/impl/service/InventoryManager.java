@@ -132,9 +132,8 @@ public final class InventoryManager implements Inventory {
 	public boolean moveToHotbar(int inventoryIndex, int hotbarSlot) {
 		if (mc.player == null || hotbarSlot < 0 || hotbarSlot > 8 || inventoryIndex < 0 || inventoryIndex >= 36) return false;
 		if (inventoryIndex == hotbarSlot) return true;
-		if (mc.player.currentScreenHandler != mc.player.playerScreenHandler) return false;
-		mc.interactionManager.clickSlot(mc.player.playerScreenHandler.syncId, Slots.playerScreen(inventoryIndex), hotbarSlot, SlotActionType.SWAP, mc.player);
-		return true;
+		if (!canClick()) return false;
+		return clickSwap(inventoryIndex, hotbarSlot);
 	}
 
 	@Override
@@ -149,6 +148,59 @@ public final class InventoryManager implements Inventory {
 			if (to == -1) to = mc.player.getInventory().selectedSlot;
 		}
 		return moveToHotbar(from, to) ? to : -1;
+	}
+
+	/** True if the player's own screen is the one open to clicks. */
+	private boolean canClick() {
+		return mc.player != null && mc.interactionManager != null && mc.player.currentScreenHandler == mc.player.playerScreenHandler;
+	}
+
+	private static boolean valid(int index) {
+		return index >= 0 && index <= Slots.OFF_HAND;
+	}
+
+	private void click(int index, int button, SlotActionType action) {
+		mc.interactionManager.clickSlot(mc.player.playerScreenHandler.syncId, Slots.playerScreen(index), button, action, mc.player);
+	}
+
+	@Override
+	public boolean move(int from, int to) {
+		if (!canClick() || !valid(from) || !valid(to)) return false;
+		if (from == to) return true;
+		if (Slots.isHotbar(to)) return clickSwap(from, to);
+		if (Slots.isHotbar(from)) return clickSwap(to, from);
+		// Pick up, put down (swapping with what's there), then put back whatever ended up on the cursor.
+		click(from, 0, SlotActionType.PICKUP);
+		click(to, 0, SlotActionType.PICKUP);
+		if (!mc.player.currentScreenHandler.getCursorStack().isEmpty()) click(from, 0, SlotActionType.PICKUP);
+		return true;
+	}
+
+	private boolean clickSwap(int index, int hotbarSlot) {
+		click(index, hotbarSlot, SlotActionType.SWAP);
+		return true;
+	}
+
+	@Override
+	public boolean swapWithOffhand(int inventoryIndex) {
+		if (!canClick() || !valid(inventoryIndex) || inventoryIndex == Slots.OFF_HAND) return false;
+		// Button 40 is the off hand swap key.
+		click(inventoryIndex, 40, SlotActionType.SWAP);
+		return true;
+	}
+
+	@Override
+	public boolean quickMove(int inventoryIndex) {
+		if (!canClick() || !valid(inventoryIndex)) return false;
+		click(inventoryIndex, 0, SlotActionType.QUICK_MOVE);
+		return true;
+	}
+
+	@Override
+	public boolean drop(int inventoryIndex, boolean wholeStack) {
+		if (!canClick() || !valid(inventoryIndex)) return false;
+		click(inventoryIndex, wholeStack ? 1 : 0, SlotActionType.THROW);
+		return true;
 	}
 
 	private int find(Predicate<ItemStack> predicate, int from, int to) {

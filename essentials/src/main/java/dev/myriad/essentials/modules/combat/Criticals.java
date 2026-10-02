@@ -9,6 +9,7 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.util.Packets;
+import dev.myriad.api.util.Timer;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.decoration.EndCrystalEntity;
@@ -31,7 +32,7 @@ public class Criticals extends Module {
 	private static final double OFFSET = 0.0626, OFFSET_2 = 0.0455;
 
 	/** When the last crit hop was sent; Velocity holds off briefly so the hop isn't undone. */
-	private long lastCrit;
+	private final Timer sinceHop = new Timer();
 
 	private final EnumSetting<Mode> mode = sgGeneral.enumSetting("Mode", Mode.PACKET).build();
 	private final BoolSetting swordOnly = sgGeneral.bool("Sword Only").description("Only crit while holding a sword or axe.").build();
@@ -47,7 +48,7 @@ public class Criticals extends Module {
 
 	/** Whether a crit hop went out in the last {@code ms} milliseconds. */
 	public boolean hoppedWithin(long ms) {
-		return System.currentTimeMillis() - lastCrit < ms;
+		return !sinceHop.passed(ms);
 	}
 
 	/** Runs just before the attack packet goes out, so the hop packets reach the server first. */
@@ -71,7 +72,7 @@ public class Criticals extends Module {
 		Packets.sendSilently(new PlayerMoveC2SPacket.Full(pl.getX(), pl.getY() + OFFSET, pl.getZ(), yaw, pitch, false, pl.horizontalCollision));
 		Packets.sendSilently(new PlayerMoveC2SPacket.Full(pl.getX(), pl.getY(), pl.getZ(), yaw, pitch, false, pl.horizontalCollision));
 		pl.addCritParticles(target);
-		lastCrit = System.currentTimeMillis();
+		sinceHop.reset();
 		if (sprinting) Packets.sendSilently(new ClientCommandC2SPacket(pl, ClientCommandC2SPacket.Mode.START_SPRINTING));
 	}
 
@@ -93,6 +94,6 @@ public class Criticals extends Module {
 		Packets.sendSilently(new PlayerMoveC2SPacket.PositionAndOnGround(p.getX(), p.getY() + OFFSET_2, p.getZ(), false, collision));
 		p.addCritParticles(target);
 		if (sprinting) Packets.sendSilently(new ClientCommandC2SPacket(p, ClientCommandC2SPacket.Mode.START_SPRINTING));
-		lastCrit = System.currentTimeMillis();
+		sinceHop.reset();
 	}
 }

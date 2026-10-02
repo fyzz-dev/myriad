@@ -1,0 +1,18 @@
+base {
+	archivesName = "myriad-omarchy"
+}
+
+dependencies {
+	implementation project(path: ":core", configuration: "namedElements")
+}
+
+loom {
+	mods {
+		"myriad" {
+			sourceSet("main", ":core")
+		}
+		"myriad-omarchy" {
+			sourceSet sourceSets.main
+		}
+	}
+}
