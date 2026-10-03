@@ -29,6 +29,8 @@ loom {
 			property("myriad.openDesktop", project.hasProperty("openDesktop").toString())
 			// -PscreenshotEvery=N saves a screenshot every N seconds.
 			if (project.hasProperty("screenshotEvery")) property("myriad.screenshotEvery", project.property("screenshotEvery").toString())
+			// -PauditMixins applies every mixin at startup, so a broken one fails straight away instead of when its class loads.
+			property("myriad.auditMixins", project.hasProperty("auditMixins").toString())
 			// -PquickPlay="World name" loads straight into a singleplayer world.
 			if (project.hasProperty("quickPlay")) programArgs("--quickPlaySingleplayer", project.property("quickPlay").toString())
 		}

@@ -91,6 +91,11 @@ public class MyriadClient implements ClientModInitializer {
 				});
 			});
 		}
+		// Dev check: -Dmyriad.auditMixins=true applies every mixin (Myriad's and addons') once the game has started.
+		// Mixins into classes that load late (chat, screens) otherwise only fail when you first open them.
+		if (Boolean.getBoolean("myriad.auditMixins")) {
+			ClientLifecycleEvents.CLIENT_STARTED.register(mc -> org.spongepowered.asm.mixin.MixinEnvironment.getCurrentEnvironment().audit());
+		}
 		ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> {
 			bus.post(ShutdownEvent.INSTANCE);
 			myriad.configImpl().shutdown();

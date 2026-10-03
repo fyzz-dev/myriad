@@ -31,6 +31,12 @@ public interface Inventory {
 	/** Whether any module is holding a slot. */
 	boolean isHolding();
 
+	/**
+	 * The item the server thinks is in your main hand: the held slot's item while a module {@link #hold holds} one,
+	 * otherwise the selected item. Mining speed and tool checks use it, so holding a pickaxe mines at its speed.
+	 */
+	ItemStack serverItem();
+
 	/** First hotbar slot matching, or -1. */
 	int findInHotbar(Predicate<ItemStack> predicate);
 

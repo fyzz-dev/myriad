@@ -1,6 +1,4 @@
-package dev.myriad.impl.ui;
-
-import dev.myriad.api.render.Canvas;
+package dev.myriad.api.render;
 
 /**
  * The Myriad mark (two interlocked rounded squares) drawn with SDF outlines, so it is crisp at any size. Matches

@@ -9,6 +9,9 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 
 /**
  * The per-frame shape target: collects shapes during Render3DEvent and submits them to the level renderer afterwards.
@@ -27,6 +30,14 @@ public final class WorldRenderQueue extends ShapeBuilder {
 	private final FloatArrayList tracerWidths = new FloatArrayList();
 
 	private WorldRenderQueue() {
+	}
+
+	/** The inverse of this frame's view bobbing (walking bob and hurt shake), which vanilla folds into the projection. */
+	private final Matrix4f inverseBob = new Matrix4f();
+
+	/** Records this frame's view bobbing, so tracers can start at the true centre of the screen. */
+	public void viewBob(Matrix4fc bob) {
+		bob.invert(inverseBob);
 	}
 
 	/** Sets the camera position shapes are stored relative to; called before Render3DEvent is posted. */
@@ -58,9 +69,12 @@ public final class WorldRenderQueue extends ShapeBuilder {
 
 	/** Submits everything queued to the level renderer, then clears the queue. */
 	public void submit(SubmitNodeCollector collector, PoseStack poseStack, Camera camera) {
-		// Tracers start just in front of the camera along its look vector (the camera is the origin here).
+		// Tracers start just in front of the camera (the origin here), at the point the bobbing projection puts in the
+		// middle of the screen: straight ahead with the bob undone, so they stay on the crosshair while you walk.
 		if (!tracerColors.isEmpty()) {
-			Vec3 look = Vec3.directionFromRotation(camera.xRot(), camera.yRot()).scale(0.5);
+			Vector3f view = inverseBob.transformPosition(new Vector3f(0, 0, -0.5f));
+			Vector3f world = camera.rotation().transform(view);
+			Vec3 look = new Vec3(world.x, world.y, world.z);
 			for (int i = 0; i < tracerColors.size(); i++) {
 				int c = tracerColors.getInt(i);
 				xray.line((float) look.x, (float) look.y, (float) look.z, tracers.getFloat(i * 3), tracers.getFloat(i * 3 + 1), tracers.getFloat(i * 3 + 2), c, c, tracerWidths.getFloat(i));
