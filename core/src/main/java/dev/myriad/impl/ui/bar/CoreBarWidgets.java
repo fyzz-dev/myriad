@@ -93,7 +93,10 @@ public final class CoreBarWidgets {
 
 		ctx.registerBarWidget(new BarWidget(ctx.id("window_title"), "Window Title", BarWidget.Side.CENTER, 0) {
 			private String title() {
-				return wm.focused().map(win -> win.panel().title()).orElse("");
+				return wm.focused().map(win -> {
+					String sub = win.panel().subtitle();
+					return sub == null || sub.isEmpty() ? win.panel().title() : win.panel().title() + " · " + sub;
+				}).orElse("");
 			}
 
 			@Override

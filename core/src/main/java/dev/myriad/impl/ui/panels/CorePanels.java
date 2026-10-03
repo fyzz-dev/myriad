@@ -3,14 +3,13 @@ package dev.myriad.impl.ui.panels;
 import com.google.gson.JsonObject;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.addon.AddonContext;
-import dev.myriad.api.module.Category;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.ui.PanelType;
 import dev.myriad.api.ui.Window;
 import dev.myriad.api.util.MyriadId;
 import dev.myriad.impl.ui.WindowManager;
 
-import java.util.Optional;
+import java.util.List;
 
 /** Ids and registration of the panels Myriad core provides. */
 public final class CorePanels {
@@ -33,9 +32,9 @@ public final class CorePanels {
 	public static void register(AddonContext ctx, WindowManager wm) {
 		ctx.registerPanel(PanelType.builder(MODULES, "Modules").icon("").factory(() -> new ModulesPanel(null)).build());
 		ctx.registerPanel(PanelType.builder(CATEGORY, "Category").icon("").factory(args -> {
-			if (!args.has("category")) return null;
-			Optional<Category> c = Myriad.categories().get(MyriadId.parse(args.get("category").getAsString()));
-			return c.map(ModulesPanel::new).orElse(null);
+			// A window whose addons are all gone stays saved (as an orphan) until they're back.
+			List<ModuleGroup> groups = ModuleGroup.fromArgs(args);
+			return groups.stream().anyMatch(g -> !g.modules().isEmpty()) ? new ModulesPanel(groups) : null;
 		}).build());
 		ctx.registerPanel(PanelType.builder(MODULE_SETTINGS, "Module Settings").icon("").factory(args -> {
 			if (!args.has("module")) return null;

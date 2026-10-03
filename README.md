@@ -40,6 +40,12 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
 - **Workspaces 1–9** each tile their windows with a layout. **Columns** is the default: one window per module
   category, side by side, with each module's settings unfolding inline. **Dwindle** (each new window splits the
   focused one, Hyprland's default) and **Master** are also built in, and addons can register more layouts.
+- **Category windows** hold one addon's modules in one category: *Combat · Essentials*, *Combat · Crystal PvP*. Addons
+  share the standard categories (same icon and colour) and can add their own. Lay them out however suits you, say a
+  combat workspace and a base workspace; when you install an addon, its windows open on the workspace that already
+  has that category, and a notification says where. A window you close stays closed (the launcher reopens it).
+  **Merge** windows by dragging one by its title bar onto another's title bar: each addon becomes a section, and the
+  icon on a section's header moves it back out to its own window.
 - Windows can be **tiled**, **floating** or **fullscreen**. Drag the gaps between tiles to resize them.
 - The **HUD workspace** (the icon after 9 in the bar) holds the in-game HUD. Its windows are drawn in game without
   window decorations. Drag them to move them; they snap to edges and to the centre, and anchor to the nearest screen
@@ -162,9 +168,12 @@ everything it registered is removed, and the game keeps running. The Addons pane
 
 Following these keeps addons consistent with each other and with the stock modules:
 
-- **Categories.** Use the shared ones (`Categories.COMBAT`, `MOVEMENT`, `RENDER`, `PLAYER`, `WORLD`, `MISC`)
-  whenever they fit. Those windows hold modules from every addon; a module's tooltip and expanded card show which
-  addon it comes from. Register your own category (in `registerCategories`) only for things that fit nowhere else.
+- **Categories.** Your modules get a window per category, titled with your addon's name (*Combat · Your Addon*). Use
+  the shared categories (`Categories.COMBAT`, `MOVEMENT`, `RENDER`, `PLAYER`, `WORLD`, `MISC`) whenever they fit:
+  they share an icon and colour across addons, and on install your window opens beside the player's other windows
+  of that category. Register your own category (in `registerCategories`) for a kind of module that's genuinely new,
+  like automation or building; it gets a window of its own. A category is how you say which of your modules belong
+  together, so a handful per category reads better than one or twenty.
 - **Shared state** lives in objects you create in `initialize` and pass to constructors, not in static fields.
 - **Colours** default to theme roles (`SettingColor.role(Mode.ACCENT)`, `RED`, `TEXT`, …) so they follow the
   player's theme. A colour the player changes is saved as an override.
