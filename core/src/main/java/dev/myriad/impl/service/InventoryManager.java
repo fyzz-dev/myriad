@@ -56,6 +56,13 @@ public final class InventoryManager implements Inventory {
 	}
 
 	@Override
+	public ItemStack serverItem() {
+		if (mc.player == null) return ItemStack.EMPTY;
+		var inv = mc.player.getInventory();
+		return holder != null ? inv.getItem(serverSlot) : inv.getSelectedItem();
+	}
+
+	@Override
 	public int serverSlot() {
 		return serverSlot;
 	}

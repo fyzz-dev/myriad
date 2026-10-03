@@ -37,7 +37,14 @@ public abstract class ChatInputSuggestorMixin {
 	private CompletableFuture<Suggestions> pendingSuggestions;
 
 	@Shadow
-	protected abstract void updateUsageInfo();
+	private boolean currentParseIsCommand;
+	@Shadow
+	private boolean currentParseIsMessage;
+
+	/** Takes the parse and its suggestions since 26.2; ours are typed to Myriad's source, so pass them raw. */
+	@SuppressWarnings("rawtypes")
+	@Shadow
+	protected abstract void updateUsageInfo(ParseResults currentParse, Suggestions suggestions);
 
 	@Inject(method = "updateCommandInfo", at = @At(value = "INVOKE", target = "Lcom/mojang/brigadier/StringReader;canRead()Z", remap = false),
 		cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD)
@@ -48,11 +55,15 @@ public abstract class ChatInputSuggestorMixin {
 		reader.setCursor(reader.getCursor() + prefix.length());
 		var commands = MyriadImpl.get().commandManager();
 		if (currentParse == null) currentParse = commands.dispatcher().parse(reader, commands.source());
+		// Myriad's commands run on the client, so vanilla's "commands/messages not allowed" notes don't apply.
+		currentParseIsCommand = false;
+		currentParseIsMessage = false;
 		int cursor = this.input.getCursorPosition();
 		if (cursor >= prefix.length() && (suggestions == null || !keepSuggestions)) {
 			pendingSuggestions = commands.dispatcher().getCompletionSuggestions(currentParse, cursor);
-			pendingSuggestions.thenRun(() -> {
-				if (pendingSuggestions.isDone()) updateUsageInfo();
+			ParseResults<SharedSuggestionProvider> parse = currentParse;
+			pendingSuggestions.thenAccept(result -> {
+				if (pendingSuggestions.isDone()) updateUsageInfo(parse, result);
 			});
 		}
 		ci.cancel();
