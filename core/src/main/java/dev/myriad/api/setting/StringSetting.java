@@ -26,7 +26,7 @@ public class StringSetting extends Setting<String> {
 		return true;
 	}
 
-	public static class Builder extends Setting.Builder<Builder, String, StringSetting> {
+	public static class Builder extends Setting.Builder<dev.myriad.api.setting.StringSetting.Builder, String, StringSetting> {
 		public Builder(String name) {
 			super(name, "");
 		}

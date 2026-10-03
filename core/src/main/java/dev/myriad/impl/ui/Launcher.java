@@ -12,13 +12,13 @@ import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.FuzzyMatch;
 import dev.myriad.impl.ui.panels.CorePanels;
-import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.client.Minecraft;
 
 /**
  * A rofi/wofi-style launcher: fuzzy search over modules, panels, categories, themes, profiles and workspaces.
@@ -225,7 +225,7 @@ final class Launcher {
 			}
 			case GLFW.GLFW_KEY_V -> {
 				if ((mods & GLFW.GLFW_MOD_CONTROL) != 0) {
-					query += MinecraftClient.getInstance().keyboard.getClipboard();
+					query += Minecraft.getInstance().keyboardHandler.getClipboard();
 					refresh();
 				}
 			}
@@ -237,7 +237,7 @@ final class Launcher {
 
 	boolean charTyped(char chr) {
 		if (!visible) return false;
-		long window = net.minecraft.client.MinecraftClient.getInstance().getWindow().getHandle();
+		long window = net.minecraft.client.Minecraft.getInstance().getWindow().handle();
 		boolean ctrl = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
 		if (chr >= 32 && chr != 127 && !ctrl) {
 			query += chr;

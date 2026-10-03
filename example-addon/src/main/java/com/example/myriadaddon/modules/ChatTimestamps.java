@@ -6,11 +6,10 @@ import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.SettingColor;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
 
 /**
  * Prefixes chat messages with the time they arrived.
@@ -42,11 +41,11 @@ public final class ChatTimestamps extends Module {
 	}
 
 	/** Called by the mixin for every chat line. Returns the line unchanged while the module is off. */
-	public static Text decorate(Text message) {
+	public static Component decorate(Component message) {
 		ChatTimestamps m = Modules.active(ChatTimestamps.class);
 		if (m == null) return message;
 		String time = LocalTime.now().format(m.format.get().formatter);
 		int rgb = m.color.argb() & 0xFFFFFF;
-		return Text.literal("[" + time + "] ").styled(s -> s.withColor(TextColor.fromRgb(rgb))).append(message);
+		return Component.literal("[" + time + "] ").withStyle(s -> s.withColor(TextColor.fromRgb(rgb))).append(message);
 	}
 }

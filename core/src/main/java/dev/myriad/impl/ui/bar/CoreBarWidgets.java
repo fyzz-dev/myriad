@@ -10,10 +10,9 @@ import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.impl.ui.MyriadLogo;
 import dev.myriad.impl.ui.WindowManager;
-import net.minecraft.client.MinecraftClient;
-
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import net.minecraft.client.Minecraft;
 
 /** The stock bar: launcher button and workspaces on the left, focused window in the middle, clock on the right. */
 public final class CoreBarWidgets {
@@ -127,7 +126,7 @@ public final class CoreBarWidgets {
 
 		ctx.registerBarWidget(new BarWidget(ctx.id("fps"), "FPS", BarWidget.Side.RIGHT, 90) {
 			private String text() {
-				return MinecraftClient.getInstance().getCurrentFps() + " fps";
+				return Minecraft.getInstance().getFps() + " fps";
 			}
 
 			@Override

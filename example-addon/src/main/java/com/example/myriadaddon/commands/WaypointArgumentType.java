@@ -9,17 +9,16 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
-
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
 
 /**
  * A command argument that names an existing waypoint: parsing fails with a readable error for unknown names, and chat
  * suggests the waypoints in this world as you type. Quote names with spaces: {@code .wp remove "Base 2"}.
  */
 public final class WaypointArgumentType implements ArgumentType<Waypoint> {
-	private static final DynamicCommandExceptionType UNKNOWN = new DynamicCommandExceptionType(name -> Text.literal("No waypoint called " + name));
+	private static final DynamicCommandExceptionType UNKNOWN = new DynamicCommandExceptionType(name -> Component.literal("No waypoint called " + name));
 
 	private final WaypointStore store;
 
@@ -39,6 +38,6 @@ public final class WaypointArgumentType implements ArgumentType<Waypoint> {
 
 	@Override
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
-		return CommandSource.suggestMatching(store.here().stream().map(w -> w.name().contains(" ") ? "\"" + w.name() + "\"" : w.name()), builder);
+		return SharedSuggestionProvider.suggest(store.here().stream().map(w -> w.name().contains(" ") ? "\"" + w.name() + "\"" : w.name()), builder);
 	}
 }

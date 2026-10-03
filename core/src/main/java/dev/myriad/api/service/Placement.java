@@ -1,9 +1,8 @@
 package dev.myriad.api.service;
 
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-
 import java.util.List;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * Shared block placement for modules like Scaffold, Surround or Auto Trap: finds a solid neighbour face to click,

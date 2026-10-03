@@ -73,7 +73,7 @@ public final class ThemePanel extends WidgetPanel {
 		content.add(actions);
 
 		HBox files = new HBox(4);
-		files.add(new Button(" Open Folder", () -> Util.getOperatingSystem().open(themes.folder())))
+		files.add(new Button(" Open Folder", () -> Util.getPlatform().openPath(themes.folder())))
 			.tooltip("Theme files live here. Share one by sending its .json; drop a received one in and press Reload.");
 		files.add(new Button(" Reload", () -> {
 			themes.reload();

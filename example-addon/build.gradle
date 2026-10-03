@@ -3,12 +3,12 @@ base {
 }
 
 dependencies {
-	implementation project(path: ":core", configuration: "namedElements")
+	implementation project(":core")
 	// Only so `:example-addon:runClient` also boots the stock modules; the addon does not depend on them.
-	runtimeOnly project(path: ":essentials", configuration: "namedElements")
+	runtimeOnly project(":essentials")
 	// The Omarchy theme addon lives in its own repository; if it's been built next to this one, load it too.
 	def omarchy = fileTree(dir: rootProject.file("../myriad-omarchy/build/libs"), include: "myriad-omarchy-*.jar", exclude: "*-sources.jar")
-	if (!omarchy.isEmpty()) modLocalRuntime omarchy
+	if (!omarchy.isEmpty()) localRuntime omarchy
 }
 
 loom {
@@ -30,6 +30,10 @@ loom {
 		client {
 			// ./gradlew :example-addon:runClient -PopenDesktop opens the desktop over the title screen on launch.
 			property("myriad.openDesktop", project.hasProperty("openDesktop").toString())
+			// -PscreenshotEvery=N saves a screenshot every N seconds.
+			if (project.hasProperty("screenshotEvery")) property("myriad.screenshotEvery", project.property("screenshotEvery").toString())
+			// -PquickPlay="World name" loads straight into a singleplayer world.
+			if (project.hasProperty("quickPlay")) programArgs("--quickPlaySingleplayer", project.property("quickPlay").toString())
 		}
 	}
 }

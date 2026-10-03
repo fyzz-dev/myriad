@@ -1,22 +1,22 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * The local player is about to right-click: a block, an item in the air, or an entity. Posted for clicks from the
  * mouse and from features alike. Cancel to stop the interaction.
  */
 public abstract class InteractEvent extends Cancellable {
-	private final Hand hand;
+	private final InteractionHand hand;
 
-	protected InteractEvent(Hand hand) {
+	protected InteractEvent(InteractionHand hand) {
 		this.hand = hand;
 	}
 
-	public Hand hand() {
+	public InteractionHand hand() {
 		return hand;
 	}
 
@@ -24,7 +24,7 @@ public abstract class InteractEvent extends Cancellable {
 	public static final class Block extends InteractEvent {
 		private final BlockHitResult hit;
 
-		public Block(Hand hand, BlockHitResult hit) {
+		public Block(InteractionHand hand, BlockHitResult hit) {
 			super(hand);
 			this.hit = hit;
 		}
@@ -36,7 +36,7 @@ public abstract class InteractEvent extends Cancellable {
 
 	/** Using the held item without a block (eating, throwing, shooting). */
 	public static final class Item extends InteractEvent {
-		public Item(Hand hand) {
+		public Item(InteractionHand hand) {
 			super(hand);
 		}
 	}
@@ -45,7 +45,7 @@ public abstract class InteractEvent extends Cancellable {
 	public static final class EntityTarget extends InteractEvent {
 		private final Entity entity;
 
-		public EntityTarget(Hand hand, Entity entity) {
+		public EntityTarget(InteractionHand hand, Entity entity) {
 			super(hand);
 			this.entity = entity;
 		}

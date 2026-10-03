@@ -2,7 +2,7 @@
 	"required": true,
 	"package": "dev.myriad.impl.mixin",
 	"plugin": "dev.myriad.api.mixin.CompatMixinPlugin",
-	"compatibilityLevel": "JAVA_21",
+	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"CameraMixin",
 		"ChatHudMixin",
@@ -17,6 +17,8 @@
 		"EntityRenderStateMixin",
 		"EntityRendererMixin",
 		"GameRendererMixin",
+		"GuiMixin",
+		"GuiRendererMixin",
 		"ItemStackMixin",
 		"KeyboardMixin",
 		"LivingEntityMixin",

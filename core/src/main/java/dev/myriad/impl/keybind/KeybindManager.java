@@ -9,8 +9,8 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.util.Keybind;
 import dev.myriad.impl.CoreAddon;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.TitleScreen;
 import org.lwjgl.glfw.GLFW;
 
 /** One place that maps raw input to module toggles and key actions, outside of screens. */
@@ -20,7 +20,7 @@ public final class KeybindManager {
 		if (e.action() == GLFW.GLFW_REPEAT) return;
 		if (e.inScreen()) {
 			// The menu can also be opened from the title screen.
-			if (e.isPress() && MinecraftClient.getInstance().currentScreen instanceof TitleScreen) {
+			if (e.isPress() && Minecraft.getInstance().gui.screen() instanceof TitleScreen) {
 				for (KeyAction a : Myriad.keyActions()) {
 					if (a.id().equals(CoreAddon.OPEN_MENU) && a.bind().matchesKey(e.key(), e.modifiers())) {
 						// Consume it, or the freshly opened menu receives the same press and closes again.

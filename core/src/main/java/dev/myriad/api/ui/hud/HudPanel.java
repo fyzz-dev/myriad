@@ -55,6 +55,6 @@ public abstract class HudPanel extends Panel {
 	 * element can still be seen and placed.
 	 */
 	protected boolean preview() {
-		return mc.player == null || mc.world == null;
+		return mc.player == null || mc.level == null;
 	}
 }

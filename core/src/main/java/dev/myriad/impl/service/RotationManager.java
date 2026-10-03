@@ -5,13 +5,13 @@ import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.MovementPacketsEvent;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.util.MathUtil;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 /** Per-tick rotation requests; the highest priority one is written into the movement packet. */
 public final class RotationManager implements Rotations {
-	private final MinecraftClient mc = MinecraftClient.getInstance();
+	private final Minecraft mc = Minecraft.getInstance();
 	private Object owner;
 	private float yaw, pitch;
 	private int priority = Integer.MIN_VALUE;
@@ -29,7 +29,7 @@ public final class RotationManager implements Rotations {
 		if (this.owner == null || priority > this.priority) {
 			this.owner = owner;
 			this.yaw = yaw;
-			this.pitch = MathHelper.clamp(pitch, -90, 90);
+			this.pitch = Mth.clamp(pitch, -90, 90);
 			this.priority = priority;
 			this.callback = afterSent;
 		}
@@ -50,8 +50,8 @@ public final class RotationManager implements Rotations {
 	private synchronized void onMovement(MovementPacketsEvent e) {
 		if (owner != null) {
 			// Keep the sent yaw continuous with the real one to avoid huge deltas the server would flag.
-			float base = mc.player != null ? mc.player.getYaw() : e.yaw;
-			e.yaw = base + MathHelper.wrapDegrees(yaw - base);
+			float base = mc.player != null ? mc.player.getYRot() : e.yaw;
+			e.yaw = base + Mth.wrapDegrees(yaw - base);
 			e.pitch = pitch;
 			rotating = true;
 		} else {
@@ -81,7 +81,7 @@ public final class RotationManager implements Rotations {
 	}
 
 	@Override
-	public float[] anglesTo(Vec3d target) {
-		return MathUtil.anglesTo(mc.player.getEyePos(), target);
+	public float[] anglesTo(Vec3 target) {
+		return MathUtil.anglesTo(mc.player.getEyePosition(), target);
 	}
 }

@@ -1,13 +1,13 @@
 package dev.myriad.api.util;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -18,37 +18,37 @@ public final class Reach {
 	private Reach() {
 	}
 
-	private static MinecraftClient mc() {
-		return MinecraftClient.getInstance();
+	private static Minecraft mc() {
+		return Minecraft.getInstance();
 	}
 
 	public static double blockRange() {
-		return mc().player == null ? 0 : mc().player.getBlockInteractionRange();
+		return mc().player == null ? 0 : mc().player.blockInteractionRange();
 	}
 
 	public static double entityRange() {
-		return mc().player == null ? 0 : mc().player.getEntityInteractionRange();
+		return mc().player == null ? 0 : mc().player.entityInteractionRange();
 	}
 
-	public static Vec3d eyes() {
-		return mc().player == null ? Vec3d.ZERO : mc().player.getEyePos();
+	public static Vec3 eyes() {
+		return mc().player == null ? Vec3.ZERO : mc().player.getEyePosition();
 	}
 
 	/** Whether nothing solid lies between two points. */
-	public static boolean canSee(Vec3d from, Vec3d to) {
-		if (mc().world == null || mc().player == null) return false;
-		return mc().world.raycast(new RaycastContext(from, to, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc().player))
+	public static boolean canSee(Vec3 from, Vec3 to) {
+		if (mc().level == null || mc().player == null) return false;
+		return mc().level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc().player))
 			.getType() == HitResult.Type.MISS;
 	}
 
 	/** Whether nothing solid lies between the eyes and {@code point}. */
-	public static boolean canSee(Vec3d point) {
+	public static boolean canSee(Vec3 point) {
 		return canSee(eyes(), point);
 	}
 
 	/** Whether {@code point} is within block reach of the eyes. */
-	public static boolean canReach(Vec3d point) {
-		return mc().player != null && eyes().squaredDistanceTo(point) <= blockRange() * blockRange();
+	public static boolean canReach(Vec3 point) {
+		return mc().player != null && eyes().distanceToSqr(point) <= blockRange() * blockRange();
 	}
 
 	/** Whether the server would accept hitting {@code entity} (its box within entity reach). */
@@ -58,11 +58,11 @@ public final class Reach {
 
 	/** Whether the server would accept interacting with the block at {@code pos}. */
 	public static boolean canReach(BlockPos pos) {
-		return mc().player != null && mc().player.canInteractWithBlockAt(pos, 0);
+		return mc().player != null && mc().player.isWithinBlockInteractionRange(pos, 0);
 	}
 
 	/** The point on {@code entity}'s box closest to the eyes, where a hit or rotation should aim. */
-	public static Vec3d aimPoint(Entity entity) {
+	public static Vec3 aimPoint(Entity entity) {
 		return MathUtil.closestPoint(entity.getBoundingBox(), eyes());
 	}
 
@@ -72,16 +72,16 @@ public final class Reach {
 	 * face qualifies.
 	 */
 	public static @Nullable BlockHitResult hitFor(BlockPos pos, boolean mustSee) {
-		if (mc().world == null || mc().player == null) return null;
-		Vec3d eyes = eyes();
+		if (mc().level == null || mc().player == null) return null;
+		Vec3 eyes = eyes();
 		BlockHitResult best = null, bestHidden = null;
 		double bestDist = Double.MAX_VALUE, bestHiddenDist = Double.MAX_VALUE;
 		for (Direction face : Direction.values()) {
-			Vec3d point = Positions.faceCenter(pos, face);
-			double d = eyes.squaredDistanceTo(point);
+			Vec3 point = Positions.faceCenter(pos, face);
+			double d = eyes.distanceToSqr(point);
 			if (d > blockRange() * blockRange()) continue;
 			// Seeing a face means the ray from the eyes lands on this block (not one in front of it).
-			BlockHitResult ray = mc().world.raycast(new RaycastContext(eyes, point, RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, mc().player));
+			BlockHitResult ray = mc().level.clip(new ClipContext(eyes, point, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc().player));
 			boolean visible = ray.getType() == HitResult.Type.MISS || ray.getBlockPos().equals(pos);
 			BlockHitResult hit = new BlockHitResult(point, face, pos, false);
 			if (visible && d < bestDist) {

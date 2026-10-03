@@ -7,16 +7,15 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import net.minecraft.block.Block;
-import net.minecraft.command.CommandSource;
-import net.minecraft.entity.EntityType;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
 
 /** An entry of a game registry by id ({@code diamond_pickaxe} or {@code minecraft:diamond_pickaxe}), with suggestions. */
 public class RegistryArgumentType<T> implements ArgumentType<T> {
@@ -25,19 +24,19 @@ public class RegistryArgumentType<T> implements ArgumentType<T> {
 
 	RegistryArgumentType(Registry<T> registry, String what) {
 		this.registry = registry;
-		this.unknown = new DynamicCommandExceptionType(id -> Text.literal("Unknown " + what + " '" + id + "'"));
+		this.unknown = new DynamicCommandExceptionType(id -> Component.literal("Unknown " + what + " '" + id + "'"));
 	}
 
 	public static RegistryArgumentType<Item> item() {
-		return new RegistryArgumentType<>(Registries.ITEM, "item");
+		return new RegistryArgumentType<>(BuiltInRegistries.ITEM, "item");
 	}
 
 	public static RegistryArgumentType<Block> block() {
-		return new RegistryArgumentType<>(Registries.BLOCK, "block");
+		return new RegistryArgumentType<>(BuiltInRegistries.BLOCK, "block");
 	}
 
 	public static RegistryArgumentType<EntityType<?>> entityType() {
-		return new RegistryArgumentType<>(Registries.ENTITY_TYPE, "entity type");
+		return new RegistryArgumentType<>(BuiltInRegistries.ENTITY_TYPE, "entity type");
 	}
 
 	/** Any registry; {@code what} names it in error messages ("enchantment"). */
@@ -66,16 +65,16 @@ public class RegistryArgumentType<T> implements ArgumentType<T> {
 		int start = reader.getCursor();
 		String raw = ArgUtil.readWord(reader);
 		Identifier id = Identifier.tryParse(raw);
-		if (id == null || !registry.containsId(id)) {
+		if (id == null || !registry.containsKey(id)) {
 			reader.setCursor(start);
 			throw unknown.createWithContext(reader, raw);
 		}
-		return registry.get(id);
+		return registry.getValue(id);
 	}
 
 	@Override
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
 		// Vanilla entries are suggested without "minecraft:", the way players type them.
-		return CommandSource.suggestMatching(registry.getIds().stream().map(id -> id.getNamespace().equals("minecraft") ? id.getPath() : id.toString()), builder);
+		return SharedSuggestionProvider.suggest(registry.keySet().stream().map(id -> id.getNamespace().equals("minecraft") ? id.getPath() : id.toString()), builder);
 	}
 }

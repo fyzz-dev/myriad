@@ -2,15 +2,14 @@ package dev.myriad.api.setting;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
-import net.minecraft.block.Block;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.util.Identifier;
-
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
 
 /** One entry of a game registry: a single item (what to place), block (what to mine), and so on. */
 public class RegistrySetting<T> extends Setting<T> {
@@ -38,7 +37,7 @@ public class RegistrySetting<T> extends Setting<T> {
 
 	@Override
 	public JsonElement toJson() {
-		return new JsonPrimitive(String.valueOf(registry.getId(value)));
+		return new JsonPrimitive(String.valueOf(registry.getKey(value)));
 	}
 
 	@Override
@@ -49,8 +48,8 @@ public class RegistrySetting<T> extends Setting<T> {
 	@Override
 	public boolean parse(String input) {
 		Identifier id = Identifier.tryParse(input.trim());
-		if (id == null || !registry.containsId(id)) return false;
-		T t = registry.get(id);
+		if (id == null || !registry.containsKey(id)) return false;
+		T t = registry.getValue(id);
 		if (!accepts(t)) return false;
 		set(t);
 		return true;
@@ -58,16 +57,16 @@ public class RegistrySetting<T> extends Setting<T> {
 
 	@Override
 	public List<String> suggestions() {
-		return registry.getIds().stream().filter(id -> accepts(registry.get(id))).map(id -> id.getNamespace().equals("minecraft") ? id.getPath() : id.toString()).toList();
+		return registry.keySet().stream().filter(id -> accepts(registry.getValue(id))).map(id -> id.getNamespace().equals("minecraft") ? id.getPath() : id.toString()).toList();
 	}
 
 	@Override
 	public String valueString() {
-		Identifier id = registry.getId(value);
+		Identifier id = registry.getKey(value);
 		return id == null ? "" : id.getPath();
 	}
 
-	public static class Builder<T> extends Setting.Builder<Builder<T>, T, RegistrySetting<T>> {
+	public static class Builder<T> extends Setting.Builder<dev.myriad.api.setting.RegistrySetting.Builder<T>, T, RegistrySetting<T>> {
 		private final Registry<T> registry;
 		private Predicate<T> filter;
 
@@ -77,7 +76,7 @@ public class RegistrySetting<T> extends Setting<T> {
 		}
 
 		/** Only entries passing {@code filter} can be picked. */
-		public Builder<T> filter(Predicate<T> filter) {
+		public dev.myriad.api.setting.RegistrySetting.Builder<T> filter(Predicate<T> filter) {
 			this.filter = filter;
 			return this;
 		}
@@ -88,11 +87,11 @@ public class RegistrySetting<T> extends Setting<T> {
 		}
 	}
 
-	static Builder<Item> item(String name, Item defaultValue) {
-		return new Builder<>(name, Registries.ITEM, defaultValue);
+	static dev.myriad.api.setting.RegistrySetting.Builder<Item> item(String name, Item defaultValue) {
+		return new dev.myriad.api.setting.RegistrySetting.Builder<>(name, BuiltInRegistries.ITEM, defaultValue);
 	}
 
-	static Builder<Block> block(String name, Block defaultValue) {
-		return new Builder<>(name, Registries.BLOCK, defaultValue);
+	static dev.myriad.api.setting.RegistrySetting.Builder<Block> block(String name, Block defaultValue) {
+		return new dev.myriad.api.setting.RegistrySetting.Builder<>(name, BuiltInRegistries.BLOCK, defaultValue);
 	}
 }

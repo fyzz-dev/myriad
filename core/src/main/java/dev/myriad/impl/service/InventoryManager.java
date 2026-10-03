@@ -5,23 +5,22 @@ import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.service.Inventory;
 import dev.myriad.api.util.Slots;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
-import net.minecraft.screen.slot.SlotActionType;
-
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.ItemStack;
 
 public final class InventoryManager implements Inventory {
-	private final MinecraftClient mc = MinecraftClient.getInstance();
+	private final Minecraft mc = Minecraft.getInstance();
 	private volatile int serverSlot;
 	private Object holder;
 	private int holdTicks;
 
 	@Subscribe
 	private void onSend(PacketEvent.Send e) {
-		if (e.packet() instanceof UpdateSelectedSlotC2SPacket p) serverSlot = p.getSelectedSlot();
+		if (e.packet() instanceof ServerboundSetCarriedItemPacket p) serverSlot = p.getSlot();
 	}
 
 	@Subscribe
@@ -36,7 +35,7 @@ public final class InventoryManager implements Inventory {
 		if (holder != null && holder != owner) return false;
 		holder = owner;
 		holdTicks = Math.max(1, maxTicks);
-		if (serverSlot != hotbarSlot) mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(hotbarSlot));
+		if (serverSlot != hotbarSlot) mc.getConnection().send(new ServerboundSetCarriedItemPacket(hotbarSlot));
 		return true;
 	}
 
@@ -45,9 +44,9 @@ public final class InventoryManager implements Inventory {
 		if (holder == null || holder != owner) return;
 		holder = null;
 		holdTicks = 0;
-		if (mc.player != null && mc.getNetworkHandler() != null) {
-			int visible = mc.player.getInventory().selectedSlot;
-			if (serverSlot != visible) mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(visible));
+		if (mc.player != null && mc.getConnection() != null) {
+			int visible = mc.player.getInventory().getSelectedSlot();
+			if (serverSlot != visible) mc.getConnection().send(new ServerboundSetCarriedItemPacket(visible));
 		}
 	}
 
@@ -64,14 +63,14 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public void select(int hotbarSlot) {
 		if (mc.player == null || hotbarSlot < 0 || hotbarSlot > 8) return;
-		mc.player.getInventory().selectedSlot = hotbarSlot;
-		mc.interactionManager.syncSelectedSlot();
+		mc.player.getInventory().setSelectedSlot(hotbarSlot);
+		mc.gameMode.ensureHasSentCarriedItem();
 	}
 
 	@Override
 	public void silentSwap(int hotbarSlot, Runnable action) {
 		if (mc.player == null || hotbarSlot < 0 || hotbarSlot > 8) return;
-		int previous = mc.player.getInventory().selectedSlot;
+		int previous = mc.player.getInventory().getSelectedSlot();
 		if (previous == hotbarSlot) {
 			action.run();
 			return;
@@ -109,7 +108,7 @@ public final class InventoryManager implements Inventory {
 		int best = -1;
 		double bestScore = 0;
 		for (int i = from; i < to; i++) {
-			double s = score.applyAsDouble(mc.player.getInventory().getStack(i));
+			double s = score.applyAsDouble(mc.player.getInventory().getItem(i));
 			if (s > bestScore) {
 				bestScore = s;
 				best = i;
@@ -123,8 +122,8 @@ public final class InventoryManager implements Inventory {
 		if (mc.player == null) return 0;
 		int n = 0;
 		var inv = mc.player.getInventory();
-		for (int i = 0; i < 36; i++) if (predicate.test(inv.getStack(i))) n += inv.getStack(i).getCount();
-		if (predicate.test(inv.getStack(Slots.OFF_HAND))) n += inv.getStack(Slots.OFF_HAND).getCount();
+		for (int i = 0; i < 36; i++) if (predicate.test(inv.getItem(i))) n += inv.getItem(i).getCount();
+		if (predicate.test(inv.getItem(Slots.OFF_HAND))) n += inv.getItem(Slots.OFF_HAND).getCount();
 		return n;
 	}
 
@@ -145,22 +144,22 @@ public final class InventoryManager implements Inventory {
 		int to = preferredSlot;
 		if (to < 0 || to > 8) {
 			to = findInHotbar(ItemStack::isEmpty);
-			if (to == -1) to = mc.player.getInventory().selectedSlot;
+			if (to == -1) to = mc.player.getInventory().getSelectedSlot();
 		}
 		return moveToHotbar(from, to) ? to : -1;
 	}
 
 	/** True if the player's own screen is the one open to clicks. */
 	private boolean canClick() {
-		return mc.player != null && mc.interactionManager != null && mc.player.currentScreenHandler == mc.player.playerScreenHandler;
+		return mc.player != null && mc.gameMode != null && mc.player.containerMenu == mc.player.inventoryMenu;
 	}
 
 	private static boolean valid(int index) {
 		return index >= 0 && index <= Slots.OFF_HAND;
 	}
 
-	private void click(int index, int button, SlotActionType action) {
-		mc.interactionManager.clickSlot(mc.player.playerScreenHandler.syncId, Slots.playerScreen(index), button, action, mc.player);
+	private void click(int index, int button, ContainerInput action) {
+		mc.gameMode.handleContainerInput(mc.player.inventoryMenu.containerId, Slots.playerScreen(index), button, action, mc.player);
 	}
 
 	@Override
@@ -170,14 +169,14 @@ public final class InventoryManager implements Inventory {
 		if (Slots.isHotbar(to)) return clickSwap(from, to);
 		if (Slots.isHotbar(from)) return clickSwap(to, from);
 		// Pick up, put down (swapping with what's there), then put back whatever ended up on the cursor.
-		click(from, 0, SlotActionType.PICKUP);
-		click(to, 0, SlotActionType.PICKUP);
-		if (!mc.player.currentScreenHandler.getCursorStack().isEmpty()) click(from, 0, SlotActionType.PICKUP);
+		click(from, 0, ContainerInput.PICKUP);
+		click(to, 0, ContainerInput.PICKUP);
+		if (!mc.player.containerMenu.getCarried().isEmpty()) click(from, 0, ContainerInput.PICKUP);
 		return true;
 	}
 
 	private boolean clickSwap(int index, int hotbarSlot) {
-		click(index, hotbarSlot, SlotActionType.SWAP);
+		click(index, hotbarSlot, ContainerInput.SWAP);
 		return true;
 	}
 
@@ -185,27 +184,27 @@ public final class InventoryManager implements Inventory {
 	public boolean swapWithOffhand(int inventoryIndex) {
 		if (!canClick() || !valid(inventoryIndex) || inventoryIndex == Slots.OFF_HAND) return false;
 		// Button 40 is the off hand swap key.
-		click(inventoryIndex, 40, SlotActionType.SWAP);
+		click(inventoryIndex, 40, ContainerInput.SWAP);
 		return true;
 	}
 
 	@Override
 	public boolean quickMove(int inventoryIndex) {
 		if (!canClick() || !valid(inventoryIndex)) return false;
-		click(inventoryIndex, 0, SlotActionType.QUICK_MOVE);
+		click(inventoryIndex, 0, ContainerInput.QUICK_MOVE);
 		return true;
 	}
 
 	@Override
 	public boolean drop(int inventoryIndex, boolean wholeStack) {
 		if (!canClick() || !valid(inventoryIndex)) return false;
-		click(inventoryIndex, wholeStack ? 1 : 0, SlotActionType.THROW);
+		click(inventoryIndex, wholeStack ? 1 : 0, ContainerInput.THROW);
 		return true;
 	}
 
 	private int find(Predicate<ItemStack> predicate, int from, int to) {
 		if (mc.player == null) return -1;
-		for (int i = from; i < to; i++) if (predicate.test(mc.player.getInventory().getStack(i))) return i;
+		for (int i = from; i < to; i++) if (predicate.test(mc.player.getInventory().getItem(i))) return i;
 		return -1;
 	}
 }

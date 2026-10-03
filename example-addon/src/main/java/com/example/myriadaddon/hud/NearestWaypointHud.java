@@ -6,10 +6,9 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.ui.hud.HudStyle;
 import dev.myriad.api.ui.hud.TextHudPanel;
 import dev.myriad.api.util.Format;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.Optional;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 /** The closest waypoint, how far it is, and an arrow pointing to it relative to where you're looking. */
 public final class NearestWaypointHud extends TextHudPanel {
@@ -31,7 +30,7 @@ public final class NearestWaypointHud extends TextHudPanel {
 			out.add("Home", "120m" + (arrow.get() ? " ↗" : ""));
 			return;
 		}
-		Vec3d eye = mc.player.getEyePos();
+		Vec3 eye = mc.player.getEyePosition();
 		Optional<Waypoint> nearest = store.nearest(eye);
 		if (nearest.isEmpty()) {
 			out.value("No waypoints");
@@ -44,9 +43,9 @@ public final class NearestWaypointHud extends TextHudPanel {
 		if (coords.get()) out.value(w.coords());
 	}
 
-	private String arrowTo(Vec3d target, Vec3d eye) {
+	private String arrowTo(Vec3 target, Vec3 eye) {
 		double angle = Math.toDegrees(Math.atan2(target.z - eye.z, target.x - eye.x)) - 90;
-		float relative = MathHelper.wrapDegrees((float) angle - mc.player.getYaw());
+		float relative = Mth.wrapDegrees((float) angle - mc.player.getYRot());
 		return ARROWS[Math.floorMod(Math.round(relative / 45f), 8)];
 	}
 }

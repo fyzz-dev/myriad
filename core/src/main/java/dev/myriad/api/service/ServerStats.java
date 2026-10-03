@@ -1,9 +1,9 @@
 package dev.myriad.api.service;
 
-import net.minecraft.entity.player.PlayerEntity;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
+import net.minecraft.world.entity.player.Player;
 
 /**
  * Facts about the current server and connection that several features want, tracked once by Myriad instead of by
@@ -50,7 +50,7 @@ public interface ServerStats {
 	/** Totems {@code player} has used since they last died (reset when you join a world). */
 	int totemPops(UUID player);
 
-	default int totemPops(PlayerEntity player) {
-		return totemPops(player.getUuid());
+	default int totemPops(Player player) {
+		return totemPops(player.getUUID());
 	}
 }

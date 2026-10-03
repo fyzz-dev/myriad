@@ -7,12 +7,11 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
-
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
 
 /**
  * A name from a list you supply at runtime (waypoints, saved kits, schematic files), with suggestions. Names with
@@ -20,7 +19,7 @@ import java.util.function.Supplier;
  * "create" commands that should still suggest existing names.
  */
 public class ChoiceArgumentType implements ArgumentType<String> {
-	private static final DynamicCommandExceptionType UNKNOWN = new DynamicCommandExceptionType(v -> Text.literal("Unknown '" + v + "'"));
+	private static final DynamicCommandExceptionType UNKNOWN = new DynamicCommandExceptionType(v -> Component.literal("Unknown '" + v + "'"));
 	private final Supplier<? extends Collection<String>> choices;
 	private final boolean strict;
 
@@ -55,6 +54,6 @@ public class ChoiceArgumentType implements ArgumentType<String> {
 
 	@Override
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
-		return CommandSource.suggestMatching(choices.get().stream().map(c -> c.contains(" ") ? "\"" + c + "\"" : c), builder);
+		return SharedSuggestionProvider.suggest(choices.get().stream().map(c -> c.contains(" ") ? "\"" + c + "\"" : c), builder);
 	}
 }

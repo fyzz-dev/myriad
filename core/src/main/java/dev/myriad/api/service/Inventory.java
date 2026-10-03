@@ -1,9 +1,8 @@
 package dev.myriad.api.service;
 
-import net.minecraft.item.ItemStack;
-
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
+import net.minecraft.world.item.ItemStack;
 
 /** Hotbar helpers that track the slot the server thinks is selected. */
 public interface Inventory {

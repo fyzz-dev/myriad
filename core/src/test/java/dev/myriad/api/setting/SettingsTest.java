@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+
 class SettingsTest {
 	enum Mode {
 		FAST, SLOW_AND_STEADY
@@ -25,6 +26,21 @@ class SettingsTest {
 		final StringListSetting words = colors.stringList("Words").defaultValue("a", "b").build();
 		// Same name as a setting in another group: allowed, ids are group-scoped.
 		final BoolSetting otherRotate = colors.bool("Rotate").build();
+	}
+
+	@Test
+	void onAnyChangedSeesEveryGroupOnlyOnRealChanges() {
+		Holder h = new Holder();
+		List<String> changed = new java.util.ArrayList<>();
+		h.settings.onAnyChanged(s -> changed.add(s.id()));
+		h.count.set(5);
+		h.count.set(5); // unchanged: no call
+		h.players.set(new SettingColor(0xFF000000, SettingColor.Mode.STATIC));
+		h.words.add("z");
+		// Added after the listener: still covered.
+		BoolSetting late = h.colors.bool("Late").build();
+		late.set(true);
+		assertEquals(List.of("count", "players", "words", "late"), changed);
 	}
 
 	@Test

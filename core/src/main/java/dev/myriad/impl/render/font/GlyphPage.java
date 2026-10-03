@@ -1,6 +1,10 @@
 package dev.myriad.impl.render.font;
 
-import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import dev.myriad.impl.render.GpuGarbage;
 import org.lwjgl.system.MemoryUtil;
 
 import java.awt.Font;
@@ -12,9 +16,6 @@ import java.awt.font.GlyphVector;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
-
 /**
  * 256 consecutive code points rasterised into one texture. Each glyph gets a
  * cell sized to its actual pixel bounds, packed in shelves, and is drawn with the first font in the fallback chain
@@ -25,7 +26,8 @@ final class GlyphPage {
 	private static final int ATLAS_WIDTH = 1024;
 
 	final Glyph[] glyphs = new Glyph[256];
-	private int texture;
+	private GpuTexture texture;
+	private GpuTextureView view;
 
 	/** Private-use code points are icon glyphs (Nerd Fonts); they get an advance wide enough for their ink. */
 	static boolean isIcon(int cp) {
@@ -82,11 +84,12 @@ final class GlyphPage {
 		g.dispose();
 
 		texture = upload(img);
+		view = RenderSystem.getDevice().createTextureView(texture);
 		for (int i = 0; i < 256; i++) {
 			if (chosen[i] == null) continue;
 			Rectangle b = bounds[i];
 			boolean visible = !b.isEmpty();
-			glyphs[i] = new Glyph(texture,
+			glyphs[i] = new Glyph(view,
 				gx[i] / (float) ATLAS_WIDTH, gy[i] / (float) height,
 				(gx[i] + gw[i]) / (float) ATLAS_WIDTH, (gy[i] + gh[i]) / (float) height,
 				gw[i], gh[i], advance[i], visible,
@@ -106,7 +109,7 @@ final class GlyphPage {
 		return null;
 	}
 
-	private static int upload(BufferedImage img) {
+	private static GpuTexture upload(BufferedImage img) {
 		int w = img.getWidth(), h = img.getHeight();
 		int[] argb = img.getRGB(0, 0, w, h, null, 0, w);
 		ByteBuffer buf = MemoryUtil.memAlloc(w * h * 4);
@@ -115,17 +118,9 @@ final class GlyphPage {
 				buf.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) (p >>> 24));
 			}
 			buf.flip();
-			int tex = GlStateManager._genTexture();
-			GlStateManager._bindTexture(tex);
-			GlStateManager._texParameter(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			GlStateManager._texParameter(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			GlStateManager._texParameter(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			GlStateManager._texParameter(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			GlStateManager._pixelStore(GL_UNPACK_ROW_LENGTH, 0);
-			GlStateManager._pixelStore(GL_UNPACK_SKIP_PIXELS, 0);
-			GlStateManager._pixelStore(GL_UNPACK_SKIP_ROWS, 0);
-			GlStateManager._pixelStore(GL_UNPACK_ALIGNMENT, 4);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+			GpuTexture tex = RenderSystem.getDevice().createTexture("Myriad glyphs", GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST,
+				GpuFormat.RGBA8_UNORM, w, h, 1, 1);
+			RenderSystem.getDevice().createCommandEncoder().writeToTexture(tex, buf, 0, 0, 0, 0, w, h);
 			return tex;
 		} finally {
 			MemoryUtil.memFree(buf);
@@ -133,7 +128,9 @@ final class GlyphPage {
 	}
 
 	void delete() {
-		if (texture != 0) GlStateManager._deleteTexture(texture);
-		texture = 0;
+		GpuGarbage.close(view);
+		GpuGarbage.close(texture);
+		view = null;
+		texture = null;
 	}
 }

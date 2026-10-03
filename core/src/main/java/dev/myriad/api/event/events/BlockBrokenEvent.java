@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * You finished breaking a block (the client removed it; the server confirms with a {@link BlockUpdateEvent}).

@@ -2,11 +2,11 @@ package dev.myriad.api.setting;
 
 import com.google.gson.JsonParser;
 import dev.myriad.api.util.MyriadId;
-import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Set;
+import net.minecraft.core.BlockPos;
 
 import static org.junit.jupiter.api.Assertions.*;
 

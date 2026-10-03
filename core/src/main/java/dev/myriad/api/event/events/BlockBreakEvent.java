@@ -1,8 +1,8 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 
 /** The local player's block breaking. */
 public abstract class BlockBreakEvent extends Cancellable {

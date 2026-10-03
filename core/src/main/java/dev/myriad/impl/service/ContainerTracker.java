@@ -10,14 +10,6 @@ import dev.myriad.api.service.Containers;
 import dev.myriad.api.util.Interactions;
 import dev.myriad.api.util.Reach;
 import dev.myriad.api.util.Slots;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -26,6 +18,14 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * Follows the open container from the network handler's open/contents packets (see ClientPlayNetworkHandlerMixin),
@@ -35,7 +35,7 @@ public final class ContainerTracker implements Containers {
 	/** A click more than this long before the screen opened isn't what opened it. */
 	private static final long CLICK_WINDOW_MS = 2000;
 
-	private final MinecraftClient mc = MinecraftClient.getInstance();
+	private final Minecraft mc = Minecraft.getInstance();
 	private ViewImpl current;
 	private BlockPos lastClicked;
 	private long lastClickedAt;
@@ -47,9 +47,9 @@ public final class ContainerTracker implements Containers {
 
 	public void onOpened(int syncId) {
 		closeTracked();
-		if (mc.player == null || mc.player.currentScreenHandler.syncId != syncId || syncId == 0) return;
+		if (mc.player == null || mc.player.containerMenu.containerId != syncId || syncId == 0) return;
 		BlockPos pos = lastClicked != null && System.currentTimeMillis() - lastClickedAt < CLICK_WINDOW_MS ? lastClicked : null;
-		current = new ViewImpl(mc.player.currentScreenHandler, pos);
+		current = new ViewImpl(mc.player.containerMenu, pos);
 		Myriad.events().post(new ContainerEvent.Opened(current));
 	}
 
@@ -73,15 +73,15 @@ public final class ContainerTracker implements Containers {
 
 	@Subscribe
 	private void onSend(PacketEvent.Send e) {
-		if (e.packet() instanceof PlayerInteractBlockC2SPacket p) {
-			lastClicked = p.getBlockHitResult().getBlockPos().toImmutable();
+		if (e.packet() instanceof ServerboundUseItemOnPacket p) {
+			lastClicked = p.getHitResult().getBlockPos().immutable();
 			lastClickedAt = System.currentTimeMillis();
 		}
 	}
 
 	@Subscribe
 	private void onTick(TickEvent.Post e) {
-		if (current != null && (mc.player == null || mc.player.currentScreenHandler != current.handler)) closeTracked();
+		if (current != null && (mc.player == null || mc.player.containerMenu != current.handler)) closeTracked();
 		if (pending != null && --pendingTicks <= 0) fail(new TimeoutException("Container at " + pendingPos + " didn't open"));
 	}
 
@@ -125,39 +125,39 @@ public final class ContainerTracker implements Containers {
 			return f;
 		}
 		pending = f;
-		pendingPos = pos.toImmutable();
+		pendingPos = pos.immutable();
 		pendingTicks = Math.max(1, timeoutTicks);
 		// Sneaking with an item in hand would place it instead of opening the container.
-		boolean sneaking = mc.player.isSneaking();
-		if (sneaking) mc.player.setSneaking(false);
-		Interactions.interactBlock(hit, Hand.MAIN_HAND, true);
-		if (sneaking) mc.player.setSneaking(true);
+		boolean sneaking = mc.player.isShiftKeyDown();
+		if (sneaking) mc.player.setShiftKeyDown(false);
+		Interactions.interactBlock(hit, InteractionHand.MAIN_HAND, true);
+		if (sneaking) mc.player.setShiftKeyDown(true);
 		return f;
 	}
 
 	@Override
 	public void close() {
-		if (mc.player != null && current != null) mc.player.closeHandledScreen();
+		if (mc.player != null && current != null) mc.player.closeContainer();
 	}
 
 	private final class ViewImpl implements View {
-		private final ScreenHandler handler;
+		private final AbstractContainerMenu handler;
 		private final BlockPos pos;
 		private boolean loaded;
 
-		ViewImpl(ScreenHandler handler, BlockPos pos) {
+		ViewImpl(AbstractContainerMenu handler, BlockPos pos) {
 			this.handler = handler;
 			this.pos = pos;
 		}
 
 		@Override
-		public ScreenHandler handler() {
+		public AbstractContainerMenu handler() {
 			return handler;
 		}
 
 		@Override
 		public int syncId() {
-			return handler.syncId;
+			return handler.containerId;
 		}
 
 		@Override
@@ -182,7 +182,7 @@ public final class ContainerTracker implements Containers {
 
 		@Override
 		public ItemStack stack(int slot) {
-			return slot >= 0 && slot < size() ? handler.getSlot(slot).getStack() : ItemStack.EMPTY;
+			return slot >= 0 && slot < size() ? handler.getSlot(slot).getItem() : ItemStack.EMPTY;
 		}
 
 		@Override
@@ -218,28 +218,28 @@ public final class ContainerTracker implements Containers {
 
 		@Override
 		public void quickMove(int slot) {
-			click(slot, 0, SlotActionType.QUICK_MOVE);
+			click(slot, 0, ContainerInput.QUICK_MOVE);
 		}
 
 		@Override
 		public void quickMoveFromPlayer(int inventoryIndex) {
-			click(playerSlot(inventoryIndex), 0, SlotActionType.QUICK_MOVE);
+			click(playerSlot(inventoryIndex), 0, ContainerInput.QUICK_MOVE);
 		}
 
 		@Override
 		public void swapWithHotbar(int slot, int hotbarSlot) {
-			click(slot, hotbarSlot, SlotActionType.SWAP);
+			click(slot, hotbarSlot, ContainerInput.SWAP);
 		}
 
 		@Override
 		public void drop(int slot, boolean wholeStack) {
-			click(slot, wholeStack ? 1 : 0, SlotActionType.THROW);
+			click(slot, wholeStack ? 1 : 0, ContainerInput.THROW);
 		}
 
 		@Override
-		public void click(int screenSlot, int button, SlotActionType action) {
-			if (!isOpen() || mc.player == null || mc.interactionManager == null) return;
-			mc.interactionManager.clickSlot(handler.syncId, screenSlot, button, action, mc.player);
+		public void click(int screenSlot, int button, ContainerInput action) {
+			if (!isOpen() || mc.player == null || mc.gameMode == null) return;
+			mc.gameMode.handleContainerInput(handler.containerId, screenSlot, button, action, mc.player);
 		}
 
 		@Override

@@ -1,9 +1,9 @@
 package dev.myriad.api.util;
 
 import dev.myriad.impl.network.PacketGate;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.SequencedPacketCreator;
-import net.minecraft.network.packet.Packet;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.prediction.PredictiveAction;
+import net.minecraft.network.protocol.Packet;
 
 /** Sending packets to the server. All of these do nothing outside a world. */
 public final class Packets {
@@ -12,8 +12,8 @@ public final class Packets {
 
 	/** Sends a packet like vanilla would: other features see it in {@code PacketEvent.Send} and may change or cancel it. */
 	public static void send(Packet<?> packet) {
-		var handler = MinecraftClient.getInstance().getNetworkHandler();
-		if (handler != null) handler.sendPacket(packet);
+		var handler = Minecraft.getInstance().getConnection();
+		if (handler != null) handler.send(packet);
 	}
 
 	/**
@@ -33,8 +33,8 @@ public final class Packets {
 	 * Packets.sendSequenced(seq -> new PlayerActionC2SPacket(Action.START_DESTROY_BLOCK, pos, side, seq));
 	 * }</pre>
 	 */
-	public static void sendSequenced(SequencedPacketCreator creator) {
-		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.interactionManager != null && mc.world != null) mc.interactionManager.sendSequencedPacket(mc.world, creator);
+	public static void sendSequenced(PredictiveAction creator) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.gameMode != null && mc.level != null) mc.gameMode.startPrediction(mc.level, creator);
 	}
 }

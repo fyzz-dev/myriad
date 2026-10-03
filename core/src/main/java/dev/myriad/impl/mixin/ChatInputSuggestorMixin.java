@@ -5,9 +5,6 @@ import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.suggestion.Suggestions;
 import dev.myriad.api.Myriad;
 import dev.myriad.impl.MyriadImpl;
-import net.minecraft.client.gui.screen.ChatInputSuggestor;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.command.CommandSource;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,28 +15,31 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.client.gui.components.CommandSuggestions;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 /** Feeds Myriad's dispatcher into vanilla chat autocompletion when the input starts with the command prefix. */
-@Mixin(ChatInputSuggestor.class)
+@Mixin(CommandSuggestions.class)
 public abstract class ChatInputSuggestorMixin {
 	@Shadow
-	private ParseResults<CommandSource> parse;
+	private ParseResults<SharedSuggestionProvider> currentParse;
 	@Shadow
 	@Final
-	TextFieldWidget textField;
+	EditBox input;
 	@Shadow
-	boolean completingSuggestions;
+	boolean keepSuggestions;
 	@Shadow
 	@Nullable
-	private ChatInputSuggestor.SuggestionWindow window;
+	private CommandSuggestions.SuggestionsList suggestions;
 	@Shadow
 	@Nullable
 	private CompletableFuture<Suggestions> pendingSuggestions;
 
 	@Shadow
-	protected abstract void showCommandSuggestions();
+	protected abstract void updateUsageInfo();
 
-	@Inject(method = "refresh", at = @At(value = "INVOKE", target = "Lcom/mojang/brigadier/StringReader;canRead()Z", remap = false),
+	@Inject(method = "updateCommandInfo", at = @At(value = "INVOKE", target = "Lcom/mojang/brigadier/StringReader;canRead()Z", remap = false),
 		cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD)
 	private void myriad$refresh(CallbackInfo ci, String input, StringReader reader) {
 		if (!Myriad.isReady()) return;
@@ -47,12 +47,12 @@ public abstract class ChatInputSuggestorMixin {
 		if (!reader.getString().startsWith(prefix, reader.getCursor())) return;
 		reader.setCursor(reader.getCursor() + prefix.length());
 		var commands = MyriadImpl.get().commandManager();
-		if (parse == null) parse = commands.dispatcher().parse(reader, commands.source());
-		int cursor = textField.getCursor();
-		if (cursor >= prefix.length() && (window == null || !completingSuggestions)) {
-			pendingSuggestions = commands.dispatcher().getCompletionSuggestions(parse, cursor);
+		if (currentParse == null) currentParse = commands.dispatcher().parse(reader, commands.source());
+		int cursor = this.input.getCursorPosition();
+		if (cursor >= prefix.length() && (suggestions == null || !keepSuggestions)) {
+			pendingSuggestions = commands.dispatcher().getCompletionSuggestions(currentParse, cursor);
 			pendingSuggestions.thenRun(() -> {
-				if (pendingSuggestions.isDone()) showCommandSuggestions();
+				if (pendingSuggestions.isDone()) updateUsageInfo();
 			});
 		}
 		ci.cancel();

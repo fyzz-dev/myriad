@@ -1,6 +1,6 @@
 # Myriad
 
-An addon-first utility client for Minecraft **1.21.4** (Fabric, Yarn), with a UI modelled on the
+An addon-first utility client for Minecraft **26.2** (Fabric, Mojang names), with a UI modelled on the
 [Hyprland](https://hyprland.org) tiling window manager.
 
 The core of Myriad is the *system*, not the features. The core jar ships **no modules at all**. Every stock module
@@ -15,7 +15,7 @@ example-addon/  mod id "myriad-example"     the reference addon: a complete feat
 
 ## Building and running
 
-Requires JDK 21+.
+Requires JDK 25+.
 
 ```bash
 ./gradlew build                          # core/, essentials/, example-addon/ → */build/libs/*.jar
@@ -24,6 +24,8 @@ Requires JDK 21+.
 ./gradlew :essentials:runClient          # core + essentials
 ./gradlew :example-addon:runClient       # everything
 ./gradlew :example-addon:runClient -PopenDesktop   # …and open the menu on the title screen
+./gradlew :example-addon:runClient -PquickPlay="New World"   # …or load straight into a singleplayer world
+./gradlew :example-addon:runClient -PscreenshotEvery=10   # …saving a screenshot every 10 s (run/screenshots)
 ./gradlew publishToMavenLocal            # publish dev.myriad:myriad(-essentials) for addons outside this repo
 ```
 
@@ -128,8 +130,8 @@ An addon is an ordinary Fabric mod with a `myriad` entrypoint. Two projects get 
 3. `./gradlew runClient` starts the game with Myriad, Essentials and your addon, with the menu open.
    `./gradlew build` puts your jar in `build/libs/`.
 
-The template's `build.gradle` pulls Myriad from `mavenLocal()` with `modImplementation`. Essentials is on the dev
-runtime only (`modLocalRuntime`), so you can test next to the stock modules without depending on them.
+The template's `build.gradle` pulls Myriad from `mavenLocal()` with `implementation`. Essentials is on the dev
+runtime only (`localRuntime`), so you can test next to the stock modules without depending on them.
 `fabric.mod.json` declares `"entrypoints": { "myriad": [...] }` and `"depends": { "myriad": ">=0.1.0" }`.
 
 Inside this repository, `essentials` and `example-addon` are built the same way and may only use `dev.myriad.api`:
@@ -202,7 +204,9 @@ list, color (fixed, rainbow, or a theme role), keybind, action button, registry 
 types, status effects, any registry), a single registry entry (`item`, `block`, `registry`), a block position
 (`blockPos`, with a "Here" button), a runtime dropdown (`choice`), other modules (`modules`, e.g. "pause while
 these are on") and a file (`file`, with the system file picker). `visible(...)` hides a setting until it matters, and `onChanged(...)` reacts
-to changes. For a new type, extend `Setting<T>` and register an editor with
+to changes; `settings.onAnyChanged(...)` reacts to any of a module's settings, e.g. to drop something cached from them.
+Helpers that should only run while the module is on bind to it with `whileEnabled(start, stop)` (`ChunkCache` and
+`WorldMesh` do this for you). For a new type, extend `Setting<T>` and register an editor with
 `ctx.settingWidgets().register(MySetting.class, s -> widget, stacked)`. See the example's `RangeSetting`.
 
 ### Events
@@ -261,7 +265,9 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 | `util.Timer`, `util.RateCounter`, `util.Format`, `util.Texts` | delays and cooldowns; events per second; distances, durations, compact numbers; clickable chat (run a Myriad command, copy, hover) |
 | `util.Async`, `util.Http` | a shared worker pool (and a hop back to the render thread); GET/POST with JSON |
 | `util.FakePlayers` | client-side dummy players for testing combat and render features |
-| `render.Renderer3D` | boxes, real block shapes, single faces, lines, circles, tracers |
+| `render.Renderer3D` / `ShapeBuilder` | boxes, real block shapes, single faces, lines, circles, tracers (this frame) |
+| `render.WorldMesh` | the same shapes kept on the GPU and drawn every frame until rebuilt |
+| `world.ChunkCache`, `world.BlockScan` | work out something per chunk once, redo it only when the chunk changes, optionally drawn as a mesh; block searches that skip sections by palette |
 | `render.WorldLabel`, `render.FadeMap`, `render.RenderStates`, `render.PlayerHeads` | labels on world positions (text and item icons); highlights that fade in and out; the entity behind a render state in renderer mixins; players' faces |
 | `ui.ThemePalette`, `ui.Theme` | build a theme from a terminal palette; themes that follow something live, explain problems, or replace old ids |
 | `mixin.CompatMixinPlugin` | mixins that apply only when another mod is (or isn't) installed: put them in `compat.<mod id>` (or `compat.no_<mod id>`) |
@@ -279,7 +285,7 @@ How the pieces fit the kinds of addons people build:
   after a rubberband. A `FileSetting` picks the schematic and a `BlockPosSetting` its origin. Integrations with other
   mods (Litematica, Baritone) belong in the addon: keep any code touching their classes in its own class, only load it
   after `FabricLoader.getInstance().isModLoaded("litematica")`, and put mixins into them under `compat.litematica`.
-- **A storage manager** finds containers as chunks arrive (`ChunkEvent.Loaded`, `BlockInfo.isStorage`), opens them
+- **A storage manager** finds containers per chunk with a `ChunkCache` (`BlockInfo.isStorage`), opens them
   with `containers().open(pos)`, reads them in `ContainerEvent.Loaded`/`SlotUpdated` (including ones the player opens
   by hand), and runs multi-step jobs with `tasks().sequence(...)`. It saves what it learns with `ctx.storage()`, says
   where an item is with `ItemTooltipEvent`, reads shulkers with `ItemInfo.contents`, and marks chests with
@@ -306,10 +312,44 @@ How the pieces fit the kinds of addons people build:
   `Myriad.ui().openPanel(id)`. Top-bar widgets extend `BarWidget`.
 - Add a `contact` block (`homepage`, `sources`, `issues`) to your fabric.mod.json and the Addons panel links to it.
 
-**3D.** Call `Renderer3D.box/line/tracer` from a `Render3DEvent` handler. Everything queued is drawn in one batch;
-`Renderer3D.lineWidth` applies to the lines you queue after it. For labels over the world, use `WorldLabel` or
-`Projection.toScreen(pos)` in a `Render2DEvent` handler and draw on `event.canvas()`. To draw with the canvas inside
-any vanilla screen or tooltip, call `Myriad.ui().draw(drawContext, canvas -> …)`.
+### Drawing in the world
+
+There are three ways to draw shapes in the world, and they share one vocabulary (`ShapeBuilder`: `box`, `blockShape`,
+`side`, `line`, `quad`, `circle`, all in world coordinates). Pick by how often the shapes change:
+
+| Changes | Use | Per-frame cost |
+|---|---|---|
+| every frame (entities, the crosshair target) | `event.shapes()` (or `Renderer3D`) in a `Render3DEvent` handler | rebuilds and uploads every shape |
+| now and then (a path, a plan, a selection) | a `WorldMesh`, rebuilt when it changes | one draw call |
+| per chunk (ores, storage, holes, light levels) | a `ChunkCache` with a mesher | one draw per visible chunk |
+
+```java
+private final ChunkCache<long[]> found = ChunkCache.of(this, chunk -> {   // runs when a chunk loads or changes
+        LongArrayList out = new LongArrayList();
+        BlockScan.forEach(chunk, s -> s.is(Blocks.ANCIENT_DEBRIS), (pos, s) -> out.add(pos.asLong()));
+        return out.isEmpty() ? null : out.toLongArray();
+    })
+    .range(range::get)                                                    // chunks around the player
+    .mesh((positions, mesh) -> {                                          // kept on the GPU until the chunk changes
+        for (long p : positions) mesh.blockShape(BlockPos.of(p), fill.argb(), line.argb(), ShapeMode.BOTH, true);
+    })
+    .build();
+```
+
+The cache runs while its module is on and frees everything when it turns off. Chunks are worked through within a
+time budget each tick, nearest first, and a chunk is recomputed only when a block in it changes (`.neighbours()` also
+recomputes it when the chunk beside it changes, for checks that look past the edge). Keep the compute function to facts
+about the world and turn settings into looks in the mesher: a colour setting then only needs `remeshAll()`, which
+never reads the world; call `invalidateAll()` when a setting changes what is found. Theme changes re-mesh by
+themselves. `BlockScan` skips every 16×16×16 section whose palette can't hold a match, so a search for a rare block
+reads almost nothing. The example addon's Block Search and the stock Storage and ESP (holes) modules use all of this.
+
+Meshes are stored relative to a nearby origin (the chunk corner), so they stay exact far from spawn. Their colours are
+fixed when built, and translucent fills aren't re-sorted per frame (which only shows where several overlap).
+
+For labels over the world, use `WorldLabel` or `Projection.toScreen(pos)` in a `Render2DEvent` handler and draw on
+`event.canvas()`. To draw with the canvas inside any vanilla screen or tooltip, call
+`Myriad.ui().draw(drawContext, canvas -> …)`.
 
 ## Credits
 

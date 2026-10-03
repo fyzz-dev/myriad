@@ -21,10 +21,10 @@ import dev.myriad.api.ui.Desktop;
 import dev.myriad.api.ui.PanelType;
 import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.layout.Layout;
-import net.minecraft.text.Text;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
+import net.minecraft.network.chat.Component;
 
 /**
  * Static entry point to everything Myriad exposes to addons.
@@ -143,16 +143,16 @@ public final class Myriad {
 	}
 
 	/** Prints a client-side chat message with the Myriad prefix (also mirrored in the console panel). */
-	public static void chat(Text message) {
+	public static void chat(Component message) {
 		api().chat(message);
 	}
 
 	/**
-	 * Like {@link #chat(Text)}, replacing the previous message sent with the same {@code id} instead of adding another
+	 * Like {@link #chat(Component)}, replacing the previous message sent with the same {@code id} instead of adding another
 	 * line: progress ("Printer: 120/450"), status changes, repeated warnings. Ids are global, so prefix them with your
 	 * mod id.
 	 */
-	public static void chat(Text message, String id) {
+	public static void chat(Component message, String id) {
 		api().chat(message, id);
 	}
 }

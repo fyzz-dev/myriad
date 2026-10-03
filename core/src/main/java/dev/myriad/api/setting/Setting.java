@@ -69,6 +69,7 @@ public abstract class Setting<T> {
 	/** Call after mutating a collection value in place. */
 	public void changed() {
 		for (Consumer<T> l : listeners) l.accept(value);
+		if (group != null) group.owner().changed(this);
 		globalChangeHook.run();
 	}
 

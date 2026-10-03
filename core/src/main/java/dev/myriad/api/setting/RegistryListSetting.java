@@ -2,20 +2,19 @@ package dev.myriad.api.setting;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import net.minecraft.block.Block;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.util.Identifier;
-
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
 
 /**
  * A set of entries from a vanilla registry (blocks, items, entity types, status effects, …). Edited in the UI with
@@ -66,7 +65,7 @@ public class RegistryListSetting<T> extends Setting<Set<T>> {
 	public JsonElement toJson() {
 		JsonArray a = new JsonArray();
 		for (T t : value) {
-			Identifier id = registry.getId(t);
+			Identifier id = registry.getKey(t);
 			if (id != null) a.add(id.toString());
 		}
 		return a;
@@ -79,7 +78,7 @@ public class RegistryListSetting<T> extends Setting<Set<T>> {
 		for (JsonElement e : json.getAsJsonArray()) {
 			Identifier id = Identifier.tryParse(e.getAsString());
 			if (id == null) continue;
-			registry.getOptionalValue(id).filter(filter).ifPresent(set::add);
+			registry.getOptional(id).filter(filter).ifPresent(set::add);
 		}
 		set(set);
 	}
@@ -95,7 +94,7 @@ public class RegistryListSetting<T> extends Setting<Set<T>> {
 		if (parts.length != 2) return false;
 		Identifier id = Identifier.tryParse(parts[1]);
 		if (id == null) return false;
-		var entry = registry.getOptionalValue(id);
+		var entry = registry.getOptional(id);
 		if (entry.isEmpty()) return false;
 		switch (parts[0].toLowerCase()) {
 			case "add" -> add(entry.get());
@@ -115,11 +114,11 @@ public class RegistryListSetting<T> extends Setting<Set<T>> {
 	@Override
 	public String valueString() {
 		List<String> ids = new ArrayList<>();
-		for (T t : value) ids.add(String.valueOf(registry.getId(t)));
+		for (T t : value) ids.add(String.valueOf(registry.getKey(t)));
 		return value.size() + " selected" + (ids.isEmpty() ? "" : ": " + String.join(", ", ids.subList(0, Math.min(5, ids.size()))) + (ids.size() > 5 ? ", …" : ""));
 	}
 
-	public static class Builder<T> extends Setting.Builder<Builder<T>, Set<T>, RegistryListSetting<T>> {
+	public static class Builder<T> extends Setting.Builder<dev.myriad.api.setting.RegistryListSetting.Builder<T>, Set<T>, RegistryListSetting<T>> {
 		private final Registry<T> registry;
 		private Predicate<T> filter;
 
@@ -129,11 +128,11 @@ public class RegistryListSetting<T> extends Setting<Set<T>> {
 		}
 
 		@SafeVarargs
-		public final Builder<T> defaultValue(T... values) {
+		public final dev.myriad.api.setting.RegistryListSetting.Builder<T> defaultValue(T... values) {
 			return defaultValue(new LinkedHashSet<>(List.of(values)));
 		}
 
-		public Builder<T> filter(Predicate<T> filter) {
+		public dev.myriad.api.setting.RegistryListSetting.Builder<T> filter(Predicate<T> filter) {
 			this.filter = filter;
 			return this;
 		}
@@ -144,19 +143,19 @@ public class RegistryListSetting<T> extends Setting<Set<T>> {
 		}
 	}
 
-	public static Builder<Block> blocks(String name) {
-		return new Builder<>(name, Registries.BLOCK);
+	public static dev.myriad.api.setting.RegistryListSetting.Builder<Block> blocks(String name) {
+		return new dev.myriad.api.setting.RegistryListSetting.Builder<>(name, BuiltInRegistries.BLOCK);
 	}
 
-	public static Builder<Item> items(String name) {
-		return new Builder<>(name, Registries.ITEM);
+	public static dev.myriad.api.setting.RegistryListSetting.Builder<Item> items(String name) {
+		return new dev.myriad.api.setting.RegistryListSetting.Builder<>(name, BuiltInRegistries.ITEM);
 	}
 
-	public static Builder<EntityType<?>> entityTypes(String name) {
-		return new Builder<>(name, Registries.ENTITY_TYPE);
+	public static dev.myriad.api.setting.RegistryListSetting.Builder<EntityType<?>> entityTypes(String name) {
+		return new dev.myriad.api.setting.RegistryListSetting.Builder<>(name, BuiltInRegistries.ENTITY_TYPE);
 	}
 
-	public static Builder<StatusEffect> statusEffects(String name) {
-		return new Builder<>(name, Registries.STATUS_EFFECT);
+	public static dev.myriad.api.setting.RegistryListSetting.Builder<MobEffect> statusEffects(String name) {
+		return new dev.myriad.api.setting.RegistryListSetting.Builder<>(name, BuiltInRegistries.MOB_EFFECT);
 	}
 }

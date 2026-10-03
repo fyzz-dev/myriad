@@ -1,8 +1,9 @@
 package dev.myriad.api.render;
 
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Identifier;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Myriad's 2D drawing surface: anti-aliased SDF shapes, gradient borders, drop shadows, frosted-glass backdrops and
@@ -45,7 +46,8 @@ public interface Canvas {
 	/** Draws a texture region; {@code u}/{@code v} are 0..1. */
 	void texture(Identifier texture, float x, float y, float w, float h, float u0, float v0, float u1, float v1, int tint);
 
-	void texture(int glTextureId, float x, float y, float w, float h, float u0, float v0, float u1, float v1, int tint);
+	/** Draws a region of a GPU texture (e.g. one an addon created itself); {@code u}/{@code v} are 0..1. */
+	void texture(GpuTextureView texture, float x, float y, float w, float h, float u0, float v0, float u1, float v1, int tint);
 
 	/** Draws an item icon with its count and durability bar, {@code size} units square. */
 	default void item(ItemStack stack, float x, float y, float size) {
@@ -105,8 +107,11 @@ public interface Canvas {
 	/** Multiplies the alpha of everything drawn until {@link #pop()}. */
 	void alpha(float alpha);
 
-	/** The vanilla context, for things the canvas doesn't cover. Call {@link #flush()} before drawing with it. */
-	DrawContext drawContext();
+	/**
+	 * The vanilla GUI context, for things the canvas doesn't cover. Call {@link #flush()} before drawing with it so
+	 * vanilla elements land above what the canvas drew so far.
+	 */
+	GuiGraphicsExtractor drawContext();
 
 	/** Submits batched geometry now. */
 	void flush();

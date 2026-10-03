@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
-import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screens.Screen;
 import org.jetbrains.annotations.Nullable;
 
 /** A screen is about to open ({@code null} = closing to the game). Replace it with {@link #setScreen} or cancel. */

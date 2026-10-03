@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.chunk.WorldChunk;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
 
 /** Chunks arriving from and leaving the client world. Posted on the render thread. */
 public abstract class ChunkEvent {
@@ -17,14 +17,14 @@ public abstract class ChunkEvent {
 
 	/** A chunk's blocks and block entities arrived. Scan it here instead of rescanning the world. */
 	public static final class Loaded extends ChunkEvent {
-		private final WorldChunk chunk;
+		private final LevelChunk chunk;
 
-		public Loaded(WorldChunk chunk) {
+		public Loaded(LevelChunk chunk) {
 			super(chunk.getPos());
 			this.chunk = chunk;
 		}
 
-		public WorldChunk chunk() {
+		public LevelChunk chunk() {
 			return chunk;
 		}
 	}

@@ -8,11 +8,11 @@ import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.ui.Panel;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.impl.MyriadImpl;
-import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.Minecraft;
 
 /** A terminal for Myriad commands: output above, prompt below, Up/Down history, Tab completion. */
 public final class ConsolePanel extends Panel {
@@ -114,7 +114,7 @@ public final class ConsolePanel extends Panel {
 				} else input = history.get(historyIndex);
 			}
 			case GLFW.GLFW_KEY_V -> {
-				if ((mods & GLFW.GLFW_MOD_CONTROL) != 0) input += MinecraftClient.getInstance().keyboard.getClipboard().replace("\n", " ");
+				if ((mods & GLFW.GLFW_MOD_CONTROL) != 0) input += Minecraft.getInstance().keyboardHandler.getClipboard().replace("\n", " ");
 			}
 			case GLFW.GLFW_KEY_L -> {
 				if ((mods & GLFW.GLFW_MOD_CONTROL) != 0) ConsoleLog.clear();

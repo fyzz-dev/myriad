@@ -1,16 +1,18 @@
-#version 150
+#version 330
 
 in vec2 vLocal;
 in vec2 vUv;
+in vec2 vPixel;
+in vec2 vScreenUv;
 flat in vec2 vSize;
 flat in vec4 vRadii;
 flat in vec4 vColor1;
 flat in vec4 vColor2;
 flat in vec4 vParams;
+flat in vec4 vClip;
 
-uniform sampler2D uTex;
-uniform sampler2D uBlur;
-uniform vec2 uScreen;
+uniform sampler2D Sampler0; // glyph page or image
+uniform sampler2D Sampler1; // the frame's blurred scene
 
 out vec4 fragColor;
 
@@ -40,6 +42,7 @@ vec4 gradient() {
 }
 
 void main() {
+    if (vPixel.x < vClip.x || vPixel.y < vClip.y || vPixel.x > vClip.z || vPixel.y > vClip.w) discard;
     int type = int(vParams.x + 0.5);
     vec2 halfSize = vSize * 0.5;
     vec2 p = vLocal - halfSize;
@@ -47,10 +50,10 @@ void main() {
     float coverage;
 
     if (type == GLYPH) {
-        coverage = texture(uTex, vUv).a;
+        coverage = texture(Sampler0, vUv).a;
         color = vColor1;
     } else if (type == IMAGE) {
-        vec4 t = texture(uTex, vUv) * vColor1;
+        vec4 t = texture(Sampler0, vUv) * vColor1;
         float d = sdRoundBox(p, halfSize, vRadii);
         coverage = t.a * clamp(0.5 - d, 0.0, 1.0);
         color = vec4(t.rgb, 1.0);
@@ -68,7 +71,7 @@ void main() {
     } else if (type == BACKDROP) {
         float d = sdRoundBox(p, halfSize, vRadii);
         coverage = clamp(0.5 - d, 0.0, 1.0);
-        color = vec4(texture(uBlur, gl_FragCoord.xy / uScreen).rgb, vColor1.a);
+        color = vec4(texture(Sampler1, vScreenUv).rgb, vColor1.a);
     } else {
         float d = sdRoundBox(p, halfSize, vRadii);
         coverage = clamp(0.5 - d, 0.0, 1.0);
@@ -77,6 +80,6 @@ void main() {
 
     float a = color.a * coverage;
     if (a <= 0.0) discard;
-    // Premultiplied output; blended with ONE, ONE_MINUS_SRC_ALPHA.
+    // Premultiplied output.
     fragColor = vec4(color.rgb * a, a);
 }

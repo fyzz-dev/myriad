@@ -1,18 +1,17 @@
 package dev.myriad.api.event.events;
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.text.Text;
-
 import java.util.List;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 
 /** An item's tooltip lines were built. Add, remove or change {@link #lines()}; the first line is the item's name. */
 public final class ItemTooltipEvent {
 	private final ItemStack stack;
-	private final List<Text> lines;
-	private final TooltipType type;
+	private final List<Component> lines;
+	private final TooltipFlag type;
 
-	public ItemTooltipEvent(ItemStack stack, List<Text> lines, TooltipType type) {
+	public ItemTooltipEvent(ItemStack stack, List<Component> lines, TooltipFlag type) {
 		this.stack = stack;
 		this.lines = lines;
 		this.type = type;
@@ -23,7 +22,7 @@ public final class ItemTooltipEvent {
 	}
 
 	/** Mutable. */
-	public List<Text> lines() {
+	public List<Component> lines() {
 		return lines;
 	}
 

@@ -8,12 +8,15 @@ import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.setting.Settings;
 import dev.myriad.api.util.MyriadId;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.ApiStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A toggleable feature. While enabled, the module is subscribed to the event bus, so {@code @Subscribe} methods
@@ -37,7 +40,7 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class Module implements Identified {
 	/** The game client. Bound again when Myriad starts, in case this class loaded before the client existed. */
-	protected static MinecraftClient mc = MinecraftClient.getInstance();
+	protected static Minecraft mc = Minecraft.getInstance();
 	private static final Logger LOG = LoggerFactory.getLogger("Myriad/Module");
 
 	private final String name;
@@ -46,6 +49,7 @@ public abstract class Module implements Identified {
 	private final Category category;
 	private MyriadId id;
 	private boolean enabled;
+	private final List<Runnable[]> bindings = new ArrayList<>(0);
 
 	public final Settings settings = new Settings();
 	protected final SettingGroup sgGeneral = settings.group("General");
@@ -114,12 +118,14 @@ public abstract class Module implements Identified {
 		if (enable) {
 			Myriad.events().subscribe(this);
 			try {
+				for (Runnable[] b : bindings) b[0].run();
 				onEnable();
 			} catch (Throwable t) {
 				LOG.error("{} failed to enable", id, t);
 				error("Failed to enable: " + t);
 				enabled = false;
 				Myriad.events().unsubscribe(this);
+				stopBindings();
 				return;
 			}
 		} else {
@@ -130,14 +136,35 @@ public abstract class Module implements Identified {
 			} catch (Throwable t) {
 				LOG.error("{} failed to disable cleanly", id, t);
 			}
+			stopBindings();
 		}
 		Myriad.events().post(new ModuleToggleEvent(this, enabled));
 		Myriad.config().markDirty();
 		if (feedback && chatFeedback.get() && mc.player != null && !holdMode.get()) {
 			// One line per module: toggling it again replaces the line instead of adding another.
-			Myriad.chat(Text.literal(name).formatted(Formatting.WHITE).append(Text.literal(enabled ? " enabled" : " disabled")
-				.formatted(enabled ? Formatting.GREEN : Formatting.RED)), "myriad:toggle:" + id);
+			Myriad.chat(Component.literal(name).withStyle(ChatFormatting.WHITE).append(Component.literal(enabled ? " enabled" : " disabled")
+				.withStyle(enabled ? ChatFormatting.GREEN : ChatFormatting.RED)), "myriad:toggle:" + id);
 		}
+	}
+
+	private void stopBindings() {
+		for (Runnable[] b : bindings) {
+			try {
+				b[1].run();
+			} catch (Throwable t) {
+				LOG.error("{} failed to stop a helper", id, t);
+			}
+		}
+	}
+
+	/**
+	 * Runs {@code start} each time the module turns on (right away if it already is), before {@link #onEnable}, and
+	 * {@code stop} each time it turns off, after {@link #onDisable}. Helpers that hold resources only while their
+	 * module runs bind themselves here, such as {@code ChunkCache} and {@code WorldMesh}.
+	 */
+	public void whileEnabled(Runnable start, Runnable stop) {
+		bindings.add(new Runnable[]{start, stop});
+		if (enabled) start.run();
 	}
 
 	/** Restores state from config without side effects like chat feedback. */
@@ -159,7 +186,7 @@ public abstract class Module implements Identified {
 
 	/** True when a world and player exist. */
 	protected static boolean inGame() {
-		return mc.world != null && mc.player != null;
+		return mc.level != null && mc.player != null;
 	}
 
 	public void info(String message) {
@@ -175,7 +202,7 @@ public abstract class Module implements Identified {
 	}
 
 	/** Sends a client-side chat line prefixed with the Myriad tag. */
-	protected void sendChat(Text text) {
+	protected void sendChat(Component text) {
 		Myriad.chat(text);
 	}
 
@@ -185,7 +212,7 @@ public abstract class Module implements Identified {
 	}
 
 	@org.jetbrains.annotations.ApiStatus.Internal
-	public static void bindClient(MinecraftClient client) {
+	public static void bindClient(Minecraft client) {
 		mc = client;
 	}
 }

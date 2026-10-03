@@ -1,16 +1,16 @@
 package dev.myriad.api.util;
 
 import com.mojang.authlib.GameProfile;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.OtherClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.RemotePlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 
 /**
  * Client-side dummy players for testing combat and render features in singleplayer: they stand where you do, wear
@@ -18,7 +18,7 @@ import java.util.UUID;
  * server knows nothing about them. They're removed when you leave the world. Also {@code .fakeplayer}.
  */
 public final class FakePlayers {
-	private static final List<OtherClientPlayerEntity> players = new ArrayList<>();
+	private static final List<RemotePlayer> players = new ArrayList<>();
 	/** Negative ids can't collide with real entities. */
 	private static int nextId = -1_000_000;
 
@@ -26,25 +26,25 @@ public final class FakePlayers {
 	}
 
 	/** Spawns a fake player named {@code name} at your position with {@code health} and a copy of your inventory. */
-	public static @Nullable PlayerEntity spawn(String name, float health, boolean copyInventory) {
-		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.world == null || mc.player == null) return null;
-		OtherClientPlayerEntity fake = new OtherClientPlayerEntity(mc.world, new GameProfile(UUID.nameUUIDFromBytes(("fake:" + name).getBytes()), name));
-		fake.copyPositionAndRotation(mc.player);
-		fake.setHeadYaw(mc.player.getHeadYaw());
-		fake.setBodyYaw(mc.player.getBodyYaw());
-		if (copyInventory) fake.getInventory().clone(mc.player.getInventory());
+	public static @Nullable Player spawn(String name, float health, boolean copyInventory) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level == null || mc.player == null) return null;
+		RemotePlayer fake = new RemotePlayer(mc.level, new GameProfile(UUID.nameUUIDFromBytes(("fake:" + name).getBytes()), name));
+		fake.copyPosition(mc.player);
+		fake.setYHeadRot(mc.player.getYHeadRot());
+		fake.setYBodyRot(mc.player.getVisualRotationYInDegrees());
+		if (copyInventory) fake.getInventory().replaceWith(mc.player.getInventory());
 		fake.setHealth(health);
 		fake.setId(nextId--);
-		mc.world.addEntity(fake);
+		mc.level.addEntity(fake);
 		players.add(fake);
 		return fake;
 	}
 
 	public static boolean remove(String name) {
 		prune();
-		for (OtherClientPlayerEntity p : List.copyOf(players)) {
-			if (p.getGameProfile().getName().equalsIgnoreCase(name)) {
+		for (RemotePlayer p : List.copyOf(players)) {
+			if (p.getGameProfile().name().equalsIgnoreCase(name)) {
 				despawn(p);
 				return true;
 			}
@@ -54,27 +54,27 @@ public final class FakePlayers {
 
 	public static void clear() {
 		prune();
-		for (OtherClientPlayerEntity p : List.copyOf(players)) despawn(p);
+		for (RemotePlayer p : List.copyOf(players)) despawn(p);
 	}
 
-	private static void despawn(OtherClientPlayerEntity p) {
+	private static void despawn(RemotePlayer p) {
 		players.remove(p);
-		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.world != null) mc.world.removeEntity(p.getId(), Entity.RemovalReason.DISCARDED);
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level != null) mc.level.removeEntity(p.getId(), Entity.RemovalReason.DISCARDED);
 	}
 
-	public static List<PlayerEntity> all() {
+	public static List<Player> all() {
 		prune();
 		return Collections.unmodifiableList(players);
 	}
 
 	public static boolean isFake(Entity entity) {
-		return entity instanceof OtherClientPlayerEntity p && players.contains(p);
+		return entity instanceof RemotePlayer p && players.contains(p);
 	}
 
 	/** Fake players belong to the world they were spawned in; forget them once it's gone. */
 	private static void prune() {
-		var world = MinecraftClient.getInstance().world;
-		players.removeIf(p -> p.getWorld() != world);
+		var world = Minecraft.getInstance().level;
+		players.removeIf(p -> p.level() != world);
 	}
 }

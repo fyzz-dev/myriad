@@ -6,13 +6,13 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.registry.Identified;
 import dev.myriad.api.util.MyriadId;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
 
 /**
  * A chat command (run with the prefix, {@code .} by default) built on Brigadier.
@@ -31,7 +31,7 @@ import java.util.List;
 public abstract class Command implements Identified {
 	public static final int SINGLE_SUCCESS = com.mojang.brigadier.Command.SINGLE_SUCCESS;
 	/** The game client. Bound again when Myriad starts, in case this class loaded before the client existed. */
-	protected static MinecraftClient mc = MinecraftClient.getInstance();
+	protected static Minecraft mc = Minecraft.getInstance();
 
 	private final String name;
 	private final String description;
@@ -45,7 +45,7 @@ public abstract class Command implements Identified {
 	}
 
 	/** Add arguments and executors to the literal for {@link #name()} (and every alias). */
-	public abstract void build(LiteralArgumentBuilder<CommandSource> builder);
+	public abstract void build(LiteralArgumentBuilder<SharedSuggestionProvider> builder);
 
 	public String name() {
 		return name;
@@ -70,28 +70,28 @@ public abstract class Command implements Identified {
 		id = MyriadId.of(namespace, name);
 	}
 
-	protected static <T> RequiredArgumentBuilder<CommandSource, T> argument(String name, ArgumentType<T> type) {
+	protected static <T> RequiredArgumentBuilder<SharedSuggestionProvider, T> argument(String name, ArgumentType<T> type) {
 		return RequiredArgumentBuilder.argument(name, type);
 	}
 
-	protected static LiteralArgumentBuilder<CommandSource> literal(String name) {
+	protected static LiteralArgumentBuilder<SharedSuggestionProvider> literal(String name) {
 		return LiteralArgumentBuilder.literal(name);
 	}
 
 	protected void info(String message) {
-		Myriad.chat(Text.literal(message));
+		Myriad.chat(Component.literal(message));
 	}
 
-	protected void info(Text message) {
+	protected void info(Component message) {
 		Myriad.chat(message);
 	}
 
 	protected void error(String message) {
-		Myriad.chat(Text.literal(message).formatted(Formatting.RED));
+		Myriad.chat(Component.literal(message).withStyle(ChatFormatting.RED));
 	}
 
 	@org.jetbrains.annotations.ApiStatus.Internal
-	public static void bindClient(MinecraftClient client) {
+	public static void bindClient(Minecraft client) {
 		mc = client;
 	}
 }

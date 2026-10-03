@@ -323,7 +323,7 @@ public final class ThemeManager {
 		commit();
 		String slug = uniqueSlug(name);
 		Entry e = new Entry(MyriadId.of(USER_NAMESPACE, slug), null, name);
-		e.author = Optional.ofNullable(net.minecraft.client.MinecraftClient.getInstance().getSession()).map(s -> s.getUsername()).orElse("");
+		e.author = Optional.ofNullable(net.minecraft.client.Minecraft.getInstance().getUser()).map(s -> s.getName()).orElse("");
 		e.values = snapshot(theme);
 		entries.put(e.id, e);
 		active = e.id;

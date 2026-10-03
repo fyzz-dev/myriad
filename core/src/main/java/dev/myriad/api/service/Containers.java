@@ -1,15 +1,15 @@
 package dev.myriad.api.service;
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Predicate;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Containers (chests, barrels, shulkers, furnaces, …): opening one at a position, reading it once its contents have
@@ -42,7 +42,7 @@ public interface Containers {
 
 	/** An open container. Slot numbers are the container's own (0 = its first slot), unless noted. */
 	interface View {
-		ScreenHandler handler();
+		AbstractContainerMenu handler();
 
 		int syncId();
 
@@ -88,7 +88,7 @@ public interface Containers {
 		void drop(int slot, boolean wholeStack);
 
 		/** Any click, with a raw screen slot id. */
-		void click(int screenSlot, int button, SlotActionType action);
+		void click(int screenSlot, int button, ContainerInput action);
 
 		void close();
 	}

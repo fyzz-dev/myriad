@@ -9,14 +9,13 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.module.Module;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
-
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
 
 public class ModuleArgumentType implements ArgumentType<Module> {
 	private static final DynamicCommandExceptionType NO_SUCH_MODULE =
-		new DynamicCommandExceptionType(name -> Text.literal("No module named '" + name + "'"));
+		new DynamicCommandExceptionType(name -> Component.literal("No module named '" + name + "'"));
 
 	public static ModuleArgumentType module() {
 		return new ModuleArgumentType();
@@ -34,6 +33,6 @@ public class ModuleArgumentType implements ArgumentType<Module> {
 
 	@Override
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
-		return CommandSource.suggestMatching(Myriad.modules().values().stream().map(m -> m.name().replace(" ", "")), builder);
+		return SharedSuggestionProvider.suggest(Myriad.modules().values().stream().map(m -> m.name().replace(" ", "")), builder);
 	}
 }

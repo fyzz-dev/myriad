@@ -1,14 +1,15 @@
 package dev.myriad.api.util;
 
 import dev.myriad.api.Myriad;
-import net.minecraft.item.ItemStack;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStackTemplate;
 
 /**
  * Chat text that does something: run a Myriad command on click, fill the chat box, copy a value, show a tooltip.
@@ -23,45 +24,45 @@ public final class Texts {
 	}
 
 	/** {@code label}, which runs the Myriad command {@code command} (without the prefix) when clicked. */
-	public static MutableText command(String label, String command) {
+	public static MutableComponent command(String label, String command) {
 		String full = Myriad.config().commandPrefix() + command;
-		return Text.literal(label).styled(s -> s.withColor(Formatting.AQUA)
-			.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, full))
-			.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal(full).formatted(Formatting.GRAY))));
+		return Component.literal(label).withStyle(s -> s.withColor(ChatFormatting.AQUA)
+			.withClickEvent(new ClickEvent.RunCommand(full))
+			.withHoverEvent(new HoverEvent.ShowText(Component.literal(full).withStyle(ChatFormatting.GRAY))));
 	}
 
 	/** {@code label}, which puts {@code command} (without the prefix) in the chat box to finish typing. */
-	public static MutableText suggest(String label, String command) {
+	public static MutableComponent suggest(String label, String command) {
 		String full = Myriad.config().commandPrefix() + command;
-		return Text.literal(label).styled(s -> s.withColor(Formatting.AQUA)
-			.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, full))
-			.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to edit").formatted(Formatting.GRAY))));
+		return Component.literal(label).withStyle(s -> s.withColor(ChatFormatting.AQUA)
+			.withClickEvent(new ClickEvent.SuggestCommand(full))
+			.withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to edit").withStyle(ChatFormatting.GRAY))));
 	}
 
 	/** {@code label}, which copies {@code value} to the clipboard when clicked. */
-	public static MutableText copy(String label, String value) {
-		return Text.literal(label).styled(s -> s.withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, value))
-			.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to copy").formatted(Formatting.GRAY))));
+	public static MutableComponent copy(String label, String value) {
+		return Component.literal(label).withStyle(s -> s.withClickEvent(new ClickEvent.CopyToClipboard(value))
+			.withHoverEvent(new HoverEvent.ShowText(Component.literal("Click to copy").withStyle(ChatFormatting.GRAY))));
 	}
 
 	/** "x y z", copied when clicked. */
-	public static MutableText coords(BlockPos pos) {
+	public static MutableComponent coords(BlockPos pos) {
 		String c = Format.coords(pos);
-		return copy(c, c).formatted(Formatting.GRAY);
+		return copy(c, c).withStyle(ChatFormatting.GRAY);
 	}
 
 	/** {@code text} with a tooltip. */
-	public static MutableText hover(Text text, Text tooltip) {
-		return text.copy().styled(s -> s.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, tooltip)));
+	public static MutableComponent hover(Component text, Component tooltip) {
+		return text.copy().withStyle(s -> s.withHoverEvent(new HoverEvent.ShowText(tooltip)));
 	}
 
 	/** The item's name, showing its full tooltip on hover. */
-	public static MutableText item(ItemStack stack) {
-		return stack.getName().copy().styled(s -> s.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM, new HoverEvent.ItemStackContent(stack))));
+	public static MutableComponent item(ItemStack stack) {
+		return stack.getHoverName().copy().withStyle(s -> s.withHoverEvent(new HoverEvent.ShowItem(ItemStackTemplate.fromStack(stack))));
 	}
 
 	/** {@code text} in an ARGB colour (e.g. a theme colour: {@code Myriad.ui().theme().accent.argb()}). */
-	public static MutableText colored(String text, int argb) {
-		return Text.literal(text).styled(s -> s.withColor(TextColor.fromRgb(argb & 0xFFFFFF)));
+	public static MutableComponent colored(String text, int argb) {
+		return Component.literal(text).withStyle(s -> s.withColor(TextColor.fromRgb(argb & 0xFFFFFF)));
 	}
 }

@@ -7,12 +7,11 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
-
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
 
 /** One of an enum's constants, typed in any case ({@code fast}, {@code FAST}); suggests them in lower case. */
 public class EnumArgumentType<E extends Enum<E>> implements ArgumentType<E> {
@@ -22,7 +21,7 @@ public class EnumArgumentType<E extends Enum<E>> implements ArgumentType<E> {
 	EnumArgumentType(Class<E> type) {
 		this.type = type;
 		String options = String.join(", ", Arrays.stream(type.getEnumConstants()).map(EnumArgumentType::name).toList());
-		this.unknown = new DynamicCommandExceptionType(v -> Text.literal("'" + v + "' isn't one of: " + options));
+		this.unknown = new DynamicCommandExceptionType(v -> Component.literal("'" + v + "' isn't one of: " + options));
 	}
 
 	public static <E extends Enum<E>> EnumArgumentType<E> of(Class<E> type) {
@@ -50,6 +49,6 @@ public class EnumArgumentType<E extends Enum<E>> implements ArgumentType<E> {
 
 	@Override
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
-		return CommandSource.suggestMatching(Arrays.stream(type.getEnumConstants()).map(EnumArgumentType::name), builder);
+		return SharedSuggestionProvider.suggest(Arrays.stream(type.getEnumConstants()).map(EnumArgumentType::name), builder);
 	}
 }
