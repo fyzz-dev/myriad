@@ -7,9 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.world.level.Level;
 
+/** Where you are, and the matching Nether or Overworld coordinates. */
 public final class CoordinatesPanel extends TextHudPanel {
 	private final BoolSetting otherDimension = sgGeneral.bool("Other Dimension").description("Show the matching Nether/Overworld coordinates.").defaultValue(true).build();
-	private final BoolSetting direction = sgGeneral.bool("Direction").defaultValue(true).build();
 	private final BoolSetting decimals = sgGeneral.bool("Decimals").description("Show one decimal place.").build();
 
 	public CoordinatesPanel() {
@@ -30,7 +30,6 @@ public final class CoordinatesPanel extends TextHudPanel {
 			double k = nether ? 8 : 1 / 8.0;
 			parts.addAll(List.of(nether ? " [OW " : " [Nether ", String.format(decimals.get() ? "%.1f %.1f" : "%.0f %.0f", p.getX() * k, p.getZ() * k), "]", ""));
 		}
-		if (direction.get()) parts.addAll(List.of(" ", p.getDirection().getSerializedName()));
 		out.parts(parts.toArray(String[]::new));
 	}
 }

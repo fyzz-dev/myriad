@@ -1,54 +1,112 @@
 package dev.myriad.essentials.modules.render;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.ItemTooltipEvent;
+import dev.myriad.api.event.events.TickEvent;
+import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.KeybindSetting;
+import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.ItemInfo;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
 
 /**
- * Hovering a shulker box in any inventory shows its 27 slots in a themed panel instead of the vanilla tooltip.
- * Hold the lock key to pin the panel where it is, so you can move the mouse over it and read item tooltips.
- * Shulker boxes in slots and in the hotbar can also show their most common item as a small icon.
+ * Better inventory tooltips:
+ * <ul>
+ * <li>Containers: hovering a shulker box shows its 27 slots in a themed panel instead of the vanilla tooltip, and so
+ * does an ender chest, with what your ender chest held when you last opened it. Hold the lock key to pin the panel
+ * so you can hover its items.</li>
+ * <li>Icons: shulker boxes in slots and in the hotbar show their most common item.</li>
+ * <li>Durability and food: exact durability, and the hunger and saturation food restores.</li>
+ * </ul>
  */
-public class ShulkerPreview extends Module {
-
+public class Tooltips extends Module {
 	private static final int COLS = 9, ROWS = 3, SLOT = 18, WIDTH = COLS * SLOT + 14, HEADER = 16, FOOTER = 7;
 	private static final int HEIGHT = HEADER + ROWS * SLOT + FOOTER;
 
-	private final KeybindSetting lockKey = sgGeneral.keybind("Lock Preview").description("Hold to pin the preview so you can hover its items.").build();
-	private final BoolSetting slotIcons = sgGeneral.bool("Slot Icons").description("Show the most common item on shulker boxes in inventories.").defaultValue(true).build();
-	private final BoolSetting hotbarIcons = sgGeneral.bool("Hotbar Icons").description("Show the most common item on shulker boxes in your hotbar.").defaultValue(true).build();
-	private final BoolSetting emptyPreview = sgGeneral.bool("Empty Boxes").description("Preview empty shulker boxes too.").build();
+	private final SettingGroup sgContainers = settings.group("Containers");
+	private final BoolSetting shulkers = sgContainers.bool("Shulker Boxes").description("Preview shulker box contents.").defaultValue(true).build();
+	private final BoolSetting enderChest = sgContainers.bool("Ender Chest").description("Preview your ender chest on ender chest items (once you've opened it).").defaultValue(true).build();
+	private final BoolSetting emptyPreview = sgContainers.bool("Empty Boxes").description("Preview empty shulker boxes too.").build();
+	private final KeybindSetting lockKey = sgContainers.keybind("Lock Preview").description("Hold to pin the preview so you can hover its items.").build();
+	private final BoolSetting slotIcons = sgContainers.bool("Slot Icons").description("Show the most common item on shulker boxes in inventories.").defaultValue(true).build();
+	private final BoolSetting hotbarIcons = sgContainers.bool("Hotbar Icons").description("Show the most common item on shulker boxes in your hotbar.").defaultValue(true).build();
 
-	private ItemStack lockedShulker;
+	private final SettingGroup sgInfo = settings.group("Info");
+	private final BoolSetting durability = sgInfo.bool("Durability").description("Durability left, out of the maximum.").defaultValue(true).build();
+	private final BoolSetting food = sgInfo.bool("Food").description("Hunger and saturation restored.").defaultValue(true).build();
+
+	/** The ender chest's 27 slots when you last had it open on this server, or null. */
+	private List<ItemStack> enderContents;
+
+	private ItemStack locked;
+	private String lockedTitle;
 	private List<ItemStack> lockedContents;
 	private int lockedX, lockedY;
 
-	public ShulkerPreview() {
-		super(Categories.RENDER, "Shulker Preview", "Shows shulker box contents when you hover one.");
+	public Tooltips() {
+		super(Categories.RENDER, "Tooltips", "Container previews, durability and food values in tooltips.");
 	}
 
 	@Override
 	protected void onDisable() {
-		lockedShulker = null;
+		locked = null;
 		lockedContents = null;
 	}
+
+	@Subscribe
+	private void onWorld(WorldEvent.Leave e) {
+		enderContents = null;
+	}
+
+	/** While your ender chest is open, remember what's in it. */
+	@Subscribe
+	private void onTick(TickEvent.Post e) {
+		if (!(mc.gui.screen() instanceof ContainerScreen screen) || !(screen.getMenu() instanceof ChestMenu menu)) return;
+		if (!(screen.getTitle().getContents() instanceof TranslatableContents t) || !t.getKey().equals("container.enderchest")) return;
+		List<ItemStack> items = new ArrayList<>(27);
+		for (int i = 0; i < Math.min(27, menu.getContainer().getContainerSize()); i++) items.add(menu.getContainer().getItem(i).copy());
+		enderContents = items;
+	}
+
+	@Subscribe
+	private void onTooltip(ItemTooltipEvent e) {
+		ItemStack stack = e.stack();
+		if (durability.get() && stack.isDamageableItem()) {
+			int left = stack.getMaxDamage() - stack.getDamageValue();
+			e.lines().add(Component.literal("Durability " + left + " / " + stack.getMaxDamage()).withStyle(ChatFormatting.GRAY));
+		}
+		FoodProperties f = stack.get(DataComponents.FOOD);
+		if (food.get() && f != null) {
+			e.lines().add(Component.literal(String.format("Hunger +%d  Saturation +%.1f", f.nutrition(), f.saturation())).withStyle(ChatFormatting.GRAY));
+		}
+	}
+
+	// ---- container previews -----------------------------------------------------------------------------------------
 
 	public static boolean isShulker(ItemStack stack) {
 		return stack != null && ItemInfo.isShulkerBox(stack);
@@ -65,6 +123,16 @@ public class ShulkerPreview extends Module {
 	private static boolean hasItems(List<ItemStack> items) {
 		for (ItemStack s : items) if (!s.isEmpty()) return true;
 		return false;
+	}
+
+	/** What to preview for {@code stack}: its contents, or null for no preview. */
+	private @Nullable List<ItemStack> previewOf(ItemStack stack) {
+		if (shulkers.get() && isShulker(stack)) {
+			List<ItemStack> items = contents(stack);
+			return hasItems(items) || emptyPreview.get() ? items : null;
+		}
+		if (enderChest.get() && stack.is(Items.ENDER_CHEST)) return enderContents;
+		return null;
 	}
 
 	/** The item the box holds the most of, or null. */
@@ -99,38 +167,38 @@ public class ShulkerPreview extends Module {
 		pose.popMatrix();
 	}
 
-	/**
-	 * Called in place of the inventory tooltip. Returns true if the preview replaced it.
-	 */
+	/** Called (by this addon's mixin) in place of the inventory tooltip. Returns true if a preview replaced it. */
 	public boolean renderTooltip(GuiGraphicsExtractor ctx, @Nullable Slot hovered, int mouseX, int mouseY) {
+		ItemStack hoveredStack = hovered != null && hovered.hasItem() ? hovered.getItem() : null;
 		if (lockKey.get().isPressed()) {
-			if (lockedShulker == null && hovered != null && hovered.hasItem() && isShulker(hovered.getItem())) {
-				List<ItemStack> items = contents(hovered.getItem());
-				if (hasItems(items) || emptyPreview.get()) {
-					lockedShulker = hovered.getItem().copy();
+			if (locked == null && hoveredStack != null) {
+				List<ItemStack> items = previewOf(hoveredStack);
+				if (items != null) {
+					locked = hoveredStack.copy();
+					lockedTitle = hoveredStack.getHoverName().getString();
 					lockedContents = items;
 					lockedX = mouseX;
 					lockedY = mouseY;
 				}
 			}
 		} else {
-			lockedShulker = null;
+			locked = null;
 			lockedContents = null;
 		}
 
-		ItemStack shulker;
+		String title;
 		List<ItemStack> items;
 		int ax, ay;
-		if (lockedShulker != null) {
-			shulker = lockedShulker;
+		if (locked != null) {
+			title = lockedTitle;
 			items = lockedContents;
 			ax = lockedX;
 			ay = lockedY;
 		} else {
-			if (hovered == null || !hovered.hasItem() || !isShulker(hovered.getItem())) return false;
-			shulker = hovered.getItem();
-			items = contents(shulker);
-			if (!hasItems(items) && !emptyPreview.get()) return false;
+			if (hoveredStack == null) return false;
+			items = previewOf(hoveredStack);
+			if (items == null) return false;
+			title = hoveredStack.getHoverName().getString();
 			ax = mouseX;
 			ay = mouseY;
 		}
@@ -139,7 +207,7 @@ public class ShulkerPreview extends Module {
 		ItemStack under = hoveredItem(items, p[0], p[1], mouseX, mouseY);
 		// A layer of its own above the inventory, like a vanilla tooltip.
 		ctx.nextStratum();
-		Myriad.ui().draw(ctx, c -> drawPanel(c, shulker, items, p[0], p[1]));
+		Myriad.ui().draw(ctx, c -> drawPanel(c, title, items, p[0], p[1]));
 		if (under != null) ctx.setTooltipForNextFrame(mc.font, under, mouseX, mouseY);
 		return true;
 	}
@@ -158,14 +226,14 @@ public class ShulkerPreview extends Module {
 		return s.isEmpty() ? null : s;
 	}
 
-	private static void drawPanel(Canvas c, ItemStack shulker, List<ItemStack> items, float x, float y) {
+	private static void drawPanel(Canvas c, String name, List<ItemStack> items, float x, float y) {
 		ThemeSettings theme = Myriad.ui().theme();
 		float r = theme.rounding.get();
 		if (theme.shadow.get()) c.shadow(x, y, WIDTH, HEIGHT, r, theme.shadowRange.get(), theme.shadowColor.argb());
 		c.backdrop(x, y, WIDTH, HEIGHT, r, 1);
 		c.roundRect(x, y, WIDTH, HEIGHT, r, ColorUtil.withAlpha(theme.windowBackground.argb(), Math.max(200, ColorUtil.alpha(theme.windowBackground.argb()))));
 		c.gradientOutline(x, y, WIDTH, HEIGHT, r, Math.max(1, theme.borderSize.get()), theme.activeBorderFrom.argb(), theme.activeBorderTo.argb(), theme.borderAngle.get().floatValue());
-		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), shulker.getHoverName().getString(), WIDTH - 14);
+		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), name, WIDTH - 14);
 		c.text(FontFamily.SANS_BOLD, c.defaultFontSize(), title, x + 7, y + (HEADER - c.textHeight()) / 2 + 1, theme.text.argb());
 		float gx = x + 7, gy = y + HEADER;
 		int cell = ColorUtil.withAlpha(theme.surface.argb(), 110);
@@ -173,7 +241,7 @@ public class ShulkerPreview extends Module {
 			float sx = gx + (i % COLS) * SLOT, sy = gy + (i / COLS) * SLOT;
 			c.roundRect(sx + 0.5f, sy + 0.5f, SLOT - 1, SLOT - 1, 2, cell);
 		}
-		for (int i = 0; i < 27; i++) {
+		for (int i = 0; i < Math.min(27, items.size()); i++) {
 			ItemStack s = items.get(i);
 			if (!s.isEmpty()) c.item(s, gx + (i % COLS) * SLOT + 1, gy + (i / COLS) * SLOT + 1, 16);
 		}

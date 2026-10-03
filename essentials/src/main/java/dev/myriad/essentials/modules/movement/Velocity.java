@@ -10,7 +10,6 @@ import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.SettingGroup;
-import dev.myriad.essentials.modules.combat.Criticals;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
@@ -182,13 +181,8 @@ public class Velocity extends Module {
 		pendingStatic = false;
 		if (!staticVelocity.get() || (staticPhasedOnly.get() && !phased())) return;
 		var in = mc.player.input.keyPresses;
-		if (in.forward() || in.backward() || in.left() || in.right() || in.jump() || critActive()) return;
+		if (in.forward() || in.backward() || in.left() || in.right() || in.jump()) return;
 		mc.player.setDeltaMovement(Vec3.ZERO);
-	}
-
-	private static boolean critActive() {
-		Criticals criticals = Modules.get(Criticals.class);
-		return criticals != null && criticals.hoppedWithin(100);
 	}
 
 	private synchronized void queueReconcile(Vec3 delta) {
@@ -204,7 +198,6 @@ public class Velocity extends Module {
 			clearReconcile();
 			return;
 		}
-		if (critActive()) return;
 		reconcileTicks--;
 		if (blocked(pendingReconcile)) {
 			pendingReconcile = new Vec3(pendingReconcile.x * 0.91, pendingReconcile.y * 0.98, pendingReconcile.z * 0.91);

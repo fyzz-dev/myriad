@@ -3,6 +3,7 @@ package dev.myriad.essentials.modules.render;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.CameraEvent;
 import dev.myriad.api.event.events.MouseLookEvent;
+import dev.myriad.api.event.events.MouseScrollEvent;
 import dev.myriad.api.event.events.MovementPacketsEvent;
 import dev.myriad.api.event.events.PlayerViewEvent;
 import dev.myriad.api.event.events.TickEvent;
@@ -23,6 +24,8 @@ import net.minecraft.world.phys.Vec3;
  */
 public class Freecam extends Module {
 	private final DoubleSetting speed = sgGeneral.doubleSetting("Speed").description("Blocks per tick.").defaultValue(1.0).range(0.1, 10).decimals(1).build();
+	private final DoubleSetting verticalSpeed = sgGeneral.doubleSetting("Vertical Speed").description("Blocks per tick going up and down.").defaultValue(1.0).range(0.1, 10).decimals(1).build();
+	private final BoolSetting scrollSpeed = sgGeneral.bool("Scroll Speed").description("Scroll to change speed while flying.").defaultValue(true).build();
 	private final BoolSetting interaction = sgGeneral.bool("Interaction").description("Break, place and target from the camera's position.").defaultValue(true).build();
 	private final BoolSetting rotate = sgGeneral.bool("Rotate").description("Turn your real player to face where the camera looks.").build();
 
@@ -82,6 +85,20 @@ public class Freecam extends Module {
 			e.yaw = yaw;
 			e.pitch = pitch;
 		}
+	}
+
+	@Subscribe
+	private void onScroll(MouseScrollEvent e) {
+		if (!scrollSpeed.get() || mc.gui.screen() != null) return;
+		double k = e.vertical() > 0 ? 1.15 : 1 / 1.15;
+		speed.set(Math.clamp(speed.get() * k, 0.1, 10));
+		verticalSpeed.set(Math.clamp(verticalSpeed.get() * k, 0.1, 10));
+		e.cancel();
+	}
+
+	@Override
+	public String hudInfo() {
+		return String.format("%.1f", speed.get());
 	}
 
 	@Subscribe
@@ -150,7 +167,8 @@ public class Freecam extends Module {
 			double rad = Math.toRadians(yaw);
 			double dx = (forward * -Math.sin(rad) + strafe * Math.cos(rad)) * s;
 			double dz = (forward * Math.cos(rad) + strafe * Math.sin(rad)) * s;
-			double dy = options.keyJump.isDown() ? s : options.keyShift.isDown() ? -s : 0;
+			double v = verticalSpeed.get();
+			double dy = options.keyJump.isDown() ? v : options.keyShift.isDown() ? -v : 0;
 			lastPosition = position;
 			position = position.add(dx, dy, dz);
 		}

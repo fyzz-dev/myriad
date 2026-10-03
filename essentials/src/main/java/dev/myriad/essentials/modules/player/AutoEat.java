@@ -8,6 +8,7 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.RegistryListSetting;
+import dev.myriad.api.util.Baritone;
 import dev.myriad.api.util.Interactions;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.InteractionHand;
@@ -17,7 +18,7 @@ import net.minecraft.world.item.Items;
 
 /**
  * Eats the most saturating food in your hotbar when your health or hunger drops below a threshold, then switches
- * back. Keeps eating while a screen is open.
+ * back. Keeps eating while a screen is open, and pauses Baritone (when it's installed) until it's done.
  */
 public class AutoEat extends Module {
 	private static final int ABORT_TICKS = 100;
@@ -29,6 +30,7 @@ public class AutoEat extends Module {
 	private final RegistryListSetting<Item> blacklist = sgGeneral.items("Blacklist").description("Foods never to eat.")
 		.defaultValue(Items.ROTTEN_FLESH, Items.SPIDER_EYE, Items.POISONOUS_POTATO, Items.PUFFERFISH, Items.CHORUS_FRUIT, Items.SUSPICIOUS_STEW)
 		.filter(i -> i.components().has(DataComponents.FOOD)).build();
+	private final BoolSetting pauseBaritone = sgGeneral.bool("Pause Baritone").description("Stop Baritone walking while you eat.").defaultValue(true).build();
 
 	private boolean eating;
 	private int previousSlot = -1, foodSlot = -1, ticks;
@@ -71,6 +73,7 @@ public class AutoEat extends Module {
 		if (p.isUsingItem()) {
 			mc.options.keyUse.setDown(true);
 			eating = true;
+			if (pauseBaritone.get()) Baritone.pause(this);
 		} else {
 			finish();
 		}
@@ -103,6 +106,7 @@ public class AutoEat extends Module {
 			mc.gameMode.releaseUsingItem(mc.player);
 		}
 		if (previousSlot >= 0 && mc.player != null) Myriad.inventory().select(previousSlot);
+		Baritone.resume(this);
 		eating = false;
 		previousSlot = foodSlot = -1;
 		ticks = 0;

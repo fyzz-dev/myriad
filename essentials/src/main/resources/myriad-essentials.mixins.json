@@ -19,12 +19,9 @@
 		"HeldItemRendererMixin",
 		"InGameHudMixin",
 		"InGameOverlayRendererMixin",
-		"LightmapTextureManagerMixin",
 		"LivingEntityMixin",
 		"LivingEntityRendererMixin",
-		"MinecraftClientMixin",
 		"PlayerEntityMixin",
-		"TextVisitFactoryMixin",
 		"ToastManagerMixin",
 		"WorldRendererMixin"
 	],

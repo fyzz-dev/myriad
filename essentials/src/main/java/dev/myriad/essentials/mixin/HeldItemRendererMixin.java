@@ -6,7 +6,6 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
-import dev.myriad.essentials.modules.render.Swing;
 import dev.myriad.essentials.modules.render.ViewModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -42,10 +41,10 @@ public abstract class HeldItemRendererMixin {
 	@Final
 	private Minecraft minecraft;
 
-	/** Swing: no dip when switching items; show the new item straight away. */
+	/** View Model No Switch Animation: no dip when switching items; show the new item straight away. */
 	@Inject(method = "tick", at = @At("TAIL"))
 	private void essentials$noSwitchAnimation(CallbackInfo ci) {
-		if (!Swing.noSwitchAnimation() || minecraft.player == null) return;
+		if (!ViewModel.noSwitchAnimation() || minecraft.player == null) return;
 		mainHandItem = minecraft.player.getMainHandItem();
 		offHandItem = minecraft.player.getOffhandItem();
 		mainHandHeight = oMainHandHeight = 1;

@@ -46,7 +46,8 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
   **Merge** windows by dragging one by its title bar onto another's title bar: each addon becomes a section, and the
   icon on a section's header moves it back out to its own window.
 - Windows can be **tiled**, **floating** or **fullscreen**. Drag the gaps between tiles to resize them.
-- The **HUD workspace** (the icon after 9 in the bar) holds the in-game HUD. Its windows are drawn in game without
+- The bar shows workspaces 1–4, and 5–9 only while they have windows (or you're on one). The **HUD workspace** (the icon after
+  the numbers) holds the in-game HUD. Its windows are drawn in game without
   window decorations. Drag them to move them; they snap to edges and to the centre, and anchor to the nearest screen
   third. Right-click one for its settings. The **HUD** window there lists every element like a category lists
   modules: click one to add or remove it, unfold it for its options. Delete removes the hovered element, and the
@@ -92,6 +93,20 @@ jump to the top/bottom, `Ctrl+d`/`Ctrl+u` move half a page, and `/` focuses the 
 closes the menu.
 
 Every binding can be changed in the Keybinds panel.
+
+## Essentials
+
+The stock modules, in the standard categories (each module's settings explain its options):
+
+| | |
+|---|---|
+| Combat | **Offhand** (totem, crystal, golden apple or shield, falling back to a totem when it matters; sword gap), **Auto Armor** (best armour; a bind flips chestplate and elytra), **Auto Disconnect** (health, totem pops, totems left, players, beds, anchors, crystals, creepers) |
+| Movement | **Elytra Fly** (highway bouncing; mines or, with Baritone, walks round obstacles), **Velocity** |
+| Player | **Auto Eat** (pauses Baritone), **Auto Tool** (silent), **Middle Click** (friend, experience, rocket or pearl by what you point at), **Reach**, **Wall Interact**, **X Carry** |
+| Render | **ESP**, **Storage**, **Tracers**, **Nametags** (players, mobs, items, pearl owners), **Tooltips** (shulker and ender chest previews, durability, food), **Free Look**, **Freecam**, **View Model**, **Zoom** |
+
+HUD elements: Watermark (with the logo), Module List, Coordinates, Armor, Binds, Chest Count, Direction, Effects,
+FPS, HP, Player Count, Speed, Totems, TPS. Baritone options do nothing when Baritone isn't installed.
 
 ## Commands
 
@@ -242,7 +257,7 @@ Shared services keep addons from fighting over the same state:
 | | |
 |---|---|
 | `Myriad.rotations()` | per-tick server-side rotation requests; the highest priority wins. Pass a callback to act once the rotation has been sent |
-| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, `hold(owner, slot, ticks)`; `bestInHotbar(score)`, `count`, `moveToHotbar`, `ensureInHotbar`; `move(from, to)`, `swapWithOffhand`, `quickMove`, `drop` |
+| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, `hold(owner, slot, ticks)` (mining runs at the held item's speed), `serverItem()`; `bestInHotbar(score)`, `count`, `moveToHotbar`, `ensureInHotbar`; `move(from, to)`, `swapWithOffhand`, `quickMove`, `drop` |
 | `Myriad.placement()` | placing blocks: neighbour clicks, rotation, silent swap, cooldowns; `clickTargets(pos)` and `place(hit, …)` when the clicked face matters (stairs, logs, slabs) |
 | `Myriad.containers()` | `open(pos, timeout)` a chest/barrel/shulker and get a `View` once its contents arrive: `find`, `count`, `quickMove`, `swapWithHotbar`, `drop`, `close` |
 | `Myriad.tasks()` | work over ticks: `later`, `every`, and `sequence` (run / wait / waitUntil with timeouts). A module's tasks are cancelled when it's disabled |
@@ -271,6 +286,9 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 | `util.Timer`, `util.RateCounter`, `util.Format`, `util.Texts` | delays and cooldowns; events per second; distances, durations, compact numbers; clickable chat (run a Myriad command, copy, hover) |
 | `util.Async`, `util.Http` | a shared worker pool (and a hop back to the render thread); GET/POST with JSON |
 | `util.FakePlayers` | client-side dummy players for testing combat and render features |
+| `util.Baritone` | drive Baritone when it's installed, without depending on it: `pathTo`, `isPathing`, `stop`, `command`, and `pause(owner)`/`resume(owner)` counted per module. Every call is a no-op without Baritone |
+| `setting.KeybindSetting` | a key or mouse bind; `wasPressed(event)` for a bind inside a module ("sub bind"), on `KeyEvent` and `MouseButtonEvent` |
+| `render.MyriadLogo` | the Myriad mark at any size |
 | `render.Renderer3D` / `ShapeBuilder` | boxes, real block shapes, single faces, lines, circles, tracers (this frame) |
 | `render.WorldMesh` | the same shapes kept on the GPU and drawn every frame until rebuilt |
 | `world.ChunkCache`, `world.BlockScan` | work out something per chunk once, redo it only when the chunk changes, optionally drawn as a mesh; block searches that skip sections by palette |
@@ -348,7 +366,7 @@ recomputes it when the chunk beside it changes, for checks that look past the ed
 about the world and turn settings into looks in the mesher: a colour setting then only needs `remeshAll()`, which
 never reads the world; call `invalidateAll()` when a setting changes what is found. Theme changes re-mesh by
 themselves. `BlockScan` skips every 16×16×16 section whose palette can't hold a match, so a search for a rare block
-reads almost nothing. The example addon's Block Search and the stock Storage and ESP (holes) modules use all of this.
+reads almost nothing. The example addon's Block Search, the stock Storage module and the Chest Count HUD element use all of this.
 
 Meshes are stored relative to a nearby origin (the chunk corner), so they stay exact far from spawn. Their colours are
 fixed when built, and translucent fills aren't re-sorted per frame (which only shows where several overlap).

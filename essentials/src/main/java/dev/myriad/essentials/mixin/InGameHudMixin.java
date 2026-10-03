@@ -3,7 +3,7 @@ package dev.myriad.essentials.mixin;
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import dev.myriad.api.module.Modules;
 import dev.myriad.essentials.modules.render.NoRender;
-import dev.myriad.essentials.modules.render.ShulkerPreview;
+import dev.myriad.essentials.modules.render.Tooltips;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -37,12 +37,12 @@ public abstract class InGameHudMixin {
 	@Inject(method = "extractItemHotbar", at = @At("TAIL"))
 	private void essentials$hotbarShulkers(GuiGraphicsExtractor context, DeltaTracker tickCounter, CallbackInfo ci) {
 		Minecraft mc = Minecraft.getInstance();
-		ShulkerPreview preview = Modules.active(ShulkerPreview.class);
+		Tooltips preview = Modules.active(Tooltips.class);
 		if (preview == null || !preview.hotbarIcons() || mc.player == null) return;
 		int x = context.guiWidth() / 2 - 90, y = context.guiHeight() - 19;
 		for (int i = 0; i < 9; i++) {
 			ItemStack stack = mc.player.getInventory().getItem(i);
-			if (ShulkerPreview.isShulker(stack)) ShulkerPreview.drawIcon(context, stack, x + i * 20 + 2, y);
+			if (Tooltips.isShulker(stack)) Tooltips.drawIcon(context, stack, x + i * 20 + 2, y);
 		}
 	}
 

@@ -1,7 +1,7 @@
 package dev.myriad.essentials.mixin;
 
 import dev.myriad.api.module.Modules;
-import dev.myriad.essentials.modules.render.ShulkerPreview;
+import dev.myriad.essentials.modules.render.Tooltips;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.Slot;
@@ -17,16 +17,16 @@ public abstract class HandledScreenMixin {
 	protected Slot hoveredSlot;
 
 	@Inject(method = "extractTooltip", at = @At("HEAD"), cancellable = true)
-	private void essentials$shulkerPreview(GuiGraphicsExtractor context, int mouseX, int mouseY, CallbackInfo ci) {
-		ShulkerPreview preview = Modules.active(ShulkerPreview.class);
+	private void essentials$containerPreview(GuiGraphicsExtractor context, int mouseX, int mouseY, CallbackInfo ci) {
+		Tooltips preview = Modules.active(Tooltips.class);
 		if (preview != null && preview.renderTooltip(context, hoveredSlot, mouseX, mouseY)) ci.cancel();
 	}
 
 	@Inject(method = "extractSlot", at = @At("TAIL"))
 	private void essentials$shulkerIcon(GuiGraphicsExtractor context, Slot slot, int mouseX, int mouseY, CallbackInfo ci) {
-		ShulkerPreview preview = Modules.active(ShulkerPreview.class);
-		if (preview != null && preview.slotIcons() && slot.hasItem() && ShulkerPreview.isShulker(slot.getItem())) {
-			ShulkerPreview.drawIcon(context, slot.getItem(), slot.x, slot.y);
+		Tooltips preview = Modules.active(Tooltips.class);
+		if (preview != null && preview.slotIcons() && slot.hasItem() && Tooltips.isShulker(slot.getItem())) {
+			Tooltips.drawIcon(context, slot.getItem(), slot.x, slot.y);
 		}
 	}
 }

@@ -2,6 +2,7 @@ package dev.myriad.essentials.modules.render;
 
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
+import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.IntSetting;
@@ -17,6 +18,7 @@ public class ViewModel extends Module {
 	public final BoolSetting noSway = sgGeneral.bool("No Sway").description("Stop the hands lagging behind camera movement.").build();
 	public final BoolSetting hideMain = sgGeneral.bool("Hide Main Hand").build();
 	public final BoolSetting hideOff = sgGeneral.bool("Hide Offhand").description("Handy for big shields and totems.").build();
+	public final BoolSetting noSwitch = sgGeneral.bool("No Switch Animation").description("Show a new item straight away instead of lowering and raising the hand.").build();
 
 	private final SettingGroup sgPosition = settings.group("Position");
 	public final DoubleSetting x = sgPosition.doubleSetting("X").description("Sideways; mirrored for the other hand.").defaultValue(0).range(-2, 2).build();
@@ -34,6 +36,12 @@ public class ViewModel extends Module {
 
 	public ViewModel() {
 		super(Categories.RENDER, "View Model", "Move, rotate, scale or hide your first-person hands.");
+	}
+
+	/** Whether the hand should skip the lower-and-raise animation when the held item changes. */
+	public static boolean noSwitchAnimation() {
+		ViewModel vm = Modules.active(ViewModel.class);
+		return vm != null && vm.noSwitch.get();
 	}
 
 }
