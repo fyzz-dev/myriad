@@ -30,8 +30,7 @@ Requires JDK 25+.
 ```
 
 To install, put `myriad-<v>.jar` in `mods/` (with Fabric API), then add `myriad-essentials-<v>.jar` and any other
-addons next to it. On [Omarchy](https://omarchy.org), add
-[myriad-omarchy](https://github.com/fyzz-dev/myriad-omarchy) too.
+addons next to it.
 
 ## The menu
 
@@ -62,8 +61,6 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
   - **Your themes**: **New** or **Duplicate** makes a theme you can rename and give an author. Each one is a file in
     `.minecraft/myriad/themes/`. To share it, send the `.json`; the other person drops it in that folder and presses
     **Reload**.
-  - **Omarchy**: with the [myriad-omarchy](https://github.com/fyzz-dev/myriad-omarchy) addon there's also an "Omarchy" theme that always matches your system
-    theme, switching whenever you run `omarchy-theme-set`. It's what a fresh install starts with on Omarchy.
   - **Theme roles**: colours come from a palette (accent, secondary, red, green, yellow, blue, magenta, cyan) that
     modules use as defaults, so ESP, tracers, categories, notifications and the module list follow the theme. A
     colour you change on a module is saved with that module's settings as an override.
