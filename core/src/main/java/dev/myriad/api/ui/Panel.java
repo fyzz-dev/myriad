@@ -25,6 +25,11 @@ public abstract class Panel {
 
 	public abstract String title();
 
+	/** Dim text after the title in the title bar (e.g. the addon a category window's modules come from), or null. */
+	public String subtitle() {
+		return null;
+	}
+
 	/** A Nerd Font glyph shown in the title bar and launcher, or null. */
 	public String icon() {
 		return null;

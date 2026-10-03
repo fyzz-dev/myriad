@@ -2,7 +2,6 @@ package dev.myriad.impl.ui;
 
 import com.google.gson.JsonObject;
 import dev.myriad.api.Myriad;
-import dev.myriad.api.module.Category;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.render.Animated;
 import dev.myriad.api.render.Canvas;
@@ -12,6 +11,7 @@ import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.FuzzyMatch;
 import dev.myriad.impl.ui.panels.CorePanels;
+import dev.myriad.impl.ui.panels.ModuleGroup;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -89,11 +89,8 @@ final class Launcher {
 				() -> wm.openPanel(t.id(), new JsonObject()),
 				() -> wm.openPanel(t.id(), new JsonObject(), wm.activeWorkspace(), true)));
 		}
-		for (Category c : Myriad.categories()) {
-			if (Myriad.modules().inCategory(c).isEmpty()) continue;
-			JsonObject args = new JsonObject();
-			args.addProperty("category", c.id().toString());
-			list.add(new Entry(c.icon(), c.name(), "Category panel", () -> wm.openPanel(CorePanels.CATEGORY, args), null));
+		for (ModuleGroup g : ModuleGroup.all()) {
+			list.add(new Entry(g.category().icon(), g.category().name() + " · " + g.addonName(), "Category", () -> wm.openGroup(g), null));
 		}
 		for (ThemeManager.Entry t : wm.themes().all()) {
 			list.add(new Entry("\uf53f", "Theme: " + t.name(), t.isUser() ? "Your theme" : "Apply theme", () -> wm.applyTheme(t.id()),

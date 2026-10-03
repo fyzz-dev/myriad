@@ -25,6 +25,8 @@ import dev.myriad.impl.render.UiRenderer;
 import dev.myriad.impl.ui.layout.DwindleLayout;
 import dev.myriad.impl.ui.panels.CorePanels;
 import dev.myriad.impl.ui.panels.DialogPanel;
+import dev.myriad.impl.ui.panels.ModuleGroup;
+import dev.myriad.impl.ui.panels.ModulesPanel;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +36,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,7 +56,7 @@ public final class WindowManager implements Desktop {
 	private static final Logger LOG = LoggerFactory.getLogger("Myriad/Desktop");
 	static final float TITLE_H = 13;
 	/** Bump to rebuild users' workspace layouts (theme and HUD are kept) after a default-layout change. */
-	private static final int LAYOUT_VERSION = 2;
+	private static final int LAYOUT_VERSION = 3;
 	private static final float SNAP = 4;
 
 	private final Minecraft mc = Minecraft.getInstance();
@@ -72,6 +75,8 @@ public final class WindowManager implements Desktop {
 	};
 
 	private JsonArray orphanWindows = new JsonArray();
+	/** Addon + category groups this desktop has already placed, so a group whose window you closed stays closed. */
+	private final Set<String> seenGroups = new LinkedHashSet<>();
 	private int active = 1, previous = 1;
 	private int nextUid = 1;
 
@@ -698,7 +703,7 @@ public final class WindowManager implements Desktop {
 				if (focused) c.gradientOutline(r.x(), r.y(), r.w(), r.h(), rad, bs, theme.activeBorderFrom.argb(), theme.activeBorderTo.argb(), borderAngle());
 				else c.outline(r.x(), r.y(), r.w(), r.h(), rad, bs, theme.inactiveBorder.argb());
 			}
-			if (drag != null && drag.kind == DragKind.SWAP && drag.window != w && interactive && r.contains(mouseX, mouseY)) {
+			if (drag != null && drag.kind == DragKind.SWAP && drag.window != w && interactive && r.contains(mouseX, mouseY) && mergeTarget() == null) {
 				c.roundRect(r.x(), r.y(), r.w(), r.h(), rad, ColorUtil.withAlpha(theme.accent.argb(), 40));
 			}
 		} finally {
@@ -718,14 +723,35 @@ public final class WindowManager implements Desktop {
 			x += 11;
 		}
 		float buttons = 26;
-		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), safeTitle(w), r.right() - buttons - x - 4);
+		float room = r.right() - buttons - x - 4;
+		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), safeTitle(w), room);
 		c.text(FontFamily.SANS_BOLD, c.defaultFontSize(), title, x, ty, focused ? theme.text.argb() : theme.textDim.argb());
+		String sub = safeSubtitle(w);
+		if (sub != null && !sub.isEmpty()) {
+			float sx = x + c.textWidth(FontFamily.SANS_BOLD, c.defaultFontSize(), title) + 5;
+			String s = c.ellipsize(FontFamily.SANS, c.defaultFontSize(), sub, x + room - sx);
+			c.text(FontFamily.SANS, c.defaultFontSize(), s, sx, ty, ColorUtil.withAlpha(theme.textDim.argb(), focused ? 220 : 150));
+		}
+		if (mergeTarget() == w) {
+			// Dropping here merges the dragged category window into this one.
+			c.roundRect(r.x() + b, r.y() + b, r.w() - b * 2, TITLE_H, Math.max(0, rad - b), Math.max(0, rad - b), 0, 0, ColorUtil.withAlpha(theme.accent.argb(), 110));
+			String m = "\uf0c1  Merge";
+			c.text(FontFamily.SANS_BOLD, c.defaultFontSize(), m, r.centerX() - c.textWidth(FontFamily.SANS_BOLD, c.defaultFontSize(), m) / 2, ty, theme.text.argb());
+		}
 		// Buttons: float toggle, close.
 		float bx = r.right() - b - 24;
 		boolean hoverFloat = interactive && mouseX >= bx && mouseX < bx + 11 && mouseY >= r.y() && mouseY < r.y() + TITLE_H;
 		boolean hoverClose = interactive && mouseX >= bx + 12 && mouseX < bx + 23 && mouseY >= r.y() && mouseY < r.y() + TITLE_H;
 		c.text(FontFamily.MONO, c.defaultFontSize(), w.floating ? "" : "", bx + 1, ty, hoverFloat ? theme.text.argb() : theme.textDim.argb());
 		c.text(FontFamily.MONO, c.defaultFontSize(), "", bx + 13, ty, hoverClose ? 0xFFF38BA8 : theme.textDim.argb());
+	}
+
+	private String safeSubtitle(WindowImpl w) {
+		try {
+			return w.panel.subtitle();
+		} catch (Throwable t) {
+			return null;
+		}
 	}
 
 	private String safeTitle(WindowImpl w) {
@@ -1012,6 +1038,33 @@ public final class WindowManager implements Desktop {
 		return null;
 	}
 
+	/**
+	 * The category window whose title bar the dragged category window is over (dropping it there merges the two), or
+	 * null.
+	 */
+	private WindowImpl mergeTarget() {
+		if (drag == null || (drag.kind != DragKind.SWAP && drag.kind != DragKind.MOVE) || !theme.titleBars.get()) return null;
+		if (!(drag.window.panel instanceof ModulesPanel from) || !from.isCategoryWindow()) return null;
+		List<WindowImpl> order = workspaces[active].drawOrder();
+		for (int i = order.size() - 1; i >= 0; i--) {
+			WindowImpl w = order.get(i);
+			if (w == drag.window || w.isHudElement()) continue;
+			Rect r = w.current();
+			if (!r.contains(mouseX, mouseY)) continue;
+			boolean title = !w.fullscreen && mouseY < r.y() + theme.borderSize.get() + TITLE_H;
+			return title && w.panel instanceof ModulesPanel to && to.isCategoryWindow() ? w : null;
+		}
+		return null;
+	}
+
+	/** Moves {@code from}'s groups into {@code into} (as sections) and closes {@code from}. */
+	private void merge(WindowImpl from, WindowImpl into) {
+		ModulesPanel merged = ((ModulesPanel) into.panel).mergedWith((ModulesPanel) from.panel);
+		replacePanel(into, merged, ModuleGroup.args(merged.groups()));
+		closeWindow(from);
+		markDirty();
+	}
+
 	private enum DragKind {
 		MOVE, RESIZE, SWAP, SPLITTER, TILE_RESIZE, HUD, PANEL
 	}
@@ -1238,8 +1291,14 @@ public final class WindowManager implements Desktop {
 	boolean mouseReleased(double gx, double gy, int button) {
 		float mx = toUnits(gx), my = toUnits(gy);
 		Drag d = drag;
+		WindowImpl mergeInto = mergeTarget();
 		drag = null;
 		if (d == null) return false;
+		if (mergeInto != null) {
+			merge(d.window, mergeInto);
+			pressed = null;
+			return true;
+		}
 		switch (d.kind) {
 			case SWAP -> {
 				WindowImpl target = topWindowAt(mx, my);
@@ -1498,6 +1557,9 @@ public final class WindowManager implements Desktop {
 			ws.add(j);
 		}
 		o.add("workspaces", ws);
+		JsonArray seen = new JsonArray();
+		for (String g : seenGroups) seen.add(g);
+		o.add("seen_groups", seen);
 		JsonArray wins = new JsonArray();
 		for (WindowImpl w : windows) {
 			// Dialogs hold callbacks that don't survive a restart.
@@ -1546,10 +1608,13 @@ public final class WindowManager implements Desktop {
 		orphanWindows = new JsonArray();
 		for (int i = 0; i <= WORKSPACES; i++) workspaces[i] = new Workspace(i, defaultLayout());
 		themes.reload();
+		seenGroups.clear();
 		if (o == null) {
 			firstRun();
+			placeNewGroups(false);
 			return;
 		}
+		if (o.has("seen_groups")) for (JsonElement e : o.getAsJsonArray("seen_groups")) seenGroups.add(e.getAsString());
 		loadTheme(o);
 		if (o.has("binds")) {
 			JsonObject b = o.getAsJsonObject("binds");
@@ -1606,6 +1671,54 @@ public final class WindowManager implements Desktop {
 			}
 			defaultWorkspaces();
 		}
+		placeNewGroups(true);
+	}
+
+	/** The addon + category groups a window shows (empty for anything but a category window). */
+	private static List<ModuleGroup> groupsOf(WindowImpl w) {
+		return w.panel instanceof ModulesPanel p ? p.groups() : List.of();
+	}
+
+	/**
+	 * Gives each addon + category group the desktop hasn't seen yet a window: on the workspace that already has that
+	 * category (so a new addon's Combat modules land beside your other Combat windows), otherwise on workspace 1.
+	 * Groups already on screen, or placed before and since closed, are left alone.
+	 */
+	private void placeNewGroups(boolean announce) {
+		Set<ModuleGroup> shown = new HashSet<>();
+		for (WindowImpl w : windows) shown.addAll(groupsOf(w));
+		for (ModuleGroup g : ModuleGroup.all()) {
+			if (!seenGroups.add(g.key()) || shown.contains(g)) continue;
+			WindowImpl sibling = null;
+			for (WindowImpl w : windows) {
+				if (w.workspace == HUD_WORKSPACE) continue;
+				for (ModuleGroup other : groupsOf(w)) if (other.category().equals(g.category())) sibling = w;
+			}
+			int target = sibling != null ? sibling.workspace : 1;
+			Workspace ws = workspaces[target];
+			WindowImpl keepFocus = ws.focused;
+			// New tiles go after the focused one: put it right after its category's window.
+			if (sibling != null && !sibling.floating) ws.focused = sibling;
+			Optional<Window> opened = openPanel(CorePanels.CATEGORY, ModuleGroup.args(List.of(g)), target, false);
+			ws.focused = keepFocus;
+			opened.ifPresent(w -> ((WindowImpl) w).opacity.snap(1));
+			if (announce && opened.isPresent()) {
+				Myriad.notifications().send("Menu", g.addonName() + " added " + g.category().name() + " modules to workspace " + target,
+					dev.myriad.api.service.Notifications.Level.INFO, 5000, "groups");
+			}
+		}
+		markDirty();
+	}
+
+	/** Shows the window holding {@code group}, opening one (on the current workspace) if none does. */
+	public void openGroup(ModuleGroup group) {
+		for (WindowImpl w : windows) {
+			if (!groupsOf(w).contains(group)) continue;
+			if (isOpen() && w.workspace != active) switchWorkspace(w.workspace);
+			focus(w);
+			return;
+		}
+		openPanel(CorePanels.CATEGORY, ModuleGroup.args(List.of(group)));
 	}
 
 	/** The active theme and personal preferences. Older saves kept every theme value here; turn those into a theme. */
@@ -1677,16 +1790,13 @@ public final class WindowManager implements Desktop {
 		for (WindowImpl w : windows) w.opacity.snap(1);
 	}
 
-	/** Workspace 1: one window per category, side by side (a tiled click-GUI). */
+	/** Workspace 1: one window per addon + category group, side by side (a tiled click-GUI). */
 	private void defaultWorkspaces() {
 		active = 1;
 		workspaces[1].setLayout(Myriad.layouts().get(dev.myriad.impl.ui.layout.ColumnsLayout.ID).orElse(defaultLayout()));
 		WindowImpl first = null;
-		for (dev.myriad.api.module.Category c : Myriad.categories()) {
-			if (Myriad.modules().inCategory(c).isEmpty()) continue;
-			JsonObject args = new JsonObject();
-			args.addProperty("category", c.id().toString());
-			Optional<Window> w = openPanel(dev.myriad.impl.ui.panels.CorePanels.CATEGORY, args, 1, false);
+		for (ModuleGroup g : ModuleGroup.all()) {
+			Optional<Window> w = openPanel(CorePanels.CATEGORY, ModuleGroup.args(List.of(g)), 1, false);
 			if (first == null && w.isPresent()) first = (WindowImpl) w.get();
 		}
 		if (first == null) openPanel(dev.myriad.impl.ui.panels.CorePanels.MODULES, new JsonObject(), 1, false);

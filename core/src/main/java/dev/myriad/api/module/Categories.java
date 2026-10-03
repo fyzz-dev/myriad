@@ -7,7 +7,8 @@ import java.util.List;
 
 /**
  * The conventional categories, registered by Myriad core so that every addon shares the same vocabulary. They hold
- * no modules themselves.
+ * no modules themselves. Each addon's modules in a category get their own window ("Combat · Essentials"); sharing the
+ * category gives those windows the same icon and colour and places a new addon's window beside the others.
  */
 public final class Categories {
 	public static final Category COMBAT = of("combat", "Combat", "\uf05b", SettingColor.Mode.RED);
