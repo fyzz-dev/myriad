@@ -1,23 +1,23 @@
 package dev.myriad.api.util;
 
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import net.minecraft.block.ShulkerBoxBlock;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.ContainerComponent;
-import net.minecraft.component.type.EquippableComponent;
-import net.minecraft.component.type.FoodComponent;
-import net.minecraft.enchantment.Enchantment;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.tag.ItemTags;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemContainerContents;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.equipment.Equippable;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
 
 /** Questions about item stacks that features keep asking: enchantments, food, contents, durability, gear kind. */
 public final class ItemInfo {
@@ -25,24 +25,24 @@ public final class ItemInfo {
 	}
 
 	/** The level of {@code enchantment} on the stack, 0 if it doesn't have it. */
-	public static int enchantmentLevel(ItemStack stack, RegistryKey<Enchantment> enchantment) {
-		for (Object2IntMap.Entry<RegistryEntry<Enchantment>> e : stack.getEnchantments().getEnchantmentEntries()) {
-			if (e.getKey().matchesKey(enchantment)) return e.getIntValue();
+	public static int enchantmentLevel(ItemStack stack, ResourceKey<Enchantment> enchantment) {
+		for (Object2IntMap.Entry<Holder<Enchantment>> e : stack.getEnchantments().entrySet()) {
+			if (e.getKey().is(enchantment)) return e.getIntValue();
 		}
 		return 0;
 	}
 
-	public static boolean hasEnchantment(ItemStack stack, RegistryKey<Enchantment> enchantment) {
+	public static boolean hasEnchantment(ItemStack stack, ResourceKey<Enchantment> enchantment) {
 		return enchantmentLevel(stack, enchantment) > 0;
 	}
 
 	public static boolean isFood(ItemStack stack) {
-		return stack.contains(DataComponentTypes.FOOD);
+		return stack.has(DataComponents.FOOD);
 	}
 
 	/** Hunger and saturation, or null if it isn't food. */
-	public static @Nullable FoodComponent food(ItemStack stack) {
-		return stack.get(DataComponentTypes.FOOD);
+	public static @Nullable FoodProperties food(ItemStack stack) {
+		return stack.get(DataComponents.FOOD);
 	}
 
 	public static boolean isShulkerBox(ItemStack stack) {
@@ -54,34 +54,34 @@ public final class ItemInfo {
 	 * none.
 	 */
 	public static List<ItemStack> contents(ItemStack stack) {
-		ContainerComponent c = stack.get(DataComponentTypes.CONTAINER);
+		ItemContainerContents c = stack.get(DataComponents.CONTAINER);
 		List<ItemStack> out = new ArrayList<>();
-		if (c != null) c.stream().forEach(out::add);
+		if (c != null) c.allItemsCopyStream().forEach(out::add);
 		return out;
 	}
 
 	/** Uses left before it breaks; {@link Integer#MAX_VALUE} for items that don't wear out. */
 	public static int durability(ItemStack stack) {
-		return stack.isDamageable() ? stack.getMaxDamage() - stack.getDamage() : Integer.MAX_VALUE;
+		return stack.isDamageableItem() ? stack.getMaxDamage() - stack.getDamageValue() : Integer.MAX_VALUE;
 	}
 
 	/** Durability left as 0..1 (1 for items that don't wear out). */
 	public static float durabilityFraction(ItemStack stack) {
-		return stack.isDamageable() ? 1f - stack.getDamage() / (float) stack.getMaxDamage() : 1f;
+		return stack.isDamageableItem() ? 1f - stack.getDamageValue() / (float) stack.getMaxDamage() : 1f;
 	}
 
 	public static boolean isWeapon(ItemStack stack) {
-		return stack.isIn(ItemTags.SWORDS) || stack.isIn(ItemTags.AXES) || stack.isOf(Items.TRIDENT) || stack.isOf(Items.MACE);
+		return stack.is(ItemTags.SWORDS) || stack.is(ItemTags.AXES) || stack.is(Items.TRIDENT) || stack.is(Items.MACE);
 	}
 
 	public static boolean isTool(ItemStack stack) {
-		return stack.isIn(ItemTags.PICKAXES) || stack.isIn(ItemTags.AXES) || stack.isIn(ItemTags.SHOVELS) || stack.isIn(ItemTags.HOES)
-			|| stack.isOf(Items.SHEARS);
+		return stack.is(ItemTags.PICKAXES) || stack.is(ItemTags.AXES) || stack.is(ItemTags.SHOVELS) || stack.is(ItemTags.HOES)
+			|| stack.is(Items.SHEARS);
 	}
 
 	/** The armour slot it's worn in (head, chest, legs, feet; elytra is chest), or null if it isn't armour. */
 	public static @Nullable EquipmentSlot armorSlot(ItemStack stack) {
-		EquippableComponent e = stack.get(DataComponentTypes.EQUIPPABLE);
+		Equippable e = stack.get(DataComponents.EQUIPPABLE);
 		return e != null && e.slot().getType() == EquipmentSlot.Type.HUMANOID_ARMOR ? e.slot() : null;
 	}
 

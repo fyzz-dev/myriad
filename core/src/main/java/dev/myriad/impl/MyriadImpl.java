@@ -36,21 +36,21 @@ import dev.myriad.impl.service.RotationManager;
 import dev.myriad.impl.service.TaskScheduler;
 import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.ui.panels.ConsoleLog;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.TextColor;
 
 /** Owns every Myriad service and drives startup. */
 public final class MyriadImpl implements MyriadApi {
 	public static final Logger LOG = LoggerFactory.getLogger("Myriad");
 	private static MyriadImpl instance;
 
-	private final MinecraftClient mc = MinecraftClient.getInstance();
+	private final Minecraft mc = Minecraft.getInstance();
 	private final MyriadEventBus events = new MyriadEventBus();
 	private final Registry<Category> categories = new Registry<>("category");
 	private final ModuleRegistry modules = new ModuleRegistry();
@@ -84,7 +84,7 @@ public final class MyriadImpl implements MyriadApi {
 	/** Creates and installs Myriad, then loads every addon. */
 	public static MyriadImpl bootstrap() {
 		// Addon classes can load before the client exists (e.g. from an early mixin); make sure they see it.
-		net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+		net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
 		dev.myriad.api.module.Module.bindClient(client);
 		dev.myriad.api.ui.Panel.bindClient(client);
 		dev.myriad.api.command.Command.bindClient(client);
@@ -242,9 +242,9 @@ public final class MyriadImpl implements MyriadApi {
 	}
 
 	@Override
-	public void chat(Text message) {
+	public void chat(Component message) {
 		ConsoleLog.add(message.getString());
-		if (!mc.isOnThread()) {
+		if (!mc.isSameThread()) {
 			mc.execute(() -> sendChat(message));
 			return;
 		}
@@ -252,24 +252,24 @@ public final class MyriadImpl implements MyriadApi {
 	}
 
 	@Override
-	public void chat(Text message, String id) {
+	public void chat(Component message, String id) {
 		ConsoleLog.add(message.getString());
-		if (!mc.isOnThread()) {
+		if (!mc.isSameThread()) {
 			mc.execute(() -> sendChat(message, id));
 			return;
 		}
 		sendChat(message, id);
 	}
 
-	private void sendChat(Text message) {
+	private void sendChat(Component message) {
 		sendChat(message, null);
 	}
 
-	private void sendChat(Text message, String id) {
-		if (mc.inGameHud == null || mc.player == null) return;
+	private void sendChat(Component message, String id) {
+		if (mc.gui == null || mc.player == null) return;
 		int accent = windowManager.theme().accent.get().color() & 0xFFFFFF;
-		MutableText line = Text.literal("[Myriad] ").styled(s -> s.withColor(TextColor.fromRgb(accent))).append(message);
-		if (id == null) mc.inGameHud.getChatHud().addMessage(line);
+		MutableComponent line = Component.literal("[Myriad] ").withStyle(s -> s.withColor(TextColor.fromRgb(accent))).append(message);
+		if (id == null) mc.gui.hud.getChat().addClientSystemMessage(line);
 		else ChatLines.add(line, id);
 	}
 }

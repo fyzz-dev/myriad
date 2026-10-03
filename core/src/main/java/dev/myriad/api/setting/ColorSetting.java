@@ -70,12 +70,12 @@ public class ColorSetting extends Setting<SettingColor> {
 		return value.mode() == SettingColor.Mode.STATIC ? ColorUtil.toHex(value.color()) : value.mode().name().toLowerCase();
 	}
 
-	public static class Builder extends Setting.Builder<Builder, SettingColor, ColorSetting> {
+	public static class Builder extends Setting.Builder<dev.myriad.api.setting.ColorSetting.Builder, SettingColor, ColorSetting> {
 		public Builder(String name) {
 			super(name, SettingColor.of(0xFFFFFFFF));
 		}
 
-		public Builder defaultValue(int argb) {
+		public dev.myriad.api.setting.ColorSetting.Builder defaultValue(int argb) {
 			return defaultValue(SettingColor.of(argb));
 		}
 

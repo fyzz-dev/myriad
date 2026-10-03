@@ -2,9 +2,8 @@ package dev.myriad.api.setting;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.myriad.api.util.Keybind;
-import net.minecraft.client.util.InputUtil;
-
 import java.util.Locale;
 import java.util.function.Supplier;
 
@@ -31,9 +30,9 @@ public class KeybindSetting extends Setting<Keybind> {
 			return true;
 		}
 		try {
-			InputUtil.Key key = InputUtil.fromTranslationKey("key.keyboard." + in);
-			if (key.getCode() < 0) return false;
-			set(Keybind.key(key.getCode()));
+			InputConstants.Key key = InputConstants.getKey("key.keyboard." + in);
+			if (key.getValue() < 0) return false;
+			set(Keybind.key(key.getValue()));
 			return true;
 		} catch (RuntimeException e) {
 			return false;
@@ -45,7 +44,7 @@ public class KeybindSetting extends Setting<Keybind> {
 		return value.displayName();
 	}
 
-	public static class Builder extends Setting.Builder<Builder, Keybind, KeybindSetting> {
+	public static class Builder extends Setting.Builder<dev.myriad.api.setting.KeybindSetting.Builder, Keybind, KeybindSetting> {
 		public Builder(String name) {
 			super(name, Keybind.NONE);
 		}

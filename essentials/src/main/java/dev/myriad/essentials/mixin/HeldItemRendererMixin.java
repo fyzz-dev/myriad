@@ -4,86 +4,86 @@ import dev.myriad.api.module.Modules;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import dev.myriad.essentials.modules.render.Swing;
 import dev.myriad.essentials.modules.render.ViewModel;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.ItemInHandRenderer;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.item.HeldItemRenderer;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Arm;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.RotationAxis;
 import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-@Mixin(HeldItemRenderer.class)
+@Mixin(ItemInHandRenderer.class)
 public abstract class HeldItemRendererMixin {
 	@Shadow
-	private ItemStack mainHand;
+	private ItemStack mainHandItem;
 	@Shadow
-	private ItemStack offHand;
+	private ItemStack offHandItem;
 	@Shadow
-	private float equipProgressMainHand;
+	private float mainHandHeight;
 	@Shadow
-	private float prevEquipProgressMainHand;
+	private float oMainHandHeight;
 	@Shadow
-	private float equipProgressOffHand;
+	private float offHandHeight;
 	@Shadow
-	private float prevEquipProgressOffHand;
+	private float oOffHandHeight;
 	@Shadow
 	@Final
-	private MinecraftClient client;
+	private Minecraft minecraft;
 
 	/** Swing: no dip when switching items; show the new item straight away. */
-	@Inject(method = "updateHeldItems", at = @At("TAIL"))
+	@Inject(method = "tick", at = @At("TAIL"))
 	private void essentials$noSwitchAnimation(CallbackInfo ci) {
-		if (!Swing.noSwitchAnimation() || client.player == null) return;
-		mainHand = client.player.getMainHandStack();
-		offHand = client.player.getOffHandStack();
-		equipProgressMainHand = prevEquipProgressMainHand = 1;
-		equipProgressOffHand = prevEquipProgressOffHand = 1;
+		if (!Swing.noSwitchAnimation() || minecraft.player == null) return;
+		mainHandItem = minecraft.player.getMainHandItem();
+		offHandItem = minecraft.player.getOffhandItem();
+		mainHandHeight = oMainHandHeight = 1;
+		offHandHeight = oOffHandHeight = 1;
 	}
 
-	private static final String RENDER_ITEM = "renderItem(FLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider$Immediate;Lnet/minecraft/client/network/ClientPlayerEntity;I)V";
+	private static final String RENDER_ITEM = "submitHandsWithItems";
 
-	/** The first two rotations in renderItem are the camera sway (pitch, then yaw). */
-	@ModifyExpressionValue(method = RENDER_ITEM, at = @At(value = "INVOKE", target = "Lnet/minecraft/util/math/RotationAxis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 0))
+	/** The first two rotations in submitHandsWithItems are the camera sway (pitch, then yaw). */
+	@ModifyExpressionValue(method = RENDER_ITEM, at = @At(value = "INVOKE", target = "Lcom/mojang/math/Axis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 0))
 	private Quaternionf essentials$noPitchSway(Quaternionf original) {
 		ViewModel vm = Modules.active(ViewModel.class);
 		return vm != null && vm.noSway.get() ? new Quaternionf() : original;
 	}
 
-	@ModifyExpressionValue(method = RENDER_ITEM, at = @At(value = "INVOKE", target = "Lnet/minecraft/util/math/RotationAxis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 1))
+	@ModifyExpressionValue(method = RENDER_ITEM, at = @At(value = "INVOKE", target = "Lcom/mojang/math/Axis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 1))
 	private Quaternionf essentials$noYawSway(Quaternionf original) {
 		ViewModel vm = Modules.active(ViewModel.class);
 		return vm != null && vm.noSway.get() ? new Quaternionf() : original;
 	}
 
-	@WrapOperation(method = RENDER_ITEM, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/item/HeldItemRenderer;renderFirstPersonItem(Lnet/minecraft/client/network/AbstractClientPlayerEntity;FFLnet/minecraft/util/Hand;FLnet/minecraft/item/ItemStack;FLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V"))
-	private void essentials$viewModel(HeldItemRenderer renderer, AbstractClientPlayerEntity player, float tickDelta, float pitch, Hand hand, float swing,
-									  ItemStack item, float equip, MatrixStack matrices, VertexConsumerProvider consumers, int light, Operation<Void> original) {
+	@WrapOperation(method = RENDER_ITEM, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/ItemInHandRenderer;submitArmWithItem(Lnet/minecraft/client/player/AbstractClientPlayer;FFLnet/minecraft/world/InteractionHand;FLnet/minecraft/world/item/ItemStack;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;I)V"))
+	private void essentials$viewModel(ItemInHandRenderer renderer, AbstractClientPlayer player, float tickDelta, float pitch, InteractionHand hand, float swing,
+									  ItemStack item, float equip, PoseStack matrices, SubmitNodeCollector consumers, int light, Operation<Void> original) {
 		ViewModel vm = Modules.active(ViewModel.class);
 		if (vm == null) {
 			original.call(renderer, player, tickDelta, pitch, hand, swing, item, equip, matrices, consumers, light);
 			return;
 		}
-		boolean main = hand == Hand.MAIN_HAND;
+		boolean main = hand == InteractionHand.MAIN_HAND;
 		if (main ? vm.hideMain.get() : vm.hideOff.get()) return;
-		Arm arm = main ? player.getMainArm() : player.getMainArm().getOpposite();
-		float mirror = arm == Arm.RIGHT ? 1 : -1;
-		matrices.push();
+		HumanoidArm arm = main ? player.getMainArm() : player.getMainArm().getOpposite();
+		float mirror = arm == HumanoidArm.RIGHT ? 1 : -1;
+		matrices.pushPose();
 		matrices.translate(vm.x.get() * mirror, vm.y.get(), vm.z.get());
-		matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(vm.rotY.get() * mirror));
-		matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(vm.rotX.get()));
-		matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(vm.rotZ.get() * mirror));
+		matrices.mulPose(Axis.YP.rotationDegrees(vm.rotY.get() * mirror));
+		matrices.mulPose(Axis.XP.rotationDegrees(vm.rotX.get()));
+		matrices.mulPose(Axis.ZP.rotationDegrees(vm.rotZ.get() * mirror));
 		float s = main ? vm.scale.getFloat() : vm.offhandScale.getFloat();
 		if (s != 1) {
 			// Scale around where the item sits rather than the camera, so it grows in place.
@@ -92,8 +92,8 @@ public abstract class HeldItemRendererMixin {
 			matrices.scale(s, s, s);
 			matrices.translate(-px, -py, -pz);
 		}
-		int l = vm.brighten.get() ? LightmapTextureManager.MAX_LIGHT_COORDINATE : light;
+		int l = vm.brighten.get() ? LightCoordsUtil.FULL_BRIGHT : light;
 		original.call(renderer, player, tickDelta, pitch, hand, swing, item, equip, matrices, consumers, l);
-		matrices.pop();
+		matrices.popPose();
 	}
 }

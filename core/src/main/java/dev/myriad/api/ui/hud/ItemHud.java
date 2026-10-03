@@ -4,7 +4,7 @@ import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.ItemInfo;
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
 
 /** Durability bars, percentages and colours for HUD elements that show items, so they all look alike. */
 public final class ItemHud {

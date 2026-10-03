@@ -1,6 +1,6 @@
 package dev.myriad.api.event.events;
 
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 /** Entities entering and leaving the client world. Posted on the render thread. */
 public abstract class EntityEvent {

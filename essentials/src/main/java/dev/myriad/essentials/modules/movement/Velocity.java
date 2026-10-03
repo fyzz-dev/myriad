@@ -11,18 +11,17 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.essentials.modules.combat.Criticals;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityStatuses;
-import net.minecraft.entity.projectile.FishingBobberEntity;
-import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.Optional;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityEvent;
+import net.minecraft.world.entity.projectile.FishingHook;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Reduces or cancels knockback from hits and explosions, and can stop blocks, liquids and other entities from
@@ -54,7 +53,7 @@ public class Velocity extends Module {
 	private final BoolSetting pushEntities = sgPush.bool("Entities").description("Don't get pushed by other entities.").build();
 
 	private volatile boolean concealVelocity, pendingStatic;
-	private Vec3d pendingReconcile = Vec3d.ZERO;
+	private Vec3 pendingReconcile = Vec3.ZERO;
 	private int reconcileTicks;
 
 	public Velocity() {
@@ -102,23 +101,23 @@ public class Velocity extends Module {
 	@Subscribe(priority = Priority.LOWEST)
 	private void onReceive(PacketEvent.Receive e) {
 		if (!inGame()) return;
-		if (e.packet() instanceof EntityVelocityUpdateS2CPacket p && p.getEntityId() == mc.player.getId()) {
-			if (concealVelocity && p.getVelocityX() == 0 && p.getVelocityY() == 0 && p.getVelocityZ() == 0) {
+		if (e.packet() instanceof ClientboundSetEntityMotionPacket p && p.id() == mc.player.getId()) {
+			if (concealVelocity && p.movement().lengthSqr() == 0) {
 				concealVelocity = false;
 				return;
 			}
-			Vec3d incoming = new Vec3d(p.getVelocityX(), p.getVelocityY(), p.getVelocityZ());
-			Vec3d delta = incoming.subtract(mc.player.getVelocity());
+			Vec3 incoming = p.movement();
+			Vec3 delta = incoming.subtract(mc.player.getDeltaMovement());
 			if (shouldCancel(delta)) {
 				queueReconcile(delta);
 				e.cancel();
 			} else if (!wallsOnly.get()) {
-				e.setPacket(new EntityVelocityUpdateS2CPacket(p.getEntityId(), scale(incoming)));
+				e.setPacket(new ClientboundSetEntityMotionPacket(p.id(), scale(incoming)));
 			}
 			queueStatic();
-		} else if (explosions.get() && e.packet() instanceof ExplosionS2CPacket p && p.playerKnockback().isPresent()) {
-			Vec3d kb = p.playerKnockback().get();
-			Optional<Vec3d> kept;
+		} else if (explosions.get() && e.packet() instanceof ClientboundExplodePacket p && p.playerKnockback().isPresent()) {
+			Vec3 kb = p.playerKnockback().get();
+			Optional<Vec3> kept;
 			if (shouldCancel(kb)) {
 				queueReconcile(kb);
 				kept = Optional.empty();
@@ -126,20 +125,20 @@ public class Velocity extends Module {
 				kept = wallsOnly.get() ? Optional.of(kb) : Optional.of(scale(kb));
 			}
 			// Keep the packet (particles and sound), just change the push.
-			e.setPacket(new ExplosionS2CPacket(p.center(), kept, p.explosionParticle(), p.explosionSound()));
-		} else if (e.packet() instanceof PlayerPositionLookS2CPacket && pauseLag.get()) {
+			e.setPacket(new ClientboundExplodePacket(p.center(), p.radius(), p.blockCount(), kept, p.explosionParticle(), p.explosionSound(), p.blockParticles()));
+		} else if (e.packet() instanceof ClientboundPlayerPositionPacket && pauseLag.get()) {
 			concealVelocity = true;
-		} else if (fishingRods.get() && e.packet() instanceof EntityStatusS2CPacket p && p.getStatus() == EntityStatuses.PULL_HOOKED_ENTITY) {
-			Entity entity = p.getEntity(mc.world);
-			if (entity instanceof FishingBobberEntity hook && hook.getHookedEntity() == mc.player) e.cancel();
+		} else if (fishingRods.get() && e.packet() instanceof ClientboundEntityEventPacket p && p.getEventId() == EntityEvent.FISHING_ROD_REEL_IN) {
+			Entity entity = p.getEntity(mc.level);
+			if (entity instanceof FishingHook hook && hook.getHookedIn() == mc.player) e.cancel();
 		}
 	}
 
-	private Vec3d scale(Vec3d v) {
-		return new Vec3d(v.x * horizontal.get() / 100, v.y * vertical.get() / 100, v.z * horizontal.get() / 100);
+	private Vec3 scale(Vec3 v) {
+		return new Vec3(v.x * horizontal.get() / 100, v.y * vertical.get() / 100, v.z * horizontal.get() / 100);
 	}
 
-	private boolean shouldCancel(Vec3d delta) {
+	private boolean shouldCancel(Vec3 delta) {
 		if (!isKnockback(delta)) return false;
 		if (wallsOnly.get()) {
 			if (!phaseActive()) return false;
@@ -148,30 +147,30 @@ public class Velocity extends Module {
 		return horizontal.get() == 0 && vertical.get() == 0;
 	}
 
-	private boolean isKnockback(Vec3d delta) {
+	private boolean isKnockback(Vec3 delta) {
 		if (!wallsOnly.get()) return true;
 		return Math.sqrt(delta.x * delta.x + delta.z * delta.z) >= 0.1 || delta.y >= 0.1;
 	}
 
 	private boolean phaseActive() {
-		return (phased() || (trapped.get() && trappedHead())) && (!groundOnly.get() || mc.player.isOnGround());
+		return (phased() || (trapped.get() && trappedHead())) && (!groundOnly.get() || mc.player.onGround());
 	}
 
 	private boolean phased() {
-		Box box = mc.player.getBoundingBox().expand(-1.0E-7);
-		return mc.world.getBlockCollisions(mc.player, box).iterator().hasNext();
+		AABB box = mc.player.getBoundingBox().inflate(-1.0E-7);
+		return mc.level.getBlockCollisions(mc.player, box).iterator().hasNext();
 	}
 
 	private boolean trappedHead() {
-		BlockPos head = mc.player.getBlockPos().up(mc.player.isCrawling() ? 1 : 2);
-		return !mc.world.getBlockState(head).isReplaceable();
+		BlockPos head = mc.player.blockPosition().above(mc.player.isVisuallyCrawling() ? 1 : 2);
+		return !mc.level.getBlockState(head).canBeReplaced();
 	}
 
-	private boolean blocked(Vec3d delta) {
+	private boolean blocked(Vec3 delta) {
 		double len = delta.length();
 		if (len < 1.0E-4) return false;
-		Vec3d step = delta.multiply(Math.min(len, 2.0) / len);
-		return mc.world.getBlockCollisions(mc.player, mc.player.getBoundingBox().offset(step).expand(-1.0E-7)).iterator().hasNext();
+		Vec3 step = delta.scale(Math.min(len, 2.0) / len);
+		return mc.level.getBlockCollisions(mc.player, mc.player.getBoundingBox().move(step).inflate(-1.0E-7)).iterator().hasNext();
 	}
 
 	private void queueStatic() {
@@ -182,9 +181,9 @@ public class Velocity extends Module {
 		if (!pendingStatic) return;
 		pendingStatic = false;
 		if (!staticVelocity.get() || (staticPhasedOnly.get() && !phased())) return;
-		var in = mc.player.input.playerInput;
+		var in = mc.player.input.keyPresses;
 		if (in.forward() || in.backward() || in.left() || in.right() || in.jump() || critActive()) return;
-		mc.player.setVelocity(Vec3d.ZERO);
+		mc.player.setDeltaMovement(Vec3.ZERO);
 	}
 
 	private static boolean critActive() {
@@ -192,31 +191,31 @@ public class Velocity extends Module {
 		return criticals != null && criticals.hoppedWithin(100);
 	}
 
-	private synchronized void queueReconcile(Vec3d delta) {
+	private synchronized void queueReconcile(Vec3 delta) {
 		if (!wallsOnly.get() || !isKnockback(delta)) return;
 		pendingReconcile = pendingReconcile.add(delta);
-		if (pendingReconcile.length() > MAX_RECONCILE_SPEED) pendingReconcile = pendingReconcile.normalize().multiply(MAX_RECONCILE_SPEED);
+		if (pendingReconcile.length() > MAX_RECONCILE_SPEED) pendingReconcile = pendingReconcile.normalize().scale(MAX_RECONCILE_SPEED);
 		reconcileTicks = MAX_RECONCILE_TICKS;
 	}
 
 	/** Gives back cancelled knockback once it no longer pushes into a block. */
 	private synchronized void applyReconcile() {
-		if (reconcileTicks <= 0 || pendingReconcile.lengthSquared() < 9.0E-4) {
+		if (reconcileTicks <= 0 || pendingReconcile.lengthSqr() < 9.0E-4) {
 			clearReconcile();
 			return;
 		}
 		if (critActive()) return;
 		reconcileTicks--;
 		if (blocked(pendingReconcile)) {
-			pendingReconcile = new Vec3d(pendingReconcile.x * 0.91, pendingReconcile.y * 0.98, pendingReconcile.z * 0.91);
+			pendingReconcile = new Vec3(pendingReconcile.x * 0.91, pendingReconcile.y * 0.98, pendingReconcile.z * 0.91);
 			return;
 		}
-		mc.player.setVelocity(mc.player.getVelocity().add(pendingReconcile));
+		mc.player.setDeltaMovement(mc.player.getDeltaMovement().add(pendingReconcile));
 		clearReconcile();
 	}
 
 	private synchronized void clearReconcile() {
-		pendingReconcile = Vec3d.ZERO;
+		pendingReconcile = Vec3.ZERO;
 		reconcileTicks = 0;
 	}
 }

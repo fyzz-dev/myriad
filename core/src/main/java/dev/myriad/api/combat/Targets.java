@@ -3,23 +3,6 @@ package dev.myriad.api.combat;
 import dev.myriad.api.util.Entities;
 import dev.myriad.api.util.MathUtil;
 import dev.myriad.api.util.Reach;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ExperienceOrbEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.boss.WitherEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.mob.Angerable;
-import net.minecraft.entity.mob.EndermanEntity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.mob.Monster;
-import net.minecraft.entity.mob.WardenEntity;
-import net.minecraft.entity.mob.ZombifiedPiglinEntity;
-import net.minecraft.entity.passive.AnimalEntity;
-import net.minecraft.entity.passive.MerchantEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -28,6 +11,23 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
+import net.minecraft.world.entity.monster.warden.Warden;
+import net.minecraft.world.entity.npc.villager.AbstractVillager;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Finding entities to attack, aim at or highlight, with the same rules everywhere: what counts as a hostile, how
@@ -65,18 +65,18 @@ public final class Targets {
 	 * or nothing at all with {@code onlyAngry}.
 	 */
 	public static @Nullable Type type(Entity e, boolean onlyAngry) {
-		if (e instanceof PlayerEntity) return Type.PLAYERS;
-		if (e instanceof WitherEntity || e instanceof WardenEntity || e instanceof EnderDragonEntity) return Type.BOSSES;
-		if (e instanceof ProjectileEntity) return Type.PROJECTILES;
-		if (e instanceof MerchantEntity) return Type.VILLAGERS;
-		if (e instanceof EndermanEntity enderman) return !onlyAngry || enderman.isProvoked() ? Type.HOSTILES : null;
-		if (e instanceof ZombifiedPiglinEntity piglin) return !onlyAngry || piglin.isAttacking() ? Type.HOSTILES : null;
-		if (e instanceof Angerable angerable && !(e instanceof HostileEntity)) {
-			if (angerable.getAngerTime() > 0) return Type.HOSTILES;
+		if (e instanceof Player) return Type.PLAYERS;
+		if (e instanceof WitherBoss || e instanceof Warden || e instanceof EnderDragon) return Type.BOSSES;
+		if (e instanceof Projectile) return Type.PROJECTILES;
+		if (e instanceof AbstractVillager) return Type.VILLAGERS;
+		if (e instanceof EnderMan enderman) return !onlyAngry || enderman.hasBeenStaredAt() ? Type.HOSTILES : null;
+		if (e instanceof ZombifiedPiglin piglin) return !onlyAngry || piglin.isAggressive() ? Type.HOSTILES : null;
+		if (e instanceof NeutralMob angerable && !(e instanceof Monster)) {
+			if (angerable.isAngry()) return Type.HOSTILES;
 			return onlyAngry ? null : Type.ANIMALS;
 		}
-		if (e instanceof AnimalEntity) return Type.ANIMALS;
-		if (e instanceof HostileEntity || e instanceof Monster || Entities.isHostile(e)) return Type.HOSTILES;
+		if (e instanceof Animal) return Type.ANIMALS;
+		if (e instanceof Monster || e instanceof Enemy || Entities.isHostile(e)) return Type.HOSTILES;
 		return null;
 	}
 
@@ -160,52 +160,52 @@ public final class Targets {
 		}
 
 		public boolean test(Entity e) {
-			MinecraftClient mc = MinecraftClient.getInstance();
-			if (mc.player == null || e == mc.player || !e.isAlive() || !e.isAttackable() || e instanceof ExperienceOrbEntity) return false;
-			if (e instanceof LivingEntity l && l.isDead()) return false;
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player == null || e == mc.player || !e.isAlive() || !e.isAttackable() || e instanceof ExperienceOrb) return false;
+			if (e instanceof LivingEntity l && l.isDeadOrDying()) return false;
 			Type type = type(e, onlyAngry);
 			if (type == null || !types.contains(type)) return false;
 			if (!invisibles && e.isInvisible()) return false;
-			if (!named && e.hasCustomName() && !(e instanceof PlayerEntity)) return false;
-			if (e instanceof PlayerEntity p) {
+			if (!named && e.hasCustomName() && !(e instanceof Player)) return false;
+			if (e instanceof Player p) {
 				if (!friends && Entities.isFriend(p)) return false;
 				if (!creative && p.isCreative()) return false;
 			}
-			if (MathUtil.distanceTo(e.getBoundingBox(), mc.player.getEyePos()) > range) return false;
-			if (!throughWalls && !mc.player.canSee(e)) return false;
+			if (MathUtil.distanceTo(e.getBoundingBox(), mc.player.getEyePosition()) > range) return false;
+			if (!throughWalls && !mc.player.hasLineOfSight(e)) return false;
 			return filter.test(e);
 		}
 
 		/** Every match, best first. */
 		public List<Entity> list() {
-			MinecraftClient mc = MinecraftClient.getInstance();
+			Minecraft mc = Minecraft.getInstance();
 			List<Entity> out = new ArrayList<>();
-			if (mc.world == null || mc.player == null) return out;
-			for (Entity e : mc.world.getEntities()) if (test(e)) out.add(e);
+			if (mc.level == null || mc.player == null) return out;
+			for (Entity e : mc.level.entitiesForRendering()) if (test(e)) out.add(e);
 			out.sort(comparator());
 			return out;
 		}
 
 		/** The best match, or null. */
 		public @Nullable Entity best() {
-			MinecraftClient mc = MinecraftClient.getInstance();
-			if (mc.world == null || mc.player == null) return null;
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.level == null || mc.player == null) return null;
 			Comparator<Entity> order = comparator();
 			Entity best = null;
-			for (Entity e : mc.world.getEntities()) {
+			for (Entity e : mc.level.entitiesForRendering()) {
 				if (test(e) && (best == null || order.compare(e, best) < 0)) best = e;
 			}
 			return best;
 		}
 
 		private Comparator<Entity> comparator() {
-			MinecraftClient mc = MinecraftClient.getInstance();
-			Vec3d eyes = Reach.eyes();
+			Minecraft mc = Minecraft.getInstance();
+			Vec3 eyes = Reach.eyes();
 			Comparator<Entity> byDistance = Comparator.comparingDouble(e -> MathUtil.distanceTo(e.getBoundingBox(), eyes));
 			return switch (sort) {
 				case DISTANCE -> byDistance;
 				case HEALTH -> Comparator.comparingDouble(Targets::health).thenComparing(byDistance);
-				case ANGLE -> Comparator.comparingDouble((Entity e) -> MathUtil.angleTo(eyes, mc.player.getYaw(), mc.player.getPitch(), e.getBoundingBox().getCenter()))
+				case ANGLE -> Comparator.comparingDouble((Entity e) -> MathUtil.angleTo(eyes, mc.player.getYRot(), mc.player.getXRot(), e.getBoundingBox().getCenter()))
 					.thenComparing(byDistance);
 			};
 		}

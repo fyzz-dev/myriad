@@ -6,14 +6,13 @@ import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.setting.SettingGroup;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-
 import java.util.function.Function;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 /** Hides distracting overlays, HUD parts, entities and blocks. Read by this addon's render mixins. */
 public class NoRender extends Module {
@@ -71,7 +70,7 @@ public class NoRender extends Module {
 	}
 
 	private void reload() {
-		if (mc.worldRenderer != null && mc.world != null && (isEnabled() || !blocks.get().isEmpty() || vines.get() || textureRotations.get())) mc.worldRenderer.reload();
+		if (mc.levelRenderer != null && mc.level != null && (isEnabled() || !blocks.get().isEmpty() || vines.get() || textureRotations.get())) mc.levelRenderer.invalidateCompiledGeometry(mc.level, mc.options, mc.gameRenderer.mainCamera(), mc.getBlockColors());
 	}
 
 	/** Whether the entity should not be drawn at all. */
@@ -79,7 +78,7 @@ public class NoRender extends Module {
 		NoRender m = Modules.active(NoRender.class);
 		if (m == null) return false;
 		if (m.entities.contains(e.getType())) return true;
-		return m.deadEntities.get() && e instanceof LivingEntity l && l.isDead();
+		return m.deadEntities.get() && e instanceof LivingEntity l && l.isDeadOrDying();
 	}
 
 	/** Whether the block should not be drawn. */

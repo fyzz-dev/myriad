@@ -3,7 +3,7 @@ package dev.myriad.api.ui;
 import com.google.gson.JsonObject;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.setting.Settings;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -16,7 +16,7 @@ import org.jetbrains.annotations.ApiStatus;
  */
 public abstract class Panel {
 	/** The game client. Bound again when Myriad starts, in case this class loaded before the client existed. */
-	protected static MinecraftClient mc = MinecraftClient.getInstance();
+	protected static Minecraft mc = Minecraft.getInstance();
 
 	/** Per-instance options, saved with the window. Leave empty if the panel has none. */
 	public final Settings settings = new Settings();
@@ -103,7 +103,7 @@ public abstract class Panel {
 	}
 
 	@org.jetbrains.annotations.ApiStatus.Internal
-	public static void bindClient(MinecraftClient client) {
+	public static void bindClient(Minecraft client) {
 		mc = client;
 	}
 }

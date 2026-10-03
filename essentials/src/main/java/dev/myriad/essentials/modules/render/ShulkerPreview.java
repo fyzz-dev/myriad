@@ -10,16 +10,16 @@ import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.ItemInfo;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Hovering a shulker box in any inventory shows its 27 slots in a themed panel instead of the vanilla tooltip.
@@ -88,25 +88,26 @@ public class ShulkerPreview extends Module {
 	}
 
 	/** Draws the small icon over a shulker box at (x, y). */
-	public static void drawIcon(DrawContext ctx, ItemStack shulker, int x, int y) {
+	public static void drawIcon(GuiGraphicsExtractor ctx, ItemStack shulker, int x, int y) {
 		ItemStack top = mostCommon(shulker);
 		if (top == null) return;
-		ctx.getMatrices().push();
-		ctx.getMatrices().translate(0, 0, 200);
-		ctx.getMatrices().scale(0.6f, 0.6f, 1f);
-		ctx.drawItem(top, (int) ((x + 6) / 0.6f), (int) ((y + 6) / 0.6f));
-		ctx.getMatrices().pop();
+		var pose = ctx.pose();
+		pose.pushMatrix();
+		pose.translate(x + 6, y + 6);
+		pose.scale(0.6f, 0.6f);
+		ctx.item(top, 0, 0);
+		pose.popMatrix();
 	}
 
 	/**
 	 * Called in place of the inventory tooltip. Returns true if the preview replaced it.
 	 */
-	public boolean renderTooltip(DrawContext ctx, @Nullable Slot hovered, int mouseX, int mouseY) {
+	public boolean renderTooltip(GuiGraphicsExtractor ctx, @Nullable Slot hovered, int mouseX, int mouseY) {
 		if (lockKey.get().isPressed()) {
-			if (lockedShulker == null && hovered != null && hovered.hasStack() && isShulker(hovered.getStack())) {
-				List<ItemStack> items = contents(hovered.getStack());
+			if (lockedShulker == null && hovered != null && hovered.hasItem() && isShulker(hovered.getItem())) {
+				List<ItemStack> items = contents(hovered.getItem());
 				if (hasItems(items) || emptyPreview.get()) {
-					lockedShulker = hovered.getStack().copy();
+					lockedShulker = hovered.getItem().copy();
 					lockedContents = items;
 					lockedX = mouseX;
 					lockedY = mouseY;
@@ -126,8 +127,8 @@ public class ShulkerPreview extends Module {
 			ax = lockedX;
 			ay = lockedY;
 		} else {
-			if (hovered == null || !hovered.hasStack() || !isShulker(hovered.getStack())) return false;
-			shulker = hovered.getStack();
+			if (hovered == null || !hovered.hasItem() || !isShulker(hovered.getItem())) return false;
+			shulker = hovered.getItem();
 			items = contents(shulker);
 			if (!hasItems(items) && !emptyPreview.get()) return false;
 			ax = mouseX;
@@ -136,18 +137,15 @@ public class ShulkerPreview extends Module {
 
 		int[] p = position(ax, ay);
 		ItemStack under = hoveredItem(items, p[0], p[1], mouseX, mouseY);
-		// Raised like a vanilla tooltip: the panel itself writes no depth, so without this its item icons depth-test
-		// against the slot items underneath and come out mixed with them.
-		ctx.getMatrices().push();
-		ctx.getMatrices().translate(0, 0, 400);
+		// A layer of its own above the inventory, like a vanilla tooltip.
+		ctx.nextStratum();
 		Myriad.ui().draw(ctx, c -> drawPanel(c, shulker, items, p[0], p[1]));
-		if (under != null) ctx.drawItemTooltip(mc.textRenderer, under, mouseX, mouseY);
-		ctx.getMatrices().pop();
+		if (under != null) ctx.setTooltipForNextFrame(mc.font, under, mouseX, mouseY);
 		return true;
 	}
 
 	private static int[] position(int mouseX, int mouseY) {
-		int sw = mc.getWindow().getScaledWidth(), sh = mc.getWindow().getScaledHeight();
+		int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
 		int x = Math.max(4, Math.min(mouseX + 12, sw - WIDTH - 4));
 		int y = Math.max(4, Math.min(mouseY - 6, sh - HEIGHT - 4));
 		return new int[]{x, y};
@@ -167,7 +165,7 @@ public class ShulkerPreview extends Module {
 		c.backdrop(x, y, WIDTH, HEIGHT, r, 1);
 		c.roundRect(x, y, WIDTH, HEIGHT, r, ColorUtil.withAlpha(theme.windowBackground.argb(), Math.max(200, ColorUtil.alpha(theme.windowBackground.argb()))));
 		c.gradientOutline(x, y, WIDTH, HEIGHT, r, Math.max(1, theme.borderSize.get()), theme.activeBorderFrom.argb(), theme.activeBorderTo.argb(), theme.borderAngle.get().floatValue());
-		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), shulker.getName().getString(), WIDTH - 14);
+		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), shulker.getHoverName().getString(), WIDTH - 14);
 		c.text(FontFamily.SANS_BOLD, c.defaultFontSize(), title, x + 7, y + (HEADER - c.textHeight()) / 2 + 1, theme.text.argb());
 		float gx = x + 7, gy = y + HEADER;
 		int cell = ColorUtil.withAlpha(theme.surface.argb(), 110);

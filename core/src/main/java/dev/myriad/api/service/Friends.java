@@ -1,14 +1,13 @@
 package dev.myriad.api.service;
 
-import net.minecraft.entity.player.PlayerEntity;
-
 import java.util.Collection;
+import net.minecraft.world.entity.player.Player;
 
 public interface Friends {
 	boolean isFriend(String name);
 
-	default boolean isFriend(PlayerEntity player) {
-		return isFriend(player.getGameProfile().getName());
+	default boolean isFriend(Player player) {
+		return isFriend(player.getGameProfile().name());
 	}
 
 	boolean add(String name);

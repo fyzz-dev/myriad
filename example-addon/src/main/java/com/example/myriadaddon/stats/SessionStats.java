@@ -4,9 +4,9 @@ import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.ScreenOpenEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.event.events.WorldEvent;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Tracks this play session (since you last joined a world). It isn't a module: it should always run, so the addon
@@ -18,7 +18,7 @@ public final class SessionStats {
 	private double distance;
 	private double topSpeed;
 	private int deaths;
-	private Vec3d last;
+	private Vec3 last;
 
 	@Subscribe
 	private void onJoin(WorldEvent.Join e) {
@@ -30,9 +30,9 @@ public final class SessionStats {
 
 	@Subscribe
 	private void onTick(TickEvent.Post e) {
-		var player = MinecraftClient.getInstance().player;
+		var player = Minecraft.getInstance().player;
 		if (player == null) return;
-		Vec3d pos = player.getPos();
+		Vec3 pos = player.position();
 		if (last != null) {
 			double moved = pos.distanceTo(last);
 			// Ignore teleports and respawns.

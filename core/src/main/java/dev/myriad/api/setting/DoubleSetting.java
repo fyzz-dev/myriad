@@ -75,7 +75,7 @@ public class DoubleSetting extends Setting<Double> {
 		return String.format("%." + decimals + "f", value);
 	}
 
-	public static class Builder extends Setting.Builder<Builder, Double, DoubleSetting> {
+	public static class Builder extends Setting.Builder<dev.myriad.api.setting.DoubleSetting.Builder, Double, DoubleSetting> {
 		private double min = -Double.MAX_VALUE, max = Double.MAX_VALUE;
 		private Double sliderMin, sliderMax;
 		private int decimals = 2;
@@ -85,23 +85,23 @@ public class DoubleSetting extends Setting<Double> {
 		}
 
 		/** Accepts int literals too, e.g. {@code defaultValue(45)}. */
-		public Builder defaultValue(double value) {
+		public dev.myriad.api.setting.DoubleSetting.Builder defaultValue(double value) {
 			return defaultValue(Double.valueOf(value));
 		}
 
-		public Builder range(double min, double max) {
+		public dev.myriad.api.setting.DoubleSetting.Builder range(double min, double max) {
 			this.min = min;
 			this.max = max;
 			return this;
 		}
 
-		public Builder sliderRange(double min, double max) {
+		public dev.myriad.api.setting.DoubleSetting.Builder sliderRange(double min, double max) {
 			this.sliderMin = min;
 			this.sliderMax = max;
 			return this;
 		}
 
-		public Builder decimals(int decimals) {
+		public dev.myriad.api.setting.DoubleSetting.Builder decimals(int decimals) {
 			this.decimals = decimals;
 			return this;
 		}

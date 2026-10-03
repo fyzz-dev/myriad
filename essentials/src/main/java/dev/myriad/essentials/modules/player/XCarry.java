@@ -4,7 +4,7 @@ import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
-import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 
 /**
  * Keeps items in your 2x2 crafting grid after closing your inventory, by never telling the server it was closed.
@@ -18,11 +18,11 @@ public class XCarry extends Module {
 
 	@Subscribe
 	private void onSend(PacketEvent.Send e) {
-		if (mc.player != null && e.packet() instanceof CloseHandledScreenC2SPacket p && p.getSyncId() == mc.player.playerScreenHandler.syncId) e.cancel();
+		if (mc.player != null && e.packet() instanceof ServerboundContainerClosePacket p && p.getContainerId() == mc.player.inventoryMenu.containerId) e.cancel();
 	}
 
 	@Override
 	protected void onDisable() {
-		if (inGame()) mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(mc.player.playerScreenHandler.syncId));
+		if (inGame()) mc.getConnection().send(new ServerboundContainerClosePacket(mc.player.inventoryMenu.containerId));
 	}
 }

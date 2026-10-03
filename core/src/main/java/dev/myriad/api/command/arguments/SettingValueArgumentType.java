@@ -7,9 +7,8 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.myriad.api.setting.Setting;
-import net.minecraft.command.CommandSource;
-
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.commands.SharedSuggestionProvider;
 
 /** Greedy value text for the setting parsed by preceding {@code module} and {@code setting} arguments. */
 public class SettingValueArgumentType implements ArgumentType<String> {
@@ -28,7 +27,7 @@ public class SettingValueArgumentType implements ArgumentType<String> {
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
 		try {
 			Setting<?> s = SettingArgumentType.get(context, "module", "setting");
-			return CommandSource.suggestMatching(s.suggestions(), builder);
+			return SharedSuggestionProvider.suggest(s.suggestions(), builder);
 		} catch (CommandSyntaxException | IllegalArgumentException e) {
 			return Suggestions.empty();
 		}

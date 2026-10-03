@@ -7,25 +7,24 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 /**
  * Three coordinates, each a whole number or {@code ~} / {@code ~5} relative to where you stand, like vanilla's.
  * Suggests your position and the block you're looking at.
  */
 public class BlockPosArgumentType implements ArgumentType<BlockPos> {
-	private static final SimpleCommandExceptionType INCOMPLETE = new SimpleCommandExceptionType(Text.literal("Expected three coordinates: x y z"));
+	private static final SimpleCommandExceptionType INCOMPLETE = new SimpleCommandExceptionType(Component.literal("Expected three coordinates: x y z"));
 	private final Supplier<BlockPos> origin;
 
 	BlockPosArgumentType(Supplier<BlockPos> origin) {
@@ -34,8 +33,8 @@ public class BlockPosArgumentType implements ArgumentType<BlockPos> {
 
 	public static BlockPosArgumentType blockPos() {
 		return new BlockPosArgumentType(() -> {
-			var player = MinecraftClient.getInstance().player;
-			return player == null ? BlockPos.ORIGIN : player.getBlockPos();
+			var player = Minecraft.getInstance().player;
+			return player == null ? BlockPos.ZERO : player.blockPosition();
 		});
 	}
 
@@ -71,13 +70,13 @@ public class BlockPosArgumentType implements ArgumentType<BlockPos> {
 
 	@Override
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
-		MinecraftClient mc = MinecraftClient.getInstance();
+		Minecraft mc = Minecraft.getInstance();
 		List<String> options = new ArrayList<>(List.of("~ ~ ~"));
-		if (mc.crosshairTarget instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
+		if (mc.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
 			BlockPos p = hit.getBlockPos();
 			options.add(p.getX() + " " + p.getY() + " " + p.getZ());
 		}
-		return CommandSource.suggestMatching(options, builder);
+		return SharedSuggestionProvider.suggest(options, builder);
 	}
 
 	@Override

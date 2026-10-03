@@ -10,9 +10,9 @@ import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.util.Interactions;
 import dev.myriad.api.util.Timer;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Shortens the delay between item uses (vanilla waits 4 ticks), for placing blocks or throwing XP bottles quickly.
@@ -39,7 +39,7 @@ public class FastUse extends Module {
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
 		if (!inGame()) return;
-		if (!mc.options.useKey.isPressed()) {
+		if (!mc.options.keyUse.isDown()) {
 			pressing = false;
 			return;
 		}
@@ -48,7 +48,7 @@ public class FastUse extends Module {
 			held.reset();
 		}
 		if (startDelay.get() && !held.passed(500)) return;
-		if (!applies(mc.player.getMainHandStack()) && !applies(mc.player.getOffHandStack())) return;
+		if (!applies(mc.player.getMainHandItem()) && !applies(mc.player.getOffhandItem())) return;
 		if (Interactions.itemUseCooldown() > delay.get()) Interactions.setItemUseCooldown(delay.get());
 	}
 

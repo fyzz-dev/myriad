@@ -92,13 +92,13 @@ public final class WaypointsPanel extends WidgetPanel {
 
 	private String details(Waypoint w) {
 		if (mc.player == null || !w.dimension().equals(WaypointStore.currentDimension())) return w.coords() + "  " + w.dimension().replace("minecraft:", "");
-		return w.coords() + "  " + Format.distance(w.center().distanceTo(mc.player.getPos()));
+		return w.coords() + "  " + Format.distance(w.center().distanceTo(mc.player.position()));
 	}
 
 	private void addHere() {
 		if (mc.player == null) return;
 		String name = newName.isBlank() ? store.nextName("Waypoint") : newName.trim();
-		if (store.put(name, mc.player.getBlockPos())) {
+		if (store.put(name, mc.player.blockPosition())) {
 			Myriad.notifications().success("Waypoints", "Added " + name);
 			newName = "";
 		}

@@ -1,16 +1,15 @@
 package dev.myriad.api.setting;
 
 import dev.myriad.api.util.MyriadId;
-import net.minecraft.block.Block;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registry;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
+import net.minecraft.core.Registry;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
 
 /**
  * A named, collapsible section of settings. The factory methods return builders that add the built setting to this
@@ -35,6 +34,10 @@ public class SettingGroup {
 
 	public String name() {
 		return name;
+	}
+
+	Settings owner() {
+		return owner;
 	}
 
 	public String id() {
@@ -150,7 +153,7 @@ public class SettingGroup {
 		return bind(RegistryListSetting.entityTypes(name));
 	}
 
-	public RegistryListSetting.Builder<StatusEffect> statusEffects(String name) {
+	public RegistryListSetting.Builder<MobEffect> statusEffects(String name) {
 		return bind(RegistryListSetting.statusEffects(name));
 	}
 }

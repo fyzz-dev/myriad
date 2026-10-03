@@ -12,13 +12,13 @@ import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.util.Interactions;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 /**
  * Place blocks in midair: hold right-click while looking at an empty (or replaceable) cell within range. A preview
@@ -57,45 +57,45 @@ public class AirPlace extends Module {
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
 		cancelVanillaUse = false;
-		if (!inGame() || mc.interactionManager == null || mc.player.isSpectator()) {
+		if (!inGame() || mc.gameMode == null || mc.player.isSpectator()) {
 			renderPos = null;
 			return;
 		}
 		if (airPlaceTicks > 0) airPlaceTicks--;
 
 		BlockHitResult hit = findAirPlaceHit();
-		renderPos = hit == null ? null : BlockPos.ofFloored(hit.getPos());
+		renderPos = hit == null ? null : BlockPos.containing(hit.getLocation());
 
-		if (!mc.options.useKey.isPressed() || hit == null || mc.player.isUsingItem()) return;
+		if (!mc.options.keyUse.isDown() || hit == null || mc.player.isUsingItem()) return;
 		if (Interactions.itemUseCooldown() != 0 || airPlaceTicks != 0) return;
 
 		Interactions.setItemUseCooldown(PLACE_COOLDOWN_TICKS);
 		airPlaceTicks = PLACE_COOLDOWN_TICKS;
 		cancelVanillaUse = true;
 
-		mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, new BlockHitResult(hit.getPos(), hit.getSide(), renderPos, false));
-		mc.player.swingHand(Hand.MAIN_HAND);
+		mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(hit.getLocation(), hit.getDirection(), renderPos, false));
+		mc.player.swing(InteractionHand.MAIN_HAND);
 	}
 
 	@Subscribe
 	private void onRender(Render3DEvent e) {
 		if (!render.get() || renderPos == null || !inGame()) return;
 		Renderer3D.lineWidth(lineWidth.getFloat());
-		Renderer3D.box(new Box(renderPos), fillColor.argb(), lineColor.argb(), Renderer3D.ShapeMode.BOTH, false);
+		Renderer3D.box(new AABB(renderPos), fillColor.argb(), lineColor.argb(), Renderer3D.ShapeMode.BOTH, false);
 	}
 
 	private BlockHitResult findAirPlaceHit() {
 		// Looking at a real block: that's normal placement, not air-placing.
-		if (mc.crosshairTarget instanceof BlockHitResult solid && !mc.world.getBlockState(solid.getBlockPos()).isReplaceable()) return null;
-		ItemStack stack = mc.player.getMainHandStack();
+		if (mc.hitResult instanceof BlockHitResult solid && !mc.level.getBlockState(solid.getBlockPos()).canBeReplaced()) return null;
+		ItemStack stack = mc.player.getMainHandItem();
 		if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) return null;
 
-		HitResult result = mc.player.raycast(distance.get(), 1.0f, true);
+		HitResult result = mc.player.pick(distance.get(), 1.0f, true);
 		if (!(result instanceof BlockHitResult blockHit)) return null;
 
-		BlockPos pos = BlockPos.ofFloored(blockHit.getPos());
-		if (!mc.world.getBlockState(pos).isReplaceable()) return null;
-		if (!mc.world.getOtherEntities(mc.player, new Box(pos), entity -> entity.isAlive() && entity.canHit()).isEmpty()) return null;
+		BlockPos pos = BlockPos.containing(blockHit.getLocation());
+		if (!mc.level.getBlockState(pos).canBeReplaced()) return null;
+		if (!mc.level.getEntities(mc.player, new AABB(pos), entity -> entity.isAlive() && entity.isPickable()).isEmpty()) return null;
 		return blockHit;
 	}
 }

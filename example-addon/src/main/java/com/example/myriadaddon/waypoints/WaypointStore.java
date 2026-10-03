@@ -4,9 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.myriad.api.addon.AddonStorage;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -15,6 +12,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Every waypoint, grouped by server or singleplayer world, saved in this addon's own storage folder
@@ -72,16 +72,16 @@ public final class WaypointStore {
 
 	/** The current server's address or singleplayer world name, or null outside a world. */
 	public static @Nullable String worldKey() {
-		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.world == null) return null;
-		if (mc.getCurrentServerEntry() != null) return "server:" + mc.getCurrentServerEntry().address;
-		if (mc.getServer() != null) return "local:" + mc.getServer().getSaveProperties().getLevelName();
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level == null) return null;
+		if (mc.getCurrentServer() != null) return "server:" + mc.getCurrentServer().ip;
+		if (mc.getSingleplayerServer() != null) return "local:" + mc.getSingleplayerServer().getWorldData().getLevelName();
 		return null;
 	}
 
 	public static @Nullable String currentDimension() {
-		MinecraftClient mc = MinecraftClient.getInstance();
-		return mc.world == null ? null : mc.world.getRegistryKey().getValue().toString();
+		Minecraft mc = Minecraft.getInstance();
+		return mc.level == null ? null : mc.level.dimension().identifier().toString();
 	}
 
 	/** Waypoints for this world, in every dimension. */
@@ -101,8 +101,8 @@ public final class WaypointStore {
 	}
 
 	/** The closest visible waypoint in this dimension. */
-	public Optional<Waypoint> nearest(Vec3d from) {
-		return inDimension().stream().filter(Waypoint::visible).min(Comparator.comparingDouble(w -> w.center().squaredDistanceTo(from)));
+	public Optional<Waypoint> nearest(Vec3 from) {
+		return inDimension().stream().filter(Waypoint::visible).min(Comparator.comparingDouble(w -> w.center().distanceToSqr(from)));
 	}
 
 	/** Adds a waypoint here, replacing one with the same name. Returns false outside a world. */

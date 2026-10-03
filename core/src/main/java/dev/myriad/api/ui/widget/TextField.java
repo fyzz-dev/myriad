@@ -2,11 +2,11 @@ package dev.myriad.api.ui.widget;
 
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.util.ColorUtil;
-import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import net.minecraft.client.Minecraft;
 
 /**
  * Single-line text input. {@code onChange} fires on every edit, {@code onSubmit} on Enter. While unfocused it shows
@@ -178,10 +178,10 @@ public class TextField extends Widget {
 				if (ctrl) selectAll = true;
 			}
 			case GLFW.GLFW_KEY_C -> {
-				if (ctrl) MinecraftClient.getInstance().keyboard.setClipboard(text);
+				if (ctrl) Minecraft.getInstance().keyboardHandler.setClipboard(text);
 			}
 			case GLFW.GLFW_KEY_V -> {
-				if (ctrl) insert(MinecraftClient.getInstance().keyboard.getClipboard().replace("\n", " "));
+				if (ctrl) insert(Minecraft.getInstance().keyboardHandler.getClipboard().replace("\n", " "));
 			}
 			default -> {
 			}

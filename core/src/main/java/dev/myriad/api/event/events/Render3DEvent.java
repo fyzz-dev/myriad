@@ -1,24 +1,33 @@
 package dev.myriad.api.event.events;
 
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.util.math.MatrixStack;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.Camera;
+import dev.myriad.api.render.Renderer3D;
+import dev.myriad.api.render.ShapeBuilder;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 
 /**
- * Fired after the world renders. The matrix stack already contains the camera rotation; translate by
- * {@code -camera.getPos()} to draw in world coordinates (or use {@code Renderer3D}, which does that for you).
+ * Fired every frame while the world's geometry is collected for drawing. Draw with {@link #shapes()} in world
+ * coordinates; it is cleared after the frame. {@link #submits()} takes anything else vanilla can draw, such as entity
+ * models (its positions are relative to the camera: translate by {@code -camera.position()}).
+ * <p>
+ * Anything that doesn't change every frame is cheaper as a {@code WorldMesh} or {@code ChunkCache}, which are drawn
+ * without a handler.
  */
 public final class Render3DEvent {
-	private final MatrixStack matrices;
+	private final PoseStack matrices;
 	private final Camera camera;
 	private final float tickDelta;
+	private final SubmitNodeCollector submits;
 
-	public Render3DEvent(MatrixStack matrices, Camera camera, float tickDelta) {
+	public Render3DEvent(PoseStack matrices, Camera camera, float tickDelta, SubmitNodeCollector submits) {
 		this.matrices = matrices;
 		this.camera = camera;
 		this.tickDelta = tickDelta;
+		this.submits = submits;
 	}
 
-	public MatrixStack matrices() {
+	public PoseStack matrices() {
 		return matrices;
 	}
 
@@ -28,5 +37,14 @@ public final class Render3DEvent {
 
 	public float tickDelta() {
 		return tickDelta;
+	}
+
+	/** This frame's shapes (boxes, lines, block shapes), in world coordinates. */
+	public ShapeBuilder shapes() {
+		return Renderer3D.shapes();
+	}
+
+	public SubmitNodeCollector submits() {
+		return submits;
 	}
 }

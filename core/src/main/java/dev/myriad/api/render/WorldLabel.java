@@ -4,11 +4,11 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.render.Projection;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 
 /** Labels pinned to points in the world (nametags, logout spots, item names), drawn on the 2D overlay. */
 public final class WorldLabel {
@@ -42,7 +42,7 @@ public final class WorldLabel {
 	}
 
 	/** Size multiplier that shrinks labels a little with distance (down to half size at 50+ blocks). */
-	public static float distanceScale(Vec3d world) {
+	public static float distanceScale(Vec3 world) {
 		double d = Projection.camera().distanceTo(world);
 		return (float) Math.clamp(1.0 - d * 0.01, 0.5, 1.0);
 	}
@@ -51,8 +51,8 @@ public final class WorldLabel {
 	 * Draws {@code segments} side by side, centred on {@code world} with the label's bottom edge there. Returns null
 	 * when the point is behind the camera or off screen.
 	 */
-	public static @Nullable Placed draw(Canvas c, Vec3d world, float scale, List<Segment> segments, Background bg, int fill, int outline, boolean shadow) {
-		Vec3d s = Projection.toScreen(world);
+	public static @Nullable Placed draw(Canvas c, Vec3 world, float scale, List<Segment> segments, Background bg, int fill, int outline, boolean shadow) {
+		Vec3 s = Projection.toScreen(world);
 		if (s == null || !Projection.onScreen(s, 200)) return null;
 		float size = c.defaultFontSize() * scale;
 		float width = 0;

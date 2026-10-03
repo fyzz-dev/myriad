@@ -20,19 +20,19 @@ import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.Mining;
 import dev.myriad.api.util.Packets;
 import dev.myriad.essentials.util.Fade;
-import net.minecraft.block.BlockState;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * Packet mining. Hitting a block sends START and STOP straight away; the module then counts the break progress
@@ -161,7 +161,7 @@ public class SpeedMine extends Module {
 		if (!inGame() || mc.player.isCreative() || mc.player.isSpectator()) return;
 		e.cancel();
 		if (isMining(e.pos())) return;
-		if (!canBreak(e.pos(), mc.world.getBlockState(e.pos()))) return;
+		if (!canBreak(e.pos(), mc.level.getBlockState(e.pos()))) return;
 		if (queue.get() && pos != null) {
 			enqueue(e.pos(), e.direction());
 			return;
@@ -188,7 +188,7 @@ public class SpeedMine extends Module {
 			startNextQueued();
 			return;
 		}
-		BlockState state = mc.world.getBlockState(pos);
+		BlockState state = mc.level.getBlockState(pos);
 		if (!started) {
 			if (!canBreak(pos, state)) {
 				clearMine();
@@ -259,23 +259,23 @@ public class SpeedMine extends Module {
 	// ---- queue ----------------------------------------------------------------------------------------------------
 
 	private void captureQueuedCrosshair() {
-		if (!queue.get() || !mc.options.attackKey.isPressed()) {
+		if (!queue.get() || !mc.options.keyAttack.isDown()) {
 			lastQueuedCrosshair = null;
 			return;
 		}
-		if (!(mc.crosshairTarget instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) return;
+		if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) return;
 		BlockPos target = hit.getBlockPos();
 		if (target.equals(lastQueuedCrosshair)) return;
-		lastQueuedCrosshair = target.toImmutable();
+		lastQueuedCrosshair = target.immutable();
 		if (pos == null && queued.isEmpty()) return;
-		enqueue(target, hit.getSide());
+		enqueue(target, hit.getDirection());
 	}
 
 	private boolean enqueue(BlockPos target, Direction dir) {
 		if (!queue.get() || target == null || isMining(target) || isQueued(target) || !inRange(target)) return false;
-		if (!canBreak(target, mc.world.getBlockState(target))) return false;
+		if (!canBreak(target, mc.level.getBlockState(target))) return false;
 		while (queued.size() >= queueSize.get()) queued.pollFirst();
-		queued.addLast(new Queued(target.toImmutable(), dir != null ? dir : validFace(target)));
+		queued.addLast(new Queued(target.immutable(), dir != null ? dir : validFace(target)));
 		tryStartQueuedAsDouble();
 		return true;
 	}
@@ -283,7 +283,7 @@ public class SpeedMine extends Module {
 	private boolean startNextQueued() {
 		while (!queued.isEmpty()) {
 			Queued next = queued.pollFirst();
-			if (!inRange(next.pos()) || !canBreak(next.pos(), mc.world.getBlockState(next.pos()))) continue;
+			if (!inRange(next.pos()) || !canBreak(next.pos(), mc.level.getBlockState(next.pos()))) continue;
 			Direction face = next.direction();
 			if (face == null || faceMargin(face, targetBox(next.pos())) <= 0) face = validFace(next.pos());
 			startMine(next.pos(), face, Goal.QUEUE);
@@ -320,7 +320,7 @@ public class SpeedMine extends Module {
 		if (pos != null && started && !finished) {
 			if (!doubleMine.get() || secondaryPos != null || !demote()) abort(pos);
 		}
-		pos = target.toImmutable();
+		pos = target.immutable();
 		direction = dir != null ? dir : validFace(target);
 		primaryGoal = goal;
 		ticks = 0;
@@ -341,9 +341,9 @@ public class SpeedMine extends Module {
 
 	/** Moves the running primary mine to the secondary slot (sending its STOP so the server keeps breaking it). */
 	private boolean demote() {
-		BlockState state = mc.world.getBlockState(pos);
+		BlockState state = mc.level.getBlockState(pos);
 		if (state.isAir()) return false;
-		if (!stopBreak(bestSlot(state), false)) send(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, pos, validFace(pos));
+		if (!stopBreak(bestSlot(state), false)) send(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, pos, validFace(pos));
 		moveToSecondary();
 		return true;
 	}
@@ -353,9 +353,9 @@ public class SpeedMine extends Module {
 		started = true;
 		trackStarts(decoy.get() ? 2 : 1);
 		if (faceMargin(direction, targetBox(pos)) <= 0) direction = validFace(pos);
-		send(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, pos, direction);
-		if (decoy.get()) send(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, BlockPos.ORIGIN.withY(DECOY_Y), Direction.UP);
-		send(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, pos, direction);
+		send(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, pos, direction);
+		if (decoy.get()) send(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, BlockPos.ZERO.atY(DECOY_Y), Direction.UP);
+		send(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, pos, direction);
 		lastStartNanos = System.nanoTime();
 	}
 
@@ -366,7 +366,7 @@ public class SpeedMine extends Module {
 			clearSecondary();
 			return;
 		}
-		BlockState state = mc.world.getBlockState(secondaryPos);
+		BlockState state = mc.level.getBlockState(secondaryPos);
 		if (state.isAir()) {
 			clearSecondary();
 			return;
@@ -378,7 +378,7 @@ public class SpeedMine extends Module {
 			clearSecondary();
 			return;
 		}
-		int expected = MathHelper.ceil(1.0 / delta) - 1;
+		int expected = Mth.ceil(1.0 / delta) - 1;
 		lastSecondaryProgress = secondaryProgress;
 		secondaryProgress = Math.min(secondaryTicks * delta, 1.0);
 		if (secondaryTicks > expected + SECONDARY_TIMEOUT) {
@@ -417,7 +417,7 @@ public class SpeedMine extends Module {
 		if (cooldown) stopCooldown = decoy.get() ? BREAK_DELAY_TICKS : 0;
 		BlockPos target = pos;
 		Direction face = validFace(target);
-		Runnable finish = () -> send(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, target, face);
+		Runnable finish = () -> send(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, target, face);
 		if (slot >= 0 && slot < 9 && swap.get() == Swap.SILENT) {
 			Myriad.inventory().silentSwap(slot, finish);
 			return true;
@@ -428,12 +428,12 @@ public class SpeedMine extends Module {
 	}
 
 	private void abort(BlockPos target) {
-		send(PlayerActionC2SPacket.Action.ABORT_DESTROY_BLOCK, target, Direction.DOWN);
+		send(ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK, target, Direction.DOWN);
 	}
 
-	private void send(PlayerActionC2SPacket.Action action, BlockPos target, Direction face) {
-		if (action == PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK) lastStopMs = System.currentTimeMillis();
-		Packets.sendSequenced(sequence -> new PlayerActionC2SPacket(action, target, face, sequence));
+	private void send(ServerboundPlayerActionPacket.Action action, BlockPos target, Direction face) {
+		if (action == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK) lastStopMs = System.currentTimeMillis();
+		Packets.sendSequenced(sequence -> new ServerboundPlayerActionPacket(action, target, face, sequence));
 	}
 
 	private void clearMine() {
@@ -449,7 +449,7 @@ public class SpeedMine extends Module {
 
 	private void tryRemine() {
 		if (pos == null || !started || !finished || remine.get() == Remine.OFF) return;
-		BlockState state = mc.world.getBlockState(pos);
+		BlockState state = mc.level.getBlockState(pos);
 		if (!canBreak(pos, state)) {
 			// The hole is open; re-arm so the next replacement goes straight away.
 			lastRemineMs = 0;
@@ -485,7 +485,7 @@ public class SpeedMine extends Module {
 			if (delay >= GRIM_STOP_DELAY_MS) delayBalance *= 0.9;
 			else delayBalance += 300.0 - delay;
 		}
-		delayBalance = MathHelper.clamp(delayBalance, -1000, 1000);
+		delayBalance = Mth.clamp(delayBalance, -1000, 1000);
 	}
 
 	// ---- geometry -------------------------------------------------------------------------------------------------
@@ -494,9 +494,9 @@ public class SpeedMine extends Module {
 	private @Nullable BlockPos breakAheadPos(BlockPos target) {
 		if (!breakAhead.get() || !doubleMine.get()) return null;
 		if (secondaryPos != null || (pos != null && started && !finished)) return null;
-		Vec3d eye = mc.player.getEyePos();
-		Vec3d dir = mc.player.getRotationVec(1f);
-		Box box = new Box(target);
+		Vec3 eye = mc.player.getEyePosition();
+		Vec3 dir = mc.player.getViewVector(1f);
+		AABB box = new AABB(target);
 		double tEnter = Double.NEGATIVE_INFINITY, tExit = Double.POSITIVE_INFINITY;
 		Direction exitFace = null;
 		for (Direction.Axis axis : Direction.Axis.values()) {
@@ -511,24 +511,24 @@ public class SpeedMine extends Module {
 			double far = Math.max(t1, t2);
 			if (far < tExit) {
 				tExit = far;
-				exitFace = Direction.from(axis, d > 0 ? Direction.AxisDirection.POSITIVE : Direction.AxisDirection.NEGATIVE);
+				exitFace = Direction.fromAxisAndDirection(axis, d > 0 ? Direction.AxisDirection.POSITIVE : Direction.AxisDirection.NEGATIVE);
 			}
 		}
 		if (exitFace == null || tEnter > tExit || tExit <= 0) return null;
-		Vec3d exit = eye.add(dir.multiply(tExit));
+		Vec3 exit = eye.add(dir.scale(tExit));
 		for (Direction.Axis axis : Direction.Axis.values()) {
 			if (axis == exitFace.getAxis()) continue;
 			double p = axis.choose(exit.x, exit.y, exit.z) - axis.choose(target.getX(), target.getY(), target.getZ());
 			if (p < BREAK_AHEAD_EDGE || p > 1 - BREAK_AHEAD_EDGE) return null;
 		}
-		BlockPos ahead = target.offset(exitFace);
-		if (!inRange(ahead) || !canBreak(ahead, mc.world.getBlockState(ahead))) return null;
+		BlockPos ahead = target.relative(exitFace);
+		if (!inRange(ahead) || !canBreak(ahead, mc.level.getBlockState(ahead))) return null;
 		return ahead;
 	}
 
 	/** The face the server will accept from where you stand (Grim checks the eye can see the face). */
 	private Direction validFace(BlockPos target) {
-		Box box = targetBox(target);
+		AABB box = targetBox(target);
 		Direction best = Direction.UP;
 		double bestMargin = -Double.MAX_VALUE;
 		for (Direction dir : Direction.values()) {
@@ -541,13 +541,13 @@ public class SpeedMine extends Module {
 		return best;
 	}
 
-	private double faceMargin(Direction dir, Box box) {
-		Vec3d now = mc.player.getPos();
-		Vec3d prev = new Vec3d(mc.player.prevX, mc.player.prevY, mc.player.prevZ);
+	private double faceMargin(Direction dir, AABB box) {
+		Vec3 now = mc.player.position();
+		Vec3 prev = new Vec3(mc.player.xo, mc.player.yo, mc.player.zo);
 		return Math.min(feetMargin(dir, box, now), feetMargin(dir, box, prev));
 	}
 
-	private static double feetMargin(Direction dir, Box box, Vec3d feet) {
+	private static double feetMargin(Direction dir, AABB box, Vec3 feet) {
 		return switch (dir) {
 			case UP -> feet.y + GRIM_MAX_EYE - box.maxY;
 			case DOWN -> box.minY - (feet.y + GRIM_MIN_EYE);
@@ -558,13 +558,13 @@ public class SpeedMine extends Module {
 		};
 	}
 
-	private Box targetBox(BlockPos target) {
-		VoxelShape shape = mc.world.getBlockState(target).getOutlineShape(mc.world, target);
-		return shape.isEmpty() ? new Box(target) : shape.getBoundingBox().offset(target);
+	private AABB targetBox(BlockPos target) {
+		VoxelShape shape = mc.level.getBlockState(target).getShape(mc.level, target);
+		return shape.isEmpty() ? new AABB(target) : shape.bounds().move(target);
 	}
 
 	private int bestSlot(BlockState state) {
-		if (swap.get() == Swap.OFF) return mc.player.getInventory().selectedSlot;
+		if (swap.get() == Swap.OFF) return mc.player.getInventory().getSelectedSlot();
 		return Mining.fastestSlot(state, 0, 9);
 	}
 
@@ -575,11 +575,11 @@ public class SpeedMine extends Module {
 	}
 
 	private boolean canBreak(BlockPos target, BlockState state) {
-		return !state.isAir() && state.getHardness(mc.world, target) != -1f && state.getFluidState().isEmpty();
+		return !state.isAir() && state.getDestroySpeed(mc.level, target) != -1f && state.getFluidState().isEmpty();
 	}
 
 	private boolean inRange(BlockPos target) {
-		return mc.player.getEyePos().distanceTo(target.toCenterPos()) <= range.get();
+		return mc.player.getEyePosition().distanceTo(Vec3.atCenterOf(target)) <= range.get();
 	}
 
 	// ---- rendering ------------------------------------------------------------------------------------------------
@@ -587,25 +587,25 @@ public class SpeedMine extends Module {
 	private double[] primaryDamage() {
 		double threshold = Math.max(0.001, speed.get());
 		if (finished) return new double[]{1, 1};
-		return new double[]{MathHelper.clamp(lastProgress / threshold, 0, 1), MathHelper.clamp(progress / threshold, 0, 1)};
+		return new double[]{Mth.clamp(lastProgress / threshold, 0, 1), Mth.clamp(progress / threshold, 0, 1)};
 	}
 
 	private void render(Shown shown, double[] damage, float tickDelta, boolean instant) {
 		float f = shown.fade().get();
 		if (shown.pos() == null || f <= 0.01f) return;
 		BlockPos at = shown.pos();
-		BlockState state = mc.world.getBlockState(at);
+		BlockState state = mc.level.getBlockState(at);
 		if (!instant && state.isAir()) return;
 		Easing e = easing.get();
-		double t = MathHelper.lerp(tickDelta, e.ease(damage[0]), e.ease(damage[1]));
-		VoxelShape shape = state.getOutlineShape(mc.world, at);
-		Box base = (shape.isEmpty() || (instant && t >= 1) ? new Box(0, 0, 0, 1, 1, 1) : shape.getBoundingBox()).offset(at);
+		double t = Mth.lerp(tickDelta, e.ease(damage[0]), e.ease(damage[1]));
+		VoxelShape shape = state.getShape(mc.level, at);
+		AABB base = (shape.isEmpty() || (instant && t >= 1) ? new AABB(0, 0, 0, 1, 1, 1) : shape.bounds()).move(at);
 		double scale = (instant && t >= 1) || state.isAir() ? 1 : Math.max(0, t);
-		Box box = switch (animation.get()) {
+		AABB box = switch (animation.get()) {
 			case EXPAND -> scaled(base, scale);
 			case SHRINK -> scaled(base, Math.max(0.05, 1 - scale));
-			case RISE -> new Box(base.minX, base.minY, base.minZ, base.maxX, base.minY + (base.maxY - base.minY) * scale, base.maxZ);
-			case FALL -> new Box(base.minX, base.maxY - (base.maxY - base.minY) * scale, base.minZ, base.maxX, base.maxY, base.maxZ);
+			case RISE -> new AABB(base.minX, base.minY, base.minZ, base.maxX, base.minY + (base.maxY - base.minY) * scale, base.maxZ);
+			case FALL -> new AABB(base.minX, base.maxY - (base.maxY - base.minY) * scale, base.minZ, base.maxX, base.maxY, base.maxZ);
 		};
 		int fc = fill.argb(), lc = line.argb();
 		Renderer3D.box(box, ColorUtil.withAlpha(fc, (int) (ColorUtil.alpha(fc) * f)), ColorUtil.withAlpha(lc, (int) (ColorUtil.alpha(lc) * f)), Renderer3D.ShapeMode.BOTH, true);
@@ -616,16 +616,16 @@ public class SpeedMine extends Module {
 		int lc = ColorUtil.withAlpha(line.argb(), Math.min(ColorUtil.alpha(line.argb()), 120));
 		int drawn = 0;
 		for (Queued q : queued) {
-			if (!inRange(q.pos()) || !canBreak(q.pos(), mc.world.getBlockState(q.pos()))) continue;
+			if (!inRange(q.pos()) || !canBreak(q.pos(), mc.level.getBlockState(q.pos()))) continue;
 			Renderer3D.box(targetBox(q.pos()), fc, lc, Renderer3D.ShapeMode.BOTH, true);
 			if (++drawn >= 16) break;
 		}
 	}
 
-	private static Box scaled(Box box, double s) {
-		Vec3d c = box.getCenter();
+	private static AABB scaled(AABB box, double s) {
+		Vec3 c = box.getCenter();
 		double hx = (box.maxX - box.minX) * 0.5 * s, hy = (box.maxY - box.minY) * 0.5 * s, hz = (box.maxZ - box.minZ) * 0.5 * s;
-		return new Box(c.x - hx, c.y - hy, c.z - hz, c.x + hx, c.y + hy, c.z + hz);
+		return new AABB(c.x - hx, c.y - hy, c.z - hz, c.x + hx, c.y + hy, c.z + hz);
 	}
 
 	// ---- API for other modules ------------------------------------------------------------------------------------
@@ -637,14 +637,14 @@ public class SpeedMine extends Module {
 	public boolean offerMine(BlockPos target) {
 		if (!isEnabled() || !inGame() || mc.player.isCreative() || mc.player.isSpectator() || target == null) return false;
 		if (isMining(target) || isQueued(target)) return true;
-		if (!canBreak(target, mc.world.getBlockState(target)) || !inRange(target)) return false;
+		if (!canBreak(target, mc.level.getBlockState(target)) || !inRange(target)) return false;
 		Direction face = validFace(target);
 		if (pos == null || !started || finished || (doubleMine.get() && secondaryPos == null)) {
 			startMine(target, face, Goal.EXTERNAL);
 			return isMining(target);
 		}
 		while (queued.size() >= Math.max(8, queueSize.get())) queued.pollFirst();
-		queued.addLast(new Queued(target.toImmutable(), face));
+		queued.addLast(new Queued(target.immutable(), face));
 		return true;
 	}
 

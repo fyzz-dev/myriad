@@ -10,8 +10,8 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.util.Mining;
 import dev.myriad.api.util.MyriadId;
-import net.minecraft.block.BlockState;
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Switches to the best hotbar tool when you start mining, and back afterwards.
@@ -47,9 +47,9 @@ public final class AutoTool extends Module {
 	@Subscribe
 	private void onStartBreaking(BlockBreakEvent.Start e) {
 		if (!inGame() || speedMineActive()) return;
-		BlockState state = mc.world.getBlockState(e.pos());
+		BlockState state = mc.level.getBlockState(e.pos());
 		int best = bestSlot(state);
-		int current = mc.player.getInventory().selectedSlot;
+		int current = mc.player.getInventory().getSelectedSlot();
 		if (best == -1 || best == current) return;
 		if (previousSlot == -1) previousSlot = current;
 		Myriad.inventory().select(best);
@@ -57,7 +57,7 @@ public final class AutoTool extends Module {
 
 	@Subscribe
 	private void onTick(TickEvent.Post e) {
-		if (previousSlot != -1 && inGame() && !mc.interactionManager.isBreakingBlock()) restore();
+		if (previousSlot != -1 && inGame() && !mc.gameMode.isDestroying()) restore();
 	}
 
 	private void restore() {
@@ -68,10 +68,10 @@ public final class AutoTool extends Module {
 	/** The hotbar slot that mines {@code state} fastest, or -1 if nothing beats what you're holding. */
 	private int bestSlot(BlockState state) {
 		int best = -1;
-		float bestSpeed = Mining.speed(state, mc.player.getInventory().selectedSlot);
+		float bestSpeed = Mining.speed(state, mc.player.getInventory().getSelectedSlot());
 		for (int i = 0; i < 9; i++) {
-			ItemStack stack = mc.player.getInventory().getStack(i);
-			if (stack.isDamageable() && stack.getMaxDamage() - stack.getDamage() <= keepDurability.get()) continue;
+			ItemStack stack = mc.player.getInventory().getItem(i);
+			if (stack.isDamageableItem() && stack.getMaxDamage() - stack.getDamageValue() <= keepDurability.get()) continue;
 			float speed = Mining.speed(state, i);
 			if (speed > bestSpeed) {
 				bestSpeed = speed;

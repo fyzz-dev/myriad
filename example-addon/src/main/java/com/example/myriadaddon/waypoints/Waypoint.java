@@ -1,8 +1,8 @@
 package com.example.myriadaddon.waypoints;
 
 import com.google.gson.JsonObject;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * A saved position. Immutable: change one by replacing it in the {@link WaypointStore}.
@@ -11,8 +11,8 @@ import net.minecraft.util.math.Vec3d;
  * @param color     ARGB, or 0 to use the Waypoints module's default colour (which follows the theme)
  */
 public record Waypoint(String name, BlockPos pos, String dimension, int color, boolean visible) {
-	public Vec3d center() {
-		return Vec3d.ofCenter(pos);
+	public Vec3 center() {
+		return Vec3.atCenterOf(pos);
 	}
 
 	public Waypoint withVisible(boolean visible) {

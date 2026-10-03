@@ -15,7 +15,7 @@ repositories {
 
 dependencies {
 	// Mod Menu is optional: only its API is compiled against, and the integration loads only when it's installed.
-	modCompileOnly("com.terraformersmc:modmenu:${rootProject.modmenu_version}") { transitive = false }
+	compileOnly("com.terraformersmc:modmenu:${rootProject.modmenu_version}") { transitive = false }
 
 	testImplementation platform("org.junit:junit-bom:5.11.4")
 	testImplementation "org.junit.jupiter:junit-jupiter"

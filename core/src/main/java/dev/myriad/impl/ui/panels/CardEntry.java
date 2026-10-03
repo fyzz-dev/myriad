@@ -7,11 +7,11 @@ import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.ui.widget.VBox;
 import dev.myriad.api.ui.widget.Widget;
 import dev.myriad.api.util.ColorUtil;
-import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Objects;
+import net.minecraft.client.Minecraft;
 
 /**
  * The card every list entry in the menu uses (modules, HUD elements, addons): a header row tinted while the entry is
@@ -178,7 +178,7 @@ abstract class CardEntry extends Widget {
 		float rowH = ROW + 2;
 		if (mx >= x && my >= y && mx < x + width && my < y + rowH) {
 			boolean chevron = mx >= x + width - 14;
-			if (button == 1 && GLFW.glfwGetKey(MinecraftClient.getInstance().getWindow().getHandle(), GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS) {
+			if (button == 1 && GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS) {
 				shiftSecondary();
 			} else if (button == 1 || chevron) {
 				setExpanded(!isExpanded());

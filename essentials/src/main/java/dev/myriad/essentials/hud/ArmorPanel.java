@@ -8,12 +8,11 @@ import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.ui.Rect;
 import dev.myriad.api.ui.hud.HudPanel;
 import dev.myriad.api.ui.hud.ItemHud;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /** Your armour, helmet first, with durability as a bar and/or percentage. */
 public final class ArmorPanel extends HudPanel {
@@ -40,14 +39,14 @@ public final class ArmorPanel extends HudPanel {
 		List<ItemStack> list = new ArrayList<>(4);
 		if (mc.player == null) {
 			// Preview while editing the HUD from the title screen.
-			list.add(Items.DIAMOND_HELMET.getDefaultStack());
-			list.add(Items.DIAMOND_CHESTPLATE.getDefaultStack());
-			list.add(Items.DIAMOND_LEGGINGS.getDefaultStack());
-			list.add(Items.DIAMOND_BOOTS.getDefaultStack());
+			list.add(Items.DIAMOND_HELMET.getDefaultInstance());
+			list.add(Items.DIAMOND_CHESTPLATE.getDefaultInstance());
+			list.add(Items.DIAMOND_LEGGINGS.getDefaultInstance());
+			list.add(Items.DIAMOND_BOOTS.getDefaultInstance());
 			return list;
 		}
 		for (EquipmentSlot slot : SLOTS) {
-			ItemStack s = mc.player.getEquippedStack(slot);
+			ItemStack s = mc.player.getItemBySlot(slot);
 			if (s.isEmpty() && skipEmpty.get()) continue;
 			list.add(s);
 		}
@@ -77,7 +76,7 @@ public final class ArmorPanel extends HudPanel {
 	public void render(Canvas c, float w, float h, float mx, float my) {
 		float slot = slot(), size = 16 * scale.getFloat(), pad = (slot - size) / 2, ph = percentHeight(c);
 		// Vanilla draws the air bubbles one row above the hunger bar; step out of their way while they show.
-		float yShift = avoidAir.get() && mc.player != null && mc.player.getAir() < mc.player.getMaxAir() ? -10 : 0;
+		float yShift = avoidAir.get() && mc.player != null && mc.player.getAirSupply() < mc.player.getMaxAirSupply() ? -10 : 0;
 		List<ItemStack> stacks = stacks();
 		for (int i = 0; i < stacks.size(); i++) {
 			ItemStack stack = stacks.get(i);
@@ -86,7 +85,7 @@ public final class ArmorPanel extends HudPanel {
 			float y = (layout.get() == Layout.HORIZONTAL ? 0 : i * (slot + ph)) + yShift;
 			float ix = x + pad, iy = y + ph + pad;
 			c.item(stack, ix, iy, size, false);
-			if (!stack.isDamageable() || durability.get() == ItemHud.Durability.NONE) continue;
+			if (!stack.isDamageableItem() || durability.get() == ItemHud.Durability.NONE) continue;
 			if (ItemHud.percent(stack) >= 1f && !showFull.get()) continue;
 			if (durability.get() == ItemHud.Durability.BAR || durability.get() == ItemHud.Durability.BOTH) ItemHud.bar(c, stack, ix, iy, size);
 			if (ItemHud.showsPercent(durability.get())) ItemHud.percentText(c, stack, ix, y, size, textSize(c), shadow.get());

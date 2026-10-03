@@ -3,16 +3,16 @@ package dev.myriad.impl.mixin;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.BlockUpdateEvent;
 import dev.myriad.api.event.events.EntityEvent;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ClientWorld.class)
+@Mixin(ClientLevel.class)
 public abstract class ClientWorldMixin {
 	@Inject(method = "addEntity", at = @At("TAIL"))
 	private void myriad$entityAdded(Entity entity, CallbackInfo ci) {
@@ -22,15 +22,15 @@ public abstract class ClientWorldMixin {
 	@Inject(method = "removeEntity", at = @At("HEAD"))
 	private void myriad$entityRemoved(int entityId, Entity.RemovalReason reason, CallbackInfo ci) {
 		if (!Myriad.isReady() || !Myriad.events().hasListeners(EntityEvent.Removed.class)) return;
-		Entity entity = ((ClientWorld) (Object) this).getEntityById(entityId);
+		Entity entity = ((ClientLevel) (Object) this).getEntity(entityId);
 		if (entity != null) Myriad.events().post(new EntityEvent.Removed(entity, reason));
 	}
 
 	/** Every server block change (single and multi-block updates) arrives here. */
-	@Inject(method = "handleBlockUpdate", at = @At("HEAD"))
+	@Inject(method = "setServerVerifiedBlockState", at = @At("HEAD"))
 	private void myriad$blockUpdate(BlockPos pos, BlockState state, int flags, CallbackInfo ci) {
 		if (!Myriad.isReady() || !Myriad.events().hasListeners(BlockUpdateEvent.class)) return;
-		BlockState old = ((ClientWorld) (Object) this).getBlockState(pos);
-		Myriad.events().post(new BlockUpdateEvent(pos.toImmutable(), old, state));
+		BlockState old = ((ClientLevel) (Object) this).getBlockState(pos);
+		Myriad.events().post(new BlockUpdateEvent(pos.immutable(), old, state));
 	}
 }

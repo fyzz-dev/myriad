@@ -22,12 +22,11 @@ import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.Format;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Draws your waypoints in the world: a box and a beam on the block, and a label with the name and distance that stays
@@ -79,7 +78,7 @@ public final class Waypoints extends Module {
 
 	private List<Waypoint> shown() {
 		if (!inGame()) return List.of();
-		Vec3d eye = mc.player.getEyePos();
+		Vec3 eye = mc.player.getEyePosition();
 		int max = maxDistance.get();
 		List<Waypoint> list = new ArrayList<>();
 		for (Waypoint w : store.inDimension()) {
@@ -96,9 +95,9 @@ public final class Waypoints extends Module {
 	private void onRender3D(Render3DEvent e) {
 		for (Waypoint w : shown()) {
 			int c = colorOf(w);
-			if (box.get()) Renderer3D.box(new Box(w.pos()), ColorUtil.withAlpha(c, 40), c, Renderer3D.ShapeMode.BOTH, throughWalls.get());
+			if (box.get()) Renderer3D.box(new AABB(w.pos()), ColorUtil.withAlpha(c, 40), c, Renderer3D.ShapeMode.BOTH, throughWalls.get());
 			if (beam.get()) {
-				Vec3d base = w.center();
+				Vec3 base = w.center();
 				Renderer3D.line(base, base.add(0, beamHeight.get(), 0), c, ColorUtil.withAlpha(c, 0), throughWalls.get());
 			}
 		}
@@ -107,12 +106,12 @@ public final class Waypoints extends Module {
 	@Subscribe
 	private void onRender2D(Render2DEvent e) {
 		if (!labels.get()) return;
-		Vec3d camera = Projection.camera();
+		Vec3 camera = Projection.camera();
 		for (Waypoint w : shown()) {
 			double dist = w.center().distanceTo(camera);
 			// Far points can sit beyond the far plane; pull the label in along the same line of sight so it still shows.
-			Vec3d at = w.center().add(0, 1, 0);
-			if (dist > 96) at = camera.add(at.subtract(camera).normalize().multiply(96));
+			Vec3 at = w.center().add(0, 1, 0);
+			if (dist > 96) at = camera.add(at.subtract(camera).normalize().scale(96));
 
 			List<WorldLabel.Segment> segments = new ArrayList<>();
 			segments.add(new WorldLabel.Segment(w.name(), colorOf(w)));
@@ -126,7 +125,7 @@ public final class Waypoints extends Module {
 	@Subscribe
 	private void onScreen(ScreenOpenEvent e) {
 		if (!(e.screen() instanceof DeathScreen) || !deathWaypoints.get() || !inGame()) return;
-		store.put("Death", mc.player.getBlockPos());
+		store.put("Death", mc.player.blockPosition());
 		info("Saved where you died as \"Death\".");
 	}
 

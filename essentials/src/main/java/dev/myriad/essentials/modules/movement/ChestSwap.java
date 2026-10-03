@@ -5,11 +5,10 @@ import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.util.Slots;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-
 import java.util.List;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 
 /**
  * Swaps your chestplate for an elytra or back again, then turns itself off; bind it to a key.
@@ -28,7 +27,7 @@ public class ChestSwap extends Module {
 	@Override
 	protected void onEnable() {
 		if (inGame()) {
-			boolean wearingElytra = mc.player.getEquippedStack(EquipmentSlot.CHEST).isOf(Items.ELYTRA);
+			boolean wearingElytra = mc.player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA);
 			int slot = wearingElytra ? findChestplate() : find(Items.ELYTRA);
 			if (slot >= 0) swapIntoChest(slot);
 			else warn(wearingElytra ? "No chestplate in your inventory" : "No elytra in your inventory");
@@ -41,7 +40,7 @@ public class ChestSwap extends Module {
 	}
 
 	private static int find(Item item) {
-		return Myriad.inventory().bestInInventory(s -> s.isOf(item) ? 1 : 0);
+		return Myriad.inventory().bestInInventory(s -> s.is(item) ? 1 : 0);
 	}
 
 	/** The strongest chestplate (earliest in CHESTPLATES), or any chestplate when not preferring the best. */

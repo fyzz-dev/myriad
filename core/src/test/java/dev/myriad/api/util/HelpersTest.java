@@ -1,36 +1,36 @@
 package dev.myriad.api.util;
 
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HelpersTest {
 	@Test
 	void anglesFollowMinecraftConventions() {
-		Vec3d o = Vec3d.ZERO;
-		assertEquals(0, MathUtil.anglesTo(o, new Vec3d(0, 0, 5))[0], 1e-3);    // south
-		assertEquals(90, MathUtil.anglesTo(o, new Vec3d(-5, 0, 0))[0], 1e-3);  // west
-		assertEquals(-90, MathUtil.anglesTo(o, new Vec3d(5, 0, 0))[0], 1e-3);  // east
-		assertEquals(90, MathUtil.anglesTo(o, new Vec3d(0, -5, 0))[1], 1e-3);  // straight down
-		Vec3d south = MathUtil.horizontalDirection(0);
+		Vec3 o = Vec3.ZERO;
+		assertEquals(0, MathUtil.anglesTo(o, new Vec3(0, 0, 5))[0], 1e-3);    // south
+		assertEquals(90, MathUtil.anglesTo(o, new Vec3(-5, 0, 0))[0], 1e-3);  // west
+		assertEquals(-90, MathUtil.anglesTo(o, new Vec3(5, 0, 0))[0], 1e-3);  // east
+		assertEquals(90, MathUtil.anglesTo(o, new Vec3(0, -5, 0))[1], 1e-3);  // straight down
+		Vec3 south = MathUtil.horizontalDirection(0);
 		assertEquals(1, south.z, 1e-6);
 		assertEquals(-1, MathUtil.horizontalDirection(90).x, 1e-6);
 		assertEquals(-20, MathUtil.angleDifference(170, 150), 1e-3);
 		assertEquals(20, MathUtil.angleDifference(170, -170), 1e-3);
-		assertEquals(0, MathUtil.angleTo(o, 0, 0, new Vec3d(0, 0, 10)), 1e-3);
+		assertEquals(0, MathUtil.angleTo(o, 0, 0, new Vec3(0, 0, 10)), 1e-3);
 	}
 
 	@Test
 	void closestPointOnABox() {
-		Box b = new Box(0, 0, 0, 1, 2, 1);
-		assertEquals(new Vec3d(1, 1, 0.5), MathUtil.closestPoint(b, new Vec3d(3, 1, 0.5)));
-		assertEquals(new Vec3d(0.5, 1, 0.5), MathUtil.closestPoint(b, new Vec3d(0.5, 1, 0.5)));
-		assertEquals(2, MathUtil.distanceTo(b, new Vec3d(3, 1, 0.5)), 1e-9);
+		AABB b = new AABB(0, 0, 0, 1, 2, 1);
+		assertEquals(new Vec3(1, 1, 0.5), MathUtil.closestPoint(b, new Vec3(3, 1, 0.5)));
+		assertEquals(new Vec3(0.5, 1, 0.5), MathUtil.closestPoint(b, new Vec3(0.5, 1, 0.5)));
+		assertEquals(2, MathUtil.distanceTo(b, new Vec3(3, 1, 0.5)), 1e-9);
 		assertEquals(45, MathUtil.snap(50, 45), 1e-9);
 	}
 
@@ -69,12 +69,12 @@ class HelpersTest {
 
 	@Test
 	void spheresAreNearestFirstAndRound() {
-		Vec3d center = new Vec3d(0.5, 0.5, 0.5);
+		Vec3 center = new Vec3(0.5, 0.5, 0.5);
 		List<BlockPos> sphere = Positions.sphere(center, 1);
-		assertEquals(BlockPos.ORIGIN, sphere.getFirst());
+		assertEquals(BlockPos.ZERO, sphere.getFirst());
 		assertEquals(7, sphere.size()); // the centre and its six neighbours
-		assertEquals(125, Positions.cube(BlockPos.ORIGIN, 2).size());
-		assertEquals(BlockPos.ORIGIN, Positions.cube(BlockPos.ORIGIN, 2).getFirst());
+		assertEquals(125, Positions.cube(BlockPos.ZERO, 2).size());
+		assertEquals(BlockPos.ZERO, Positions.cube(BlockPos.ZERO, 2).getFirst());
 	}
 
 	@Test

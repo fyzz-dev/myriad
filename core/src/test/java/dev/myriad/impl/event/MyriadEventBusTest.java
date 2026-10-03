@@ -67,6 +67,20 @@ class MyriadEventBusTest {
 	}
 
 	@Test
+	void instancesOfOneClassEachGetTheirOwnHandlersAcrossResubscribes() {
+		// Handler discovery is cached per class; the invokers must still be bound to each instance.
+		MyriadEventBus bus = new MyriadEventBus();
+		Listener a = new Listener(), b = new Listener();
+		bus.subscribe(a);
+		bus.subscribe(b);
+		bus.unsubscribe(a);
+		bus.subscribe(a);
+		bus.post(new Child());
+		assertEquals(List.of("high", "base", "low"), a.calls);
+		assertEquals(List.of("high", "base", "low"), b.calls);
+	}
+
+	@Test
 	void unsubscribeStopsDelivery() {
 		MyriadEventBus bus = new MyriadEventBus();
 		Listener l = new Listener();

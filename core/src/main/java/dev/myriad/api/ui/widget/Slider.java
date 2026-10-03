@@ -86,7 +86,7 @@ public class Slider extends Widget {
 	public boolean adjust(int direction) {
 		double range = max - min;
 		double step = decimals <= 0 ? Math.max(1, Math.round(range / 20)) : range / 20;
-		long window = net.minecraft.client.MinecraftClient.getInstance().getWindow().getHandle();
+		long window = net.minecraft.client.Minecraft.getInstance().getWindow().handle();
 		if (org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
 			step = decimals <= 0 ? 1 : step / 5;
 		}

@@ -10,14 +10,14 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.util.Packets;
 import dev.myriad.api.util.Timer;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.decoration.EndCrystalEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.registry.tag.ItemTags;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Turns hits into critical hits by telling the server you hopped a fraction of a block just before attacking.
@@ -61,39 +61,39 @@ public class Criticals extends Module {
 			return;
 		}
 		if (swordOnly.get()) {
-			ItemStack held = mc.player.getMainHandStack();
-			if (!held.isIn(ItemTags.SWORDS) && !held.isIn(ItemTags.AXES)) return;
+			ItemStack held = mc.player.getMainHandItem();
+			if (!held.is(ItemTags.SWORDS) && !held.is(ItemTags.AXES)) return;
 		}
 		if (!canCrit(target)) return;
 		var pl = mc.player;
 		boolean sprinting = pl.isSprinting();
-		if (sprinting) Packets.sendSilently(new ClientCommandC2SPacket(pl, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
+		if (sprinting) Packets.sendSilently(new ServerboundPlayerCommandPacket(pl, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING));
 		float yaw = Myriad.rotations().serverYaw(), pitch = Myriad.rotations().serverPitch();
-		Packets.sendSilently(new PlayerMoveC2SPacket.Full(pl.getX(), pl.getY() + OFFSET, pl.getZ(), yaw, pitch, false, pl.horizontalCollision));
-		Packets.sendSilently(new PlayerMoveC2SPacket.Full(pl.getX(), pl.getY(), pl.getZ(), yaw, pitch, false, pl.horizontalCollision));
-		pl.addCritParticles(target);
+		Packets.sendSilently(new ServerboundMovePlayerPacket.PosRot(pl.getX(), pl.getY() + OFFSET, pl.getZ(), yaw, pitch, false, pl.horizontalCollision));
+		Packets.sendSilently(new ServerboundMovePlayerPacket.PosRot(pl.getX(), pl.getY(), pl.getZ(), yaw, pitch, false, pl.horizontalCollision));
+		pl.crit(target);
 		sinceHop.reset();
-		if (sprinting) Packets.sendSilently(new ClientCommandC2SPacket(pl, ClientCommandC2SPacket.Mode.START_SPRINTING));
+		if (sprinting) Packets.sendSilently(new ServerboundPlayerCommandPacket(pl, ServerboundPlayerCommandPacket.Action.START_SPRINTING));
 	}
 
 	private boolean canCrit(Entity target) {
 		if (!(target instanceof LivingEntity) || !target.isAlive()) return false;
 		var p = mc.player;
-		return !p.hasVehicle() && !p.isGliding() && !p.isTouchingWater() && !p.isInLava() && !p.isHoldingOntoLadder() && !p.hasStatusEffect(StatusEffects.BLINDNESS);
+		return !p.isPassenger() && !p.isFallFlying() && !p.isInWater() && !p.isInLava() && !p.isSuppressingSlidingDownLadder() && !p.hasEffect(MobEffects.BLINDNESS);
 	}
 
 	private void crit2b2t(Entity target) {
 		var p = mc.player;
-		if (!(target instanceof LivingEntity) || target instanceof EndCrystalEntity || !p.isOnGround()) return;
-		var in = p.input.playerInput;
-		if (!p.isInsideWall() || in.forward() || in.backward() || in.left() || in.right()) return;
+		if (!(target instanceof LivingEntity) || target instanceof EndCrystal || !p.onGround()) return;
+		var in = p.input.keyPresses;
+		if (!p.isInWall() || in.forward() || in.backward() || in.left() || in.right()) return;
 		boolean sprinting = p.isSprinting(), collision = p.horizontalCollision;
-		if (sprinting) Packets.sendSilently(new ClientCommandC2SPacket(p, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
-		Packets.sendSilently(new PlayerMoveC2SPacket.PositionAndOnGround(p.getX(), p.getY(), p.getZ(), false, collision));
-		Packets.sendSilently(new PlayerMoveC2SPacket.PositionAndOnGround(p.getX(), p.getY() + OFFSET, p.getZ(), false, collision));
-		Packets.sendSilently(new PlayerMoveC2SPacket.PositionAndOnGround(p.getX(), p.getY() + OFFSET_2, p.getZ(), false, collision));
-		p.addCritParticles(target);
-		if (sprinting) Packets.sendSilently(new ClientCommandC2SPacket(p, ClientCommandC2SPacket.Mode.START_SPRINTING));
+		if (sprinting) Packets.sendSilently(new ServerboundPlayerCommandPacket(p, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING));
+		Packets.sendSilently(new ServerboundMovePlayerPacket.Pos(p.getX(), p.getY(), p.getZ(), false, collision));
+		Packets.sendSilently(new ServerboundMovePlayerPacket.Pos(p.getX(), p.getY() + OFFSET, p.getZ(), false, collision));
+		Packets.sendSilently(new ServerboundMovePlayerPacket.Pos(p.getX(), p.getY() + OFFSET_2, p.getZ(), false, collision));
+		p.crit(target);
+		if (sprinting) Packets.sendSilently(new ServerboundPlayerCommandPacket(p, ServerboundPlayerCommandPacket.Action.START_SPRINTING));
 		sinceHop.reset();
 	}
 }

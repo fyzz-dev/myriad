@@ -17,22 +17,21 @@ import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.FallingBlock;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Places blocks under (and a little ahead of) you while you walk. Bridge mode keeps a one-wide path; Platformer
@@ -102,8 +101,8 @@ public class Scaffold extends Module {
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
 		sneakAtEdge = false;
-		if (!inGame() || mc.interactionManager == null || mc.player.isSpectator()) return;
-		sneakAtEdge = safeWalk.get() && mc.player.isOnGround() && !descending() && moving() && atEdge();
+		if (!inGame() || mc.gameMode == null || mc.player.isSpectator()) return;
+		sneakAtEdge = safeWalk.get() && mc.player.onGround() && !descending() && moving() && atEdge();
 
 		int slot = bestSlot();
 		int count = blockCount();
@@ -147,13 +146,13 @@ public class Scaffold extends Module {
 			for (BlockPos pos : candidates) {
 				if (pos.equals(target)) continue;
 				int c = queueColor.argb();
-				Renderer3D.box(new Box(pos), dev.myriad.api.util.ColorUtil.fade(c, 0.25f), c, Renderer3D.ShapeMode.BOTH, false);
+				Renderer3D.box(new AABB(pos), dev.myriad.api.util.ColorUtil.fade(c, 0.25f), c, Renderer3D.ShapeMode.BOTH, false);
 				if (++n >= 12) break;
 			}
 		}
 		if (target != null) {
 			int c = targetColor.argb();
-			Renderer3D.box(new Box(target), dev.myriad.api.util.ColorUtil.fade(c, 0.2f), c, Renderer3D.ShapeMode.BOTH, false);
+			Renderer3D.box(new AABB(target), dev.myriad.api.util.ColorUtil.fade(c, 0.2f), c, Renderer3D.ShapeMode.BOTH, false);
 		}
 	}
 
@@ -171,30 +170,30 @@ public class Scaffold extends Module {
 	}
 
 	private int targetY() {
-		int y = MathHelper.floor(mc.player.getBoundingBox().minY) - 1;
+		int y = Mth.floor(mc.player.getBoundingBox().minY) - 1;
 		return descending() ? y - 1 : y;
 	}
 
 	private List<BlockPos> bridgeCandidates() {
 		Set<BlockPos> positions = new LinkedHashSet<>();
-		Box box = mc.player.getBoundingBox();
-		Vec3d dir = movementDirection();
+		AABB box = mc.player.getBoundingBox();
+		Vec3 dir = movementDirection();
 		double max = moving() && !towering() ? extend.get() : 0;
 		for (double d = 0; d <= max + 0.001; d += 0.35) footprint(positions, box, targetY(), dir.x * d, dir.z * d);
-		Vec3d eyes = mc.player.getEyePos();
-		Comparator<BlockPos> byDistance = Comparator.comparingDouble(p -> eyes.squaredDistanceTo(Vec3d.ofCenter(p)));
+		Vec3 eyes = mc.player.getEyePosition();
+		Comparator<BlockPos> byDistance = Comparator.comparingDouble(p -> eyes.distanceToSqr(Vec3.atCenterOf(p)));
 		return positions.stream().sorted(priority.get() == Priority.FURTHEST ? byDistance.reversed() : byDistance).toList();
 	}
 
 	private List<BlockPos> platformCandidates() {
 		Set<BlockPos> positions = new LinkedHashSet<>();
-		Box box = mc.player.getBoundingBox();
-		Vec3d dir = movementDirection();
+		AABB box = mc.player.getBoundingBox();
+		Vec3 dir = movementDirection();
 		double max = moving() && !towering() ? ahead.get() : 0;
 		double cx = (box.minX + box.maxX) / 2, cz = (box.minZ + box.maxZ) / 2;
 		int y = targetY(), r = radius.get();
 		for (double d = 0; d <= max + 0.001; d += 0.5) {
-			int bx = MathHelper.floor(cx + dir.x * d), bz = MathHelper.floor(cz + dir.z * d);
+			int bx = Mth.floor(cx + dir.x * d), bz = Mth.floor(cz + dir.z * d);
 			for (int x = -r; x <= r; x++) {
 				for (int z = -r; z <= r; z++) {
 					if (!corners.get() && Math.abs(x) + Math.abs(z) > r) continue;
@@ -212,51 +211,51 @@ public class Scaffold extends Module {
 	}
 
 	/** The blocks under the player's hitbox (centre and corners), shifted by an offset. */
-	private static void footprint(Set<BlockPos> out, Box box, int y, double ox, double oz) {
+	private static void footprint(Set<BlockPos> out, AABB box, int y, double ox, double oz) {
 		double pad = 0.05;
 		double minX = box.minX + pad + ox, maxX = box.maxX - pad + ox, minZ = box.minZ + pad + oz, maxZ = box.maxZ - pad + oz;
-		out.add(new BlockPos(MathHelper.floor((minX + maxX) / 2), y, MathHelper.floor((minZ + maxZ) / 2)));
-		out.add(new BlockPos(MathHelper.floor(minX), y, MathHelper.floor(minZ)));
-		out.add(new BlockPos(MathHelper.floor(minX), y, MathHelper.floor(maxZ)));
-		out.add(new BlockPos(MathHelper.floor(maxX), y, MathHelper.floor(minZ)));
-		out.add(new BlockPos(MathHelper.floor(maxX), y, MathHelper.floor(maxZ)));
+		out.add(new BlockPos(Mth.floor((minX + maxX) / 2), y, Mth.floor((minZ + maxZ) / 2)));
+		out.add(new BlockPos(Mth.floor(minX), y, Mth.floor(minZ)));
+		out.add(new BlockPos(Mth.floor(minX), y, Mth.floor(maxZ)));
+		out.add(new BlockPos(Mth.floor(maxX), y, Mth.floor(minZ)));
+		out.add(new BlockPos(Mth.floor(maxX), y, Mth.floor(maxZ)));
 	}
 
 	// ---- movement state -------------------------------------------------------------------------------------------
 
 	private boolean moving() {
-		return Math.abs(mc.player.input.movementForward) > 1e-4 || Math.abs(mc.player.input.movementSideways) > 1e-4;
+		return mc.player.input.getMoveVector().lengthSquared() > 1e-8;
 	}
 
 	private boolean towering() {
-		return tower.get() && mc.options.jumpKey.isPressed() && !moving();
+		return tower.get() && mc.options.keyJump.isDown() && !moving();
 	}
 
 	private boolean descending() {
-		return descend.get() && mc.options.sneakKey.isPressed();
+		return descend.get() && mc.options.keyShift.isDown();
 	}
 
-	private Vec3d movementDirection() {
-		double f = mc.player.input.movementForward, s = mc.player.input.movementSideways;
+	private Vec3 movementDirection() {
+		double f = mc.player.input.getMoveVector().y, s = mc.player.input.getMoveVector().x;
 		double len = Math.hypot(f, s);
-		if (len < 1e-4) return Vec3d.ZERO;
+		if (len < 1e-4) return Vec3.ZERO;
 		f /= len;
 		s /= len;
-		double yaw = Math.toRadians(mc.player.getYaw());
-		return new Vec3d(s * Math.cos(yaw) - f * Math.sin(yaw), 0, f * Math.cos(yaw) + s * Math.sin(yaw)).normalize();
+		double yaw = Math.toRadians(mc.player.getYRot());
+		return new Vec3(s * Math.cos(yaw) - f * Math.sin(yaw), 0, f * Math.cos(yaw) + s * Math.sin(yaw)).normalize();
 	}
 
 	private boolean atEdge() {
-		Box box = mc.player.getBoundingBox();
-		int y = MathHelper.floor(box.minY) - 1;
+		AABB box = mc.player.getBoundingBox();
+		int y = Mth.floor(box.minY) - 1;
 		double pad = 0.08;
 		BlockPos[] support = {
-			new BlockPos(MathHelper.floor(box.minX + pad), y, MathHelper.floor(box.minZ + pad)),
-			new BlockPos(MathHelper.floor(box.minX + pad), y, MathHelper.floor(box.maxZ - pad)),
-			new BlockPos(MathHelper.floor(box.maxX - pad), y, MathHelper.floor(box.minZ + pad)),
-			new BlockPos(MathHelper.floor(box.maxX - pad), y, MathHelper.floor(box.maxZ - pad))
+			new BlockPos(Mth.floor(box.minX + pad), y, Mth.floor(box.minZ + pad)),
+			new BlockPos(Mth.floor(box.minX + pad), y, Mth.floor(box.maxZ - pad)),
+			new BlockPos(Mth.floor(box.maxX - pad), y, Mth.floor(box.minZ + pad)),
+			new BlockPos(Mth.floor(box.maxX - pad), y, Mth.floor(box.maxZ - pad))
 		};
-		for (BlockPos p : support) if (mc.world.getBlockState(p).isReplaceable()) return true;
+		for (BlockPos p : support) if (mc.level.getBlockState(p).canBeReplaced()) return true;
 		return false;
 	}
 
@@ -267,8 +266,8 @@ public class Scaffold extends Module {
 		Block block = item.getBlock();
 		if (block == Blocks.COBWEB || block == Blocks.SCAFFOLDING || block instanceof FallingBlock) return false;
 		if (!blocks.get().isEmpty() && !blocks.contains(block)) return false;
-		BlockState state = block.getDefaultState();
-		return state.isFullCube(mc.world, BlockPos.ORIGIN);
+		BlockState state = block.defaultBlockState();
+		return state.isCollisionShapeFullBlock(mc.level, BlockPos.ZERO);
 	}
 
 	/** Hotbar slot with the most usable blocks, or -1. */
@@ -279,7 +278,7 @@ public class Scaffold extends Module {
 	private int blockCount() {
 		int n = 0;
 		for (int i = 0; i < 9; i++) {
-			ItemStack s = mc.player.getInventory().getStack(i);
+			ItemStack s = mc.player.getInventory().getItem(i);
 			if (usable(s)) n += s.getCount();
 		}
 		return n;

@@ -1,9 +1,9 @@
 plugins {
-	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}" apply false
+	id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
 }
 
 subprojects {
-	apply plugin: 'net.fabricmc.fabric-loom-remap'
+	apply plugin: 'net.fabricmc.fabric-loom'
 	apply plugin: 'maven-publish'
 
 	version = rootProject.version
@@ -24,9 +24,8 @@ subprojects {
 
 	dependencies {
 		minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
-		mappings "net.fabricmc:yarn:${rootProject.yarn_mappings}:v2"
-		modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
-		modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+		implementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+		implementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
 	}
 
 	processResources {
@@ -42,14 +41,15 @@ subprojects {
 	}
 
 	tasks.withType(JavaCompile).configureEach {
-		it.options.release = 21
+		it.options.release = 25
 		it.options.encoding = "UTF-8"
+		it.options.compilerArgs += ["-Xmaxerrs", "10000"]
 	}
 
 	java {
 		withSourcesJar()
-		sourceCompatibility = JavaVersion.VERSION_21
-		targetCompatibility = JavaVersion.VERSION_21
+		sourceCompatibility = JavaVersion.VERSION_25
+		targetCompatibility = JavaVersion.VERSION_25
 	}
 
 	jar {

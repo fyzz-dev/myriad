@@ -1,12 +1,11 @@
 package dev.myriad.api.command.arguments;
 
-import net.minecraft.block.Block;
-import net.minecraft.entity.EntityType;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registry;
-
 import java.util.Collection;
 import java.util.function.Supplier;
+import net.minecraft.core.Registry;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
 
 /**
  * Every argument type Myriad provides, in one place. Each type also has a static {@code get(ctx, name)} to read the

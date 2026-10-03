@@ -19,7 +19,7 @@ public interface Desktop {
 	 * Draws with Myriad's canvas inside any vanilla rendering (a screen, a tooltip, a HUD hook). One canvas unit is
 	 * one scaled GUI pixel, matching {@code context}. Does nothing if a canvas is already drawing.
 	 */
-	void draw(net.minecraft.client.gui.DrawContext context, java.util.function.Consumer<dev.myriad.api.render.Canvas> drawer);
+	void draw(net.minecraft.client.gui.GuiGraphicsExtractor context, java.util.function.Consumer<dev.myriad.api.render.Canvas> drawer);
 
 	void close();
 

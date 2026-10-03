@@ -19,8 +19,8 @@ public class NameProtect extends Module {
 
 	public static String replace(String text) {
 		NameProtect m = Modules.active(NameProtect.class);
-		if (m == null || text == null || mc.getSession() == null) return text;
-		String name = mc.getSession().getUsername();
+		if (m == null || text == null || mc.getUser() == null) return text;
+		String name = mc.getUser().getName();
 		return name.isEmpty() || !text.contains(name) ? text : text.replace(name, m.placeholder.get());
 	}
 }

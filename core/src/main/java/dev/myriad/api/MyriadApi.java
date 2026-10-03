@@ -21,9 +21,8 @@ import dev.myriad.api.ui.Desktop;
 import dev.myriad.api.ui.PanelType;
 import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.layout.Layout;
-import net.minecraft.text.Text;
-
 import java.util.List;
+import net.minecraft.network.chat.Component;
 
 /** The services behind the {@link Myriad} facade. */
 public interface MyriadApi {
@@ -67,7 +66,7 @@ public interface MyriadApi {
 
 	Desktop ui();
 
-	void chat(Text message);
+	void chat(Component message);
 
-	void chat(Text message, String id);
+	void chat(Component message, String id);
 }

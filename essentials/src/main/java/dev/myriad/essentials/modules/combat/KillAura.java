@@ -21,22 +21,21 @@ import dev.myriad.api.util.Entities;
 import dev.myriad.api.util.Interactions;
 import dev.myriad.api.util.ItemInfo;
 import dev.myriad.api.util.Reach;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.attribute.EntityAttributeModifier;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.registry.tag.ItemTags;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.MathHelper;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Attacks the closest valid target in range. It can switch to your best weapon for the hit (and back), wait for
@@ -106,11 +105,11 @@ public class KillAura extends Module {
 			target = null;
 			return;
 		}
-		if (!autoSwap.get() && requireWeapon.get() && !ItemInfo.isWeapon(mc.player.getMainHandStack())) {
+		if (!autoSwap.get() && requireWeapon.get() && !ItemInfo.isWeapon(mc.player.getMainHandItem())) {
 			target = null;
 			return;
 		}
-		weaponSlot = autoSwap.get() ? chooseWeapon() : mc.player.getInventory().selectedSlot;
+		weaponSlot = autoSwap.get() ? chooseWeapon() : mc.player.getInventory().getSelectedSlot();
 		target = findTarget();
 		if (target == null) {
 			if (renderTarget != null && !renderTarget.isAlive()) renderTarget = null;
@@ -126,24 +125,24 @@ public class KillAura extends Module {
 	private void onPostTick(TickEvent.Post e) {
 		if (!attackThisTick || target == null || !inGame() || !target.isAlive()) return;
 		attackThisTick = false;
-		int current = mc.player.getInventory().selectedSlot;
+		int current = mc.player.getInventory().getSelectedSlot();
 		if (autoSwap.get() && weaponSlot >= 0 && weaponSlot != current) Myriad.inventory().silentSwap(weaponSlot, () -> attack(target));
 		else attack(target);
 	}
 
 	private void attack(Entity t) {
-		var net = mc.getNetworkHandler();
-		boolean sprinting = mc.player.isSprinting() && !mc.player.isGliding();
-		boolean pull = pulling.get() && mc.player.getMainHandStack().isIn(ItemTags.SWORDS);
-		if (sprinting) net.sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.STOP_SPRINTING));
-		mc.interactionManager.attackEntity(mc.player, t);
+		var net = mc.getConnection();
+		boolean sprinting = mc.player.isSprinting() && !mc.player.isFallFlying();
+		boolean pull = pulling.get() && mc.player.getMainHandItem().is(ItemTags.SWORDS);
+		if (sprinting) net.send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING));
+		mc.gameMode.attack(mc.player, t);
 		if (pull) {
 			float[] r = Myriad.rotations().anglesTo(Reach.aimPoint(t));
-			net.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(MathHelper.wrapDegrees(r[0] + 180), r[1], mc.player.isOnGround(), mc.player.horizontalCollision));
+			net.send(new ServerboundMovePlayerPacket.Rot(Mth.wrapDegrees(r[0] + 180), r[1], mc.player.onGround(), mc.player.horizontalCollision));
 		}
-		if (sprinting) net.sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_SPRINTING));
-		if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
-		else net.sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+		if (sprinting) net.send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_SPRINTING));
+		if (swing.get()) mc.player.swing(InteractionHand.MAIN_HAND);
+		else net.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
 		hits.add(new Hit(t, System.currentTimeMillis()));
 		if (render.get() && onSwing.get()) renderTarget = t;
 	}
@@ -158,7 +157,7 @@ public class KillAura extends Module {
 
 	private boolean maceReady() {
 		var p = mc.player;
-		return !p.isOnGround() && p.getVelocity().y < 0 && p.fallDistance >= maceFallStart.get() && !p.isTouchingWater() && !p.isInLava() && !p.isHoldingOntoLadder();
+		return !p.onGround() && p.getDeltaMovement().y < 0 && p.fallDistance >= maceFallStart.get() && !p.isInWater() && !p.isInLava() && !p.isSuppressingSlidingDownLadder();
 	}
 
 	private boolean canSmash() {
@@ -167,40 +166,40 @@ public class KillAura extends Module {
 
 	private int chooseWeapon() {
 		if (maceReady()) {
-			int mace = Myriad.inventory().findInHotbar(s -> s.isOf(Items.MACE));
+			int mace = Myriad.inventory().findInHotbar(s -> s.is(Items.MACE));
 			if (mace >= 0) return mace;
 		}
 		for (Item item : WEAPONS) {
 			if (item == Items.MACE) continue;
-			int slot = Myriad.inventory().findInHotbar(s -> s.isOf(item));
+			int slot = Myriad.inventory().findInHotbar(s -> s.is(item));
 			if (slot >= 0) return slot;
 		}
-		return mc.player.getInventory().selectedSlot;
+		return mc.player.getInventory().getSelectedSlot();
 	}
 
 	private double attackRange() {
-		return weaponSlot >= 0 && mc.player.getInventory().getStack(weaponSlot).isOf(Items.MACE) ? maceRange.get() : range.get();
+		return weaponSlot >= 0 && mc.player.getInventory().getItem(weaponSlot).is(Items.MACE) ? maceRange.get() : range.get();
 	}
 
 	private boolean canAttack() {
-		ItemStack weapon = weaponSlot >= 0 ? mc.player.getInventory().getStack(weaponSlot) : mc.player.getMainHandStack();
-		if (weapon.isOf(Items.MACE) && canSmash()) return true;
-		if (weapon.isOf(Items.MACE) && maceReady()) return false;
+		ItemStack weapon = weaponSlot >= 0 ? mc.player.getInventory().getItem(weaponSlot) : mc.player.getMainHandItem();
+		if (weapon.is(Items.MACE) && canSmash()) return true;
+		if (weapon.is(Items.MACE) && maceReady()) return false;
 		float base = 0.5f;
 		if (tpsSync.get()) base -= 20f - Myriad.server().tps();
-		float progress = autoSwap.get() && swapAwait.get() ? cooldown(weapon, base) : mc.player.getAttackCooldownProgress(base);
+		float progress = autoSwap.get() && swapAwait.get() ? cooldown(weapon, base) : mc.player.getAttackStrengthScale(base);
 		return progress >= delay.get();
 	}
 
 	/** Attack charge as if {@code weapon} were in hand (each weapon has its own attack speed). */
 	private float cooldown(ItemStack weapon, float base) {
 		double[] speed = {4.0};
-		weapon.applyAttributeModifiers(EquipmentSlot.MAINHAND, (attribute, modifier) -> {
-			if (attribute.equals(EntityAttributes.ATTACK_SPEED) && modifier.operation() == EntityAttributeModifier.Operation.ADD_VALUE) speed[0] += modifier.value();
+		weapon.forEachModifier(EquipmentSlot.MAINHAND, (attribute, modifier) -> {
+			if (attribute.equals(Attributes.ATTACK_SPEED) && modifier.operation() == AttributeModifier.Operation.ADD_VALUE) speed[0] += modifier.amount();
 		});
 		float ticksPerAttack = (float) (20.0 / speed[0]);
 		int last = Interactions.ticksSinceAttack();
-		return MathHelper.clamp((last + base) / ticksPerAttack, 0f, 1f);
+		return Mth.clamp((last + base) / ticksPerAttack, 0f, 1f);
 	}
 
 	// ---- render -----------------------------------------------------------------------------------------------------

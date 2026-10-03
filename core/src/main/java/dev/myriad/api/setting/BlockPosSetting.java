@@ -2,9 +2,8 @@ package dev.myriad.api.setting;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import net.minecraft.util.math.BlockPos;
-
 import java.util.function.Supplier;
+import net.minecraft.core.BlockPos;
 
 /** A block position: an anchor, a schematic origin, a home. The editor also offers "set to where I'm standing". */
 public class BlockPosSetting extends Setting<BlockPos> {
@@ -14,7 +13,7 @@ public class BlockPosSetting extends Setting<BlockPos> {
 
 	@Override
 	protected BlockPos validate(BlockPos v) {
-		return v == null ? defaultValue : v.toImmutable();
+		return v == null ? defaultValue : v.immutable();
 	}
 
 	@Override
@@ -52,9 +51,9 @@ public class BlockPosSetting extends Setting<BlockPos> {
 		return value.getX() + " " + value.getY() + " " + value.getZ();
 	}
 
-	public static class Builder extends Setting.Builder<Builder, BlockPos, BlockPosSetting> {
+	public static class Builder extends Setting.Builder<dev.myriad.api.setting.BlockPosSetting.Builder, BlockPos, BlockPosSetting> {
 		public Builder(String name) {
-			super(name, BlockPos.ORIGIN);
+			super(name, BlockPos.ZERO);
 		}
 
 		@Override

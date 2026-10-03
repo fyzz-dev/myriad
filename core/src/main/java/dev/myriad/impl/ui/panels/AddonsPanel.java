@@ -9,10 +9,9 @@ import dev.myriad.api.ui.widget.Button;
 import dev.myriad.api.ui.widget.HBox;
 import dev.myriad.api.ui.widget.Label;
 import dev.myriad.api.ui.widget.VBox;
-import net.minecraft.util.Util;
-
 import java.util.HashSet;
 import java.util.Set;
+import net.minecraft.util.Util;
 
 /** Every addon Myriad found, as cards: what it adds, who made it, where to find it, and why it failed if it did. */
 public final class AddonsPanel extends WidgetPanel {
@@ -95,9 +94,9 @@ public final class AddonsPanel extends WidgetPanel {
 			body.add(new Label(() -> counts(id)));
 			// Links from the addon's fabric.mod.json "contact" block.
 			HBox links = new HBox(4);
-			addon.homepage().ifPresent(url -> links.add(new Button(" Website", () -> Util.getOperatingSystem().open(url))).tooltip(url));
-			addon.sources().ifPresent(url -> links.add(new Button(" Source", () -> Util.getOperatingSystem().open(url))).tooltip(url));
-			addon.issues().ifPresent(url -> links.add(new Button(" Issues", () -> Util.getOperatingSystem().open(url))).tooltip(url));
+			addon.homepage().ifPresent(url -> links.add(new Button(" Website", () -> Util.getPlatform().openUri(url))).tooltip(url));
+			addon.sources().ifPresent(url -> links.add(new Button(" Source", () -> Util.getPlatform().openUri(url))).tooltip(url));
+			addon.issues().ifPresent(url -> links.add(new Button(" Issues", () -> Util.getPlatform().openUri(url))).tooltip(url));
 			if (!links.children().isEmpty()) body.add(links);
 		}
 

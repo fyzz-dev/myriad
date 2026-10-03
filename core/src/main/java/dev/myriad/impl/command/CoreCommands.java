@@ -19,12 +19,11 @@ import dev.myriad.api.util.Texts;
 import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.ui.ThemeManager;
 import dev.myriad.impl.ui.WindowManager;
-import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import static dev.myriad.api.command.arguments.ModuleArgumentType.module;
 import static dev.myriad.api.command.arguments.PlayerArgumentType.player;
@@ -40,7 +39,7 @@ public final class CoreCommands {
 	public static void register(AddonContext ctx) {
 		ctx.registerCommand(new Command("toggle", "Toggles a module.", "t") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("module", module()).executes(c -> {
 					Module m = c.getArgument("module", Module.class);
 					m.toggle();
@@ -52,7 +51,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("bind", "Binds a module to a key (e.g. .bind sprint r, .bind sprint none).") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("module", module()).then(argument("key", StringArgumentType.word()).executes(c -> {
 					Module m = c.getArgument("module", Module.class);
 					KeybindSetting k = m.keybind;
@@ -68,14 +67,14 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("set", "Shows or changes a module setting.", "s") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("module", module())
 					.executes(c -> {
 						Module m = c.getArgument("module", Module.class);
-						info(Text.literal(m.name()).formatted(Formatting.BOLD));
+						info(Component.literal(m.name()).withStyle(ChatFormatting.BOLD));
 						for (Setting<?> s : m.settings.all()) {
 							if (!s.isSerializable()) continue;
-							info(Text.literal("  " + m.settings.keyOf(s) + " = ").formatted(Formatting.GRAY).append(Text.literal(s.valueString()).formatted(Formatting.WHITE)));
+							info(Component.literal("  " + m.settings.keyOf(s) + " = ").withStyle(ChatFormatting.GRAY).append(Component.literal(s.valueString()).withStyle(ChatFormatting.WHITE)));
 						}
 						return SINGLE_SUCCESS;
 					})
@@ -100,7 +99,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("reset", "Resets a module's settings to defaults.") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("module", module()).executes(c -> {
 					Module m = c.getArgument("module", Module.class);
 					m.settings.resetAll();
@@ -112,7 +111,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("profile", "Switches, creates or deletes config profiles.", "config") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					info("Profile: " + Myriad.config().activeProfile() + "  (all: " + String.join(", ", Myriad.config().profiles()) + ")");
 					return SINGLE_SUCCESS;
@@ -138,7 +137,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("friend", "Manages friends.", "f") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(literal("add").then(argument("name", player()).executes(c -> {
 					String n = c.getArgument("name", String.class);
 					info(Myriad.friends().add(n) ? "Added " + n : n + " is already a friend");
@@ -158,12 +157,12 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("addons", "Lists loaded addons.") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					for (Addon a : Myriad.addons()) {
-						Formatting f = a.state() == AddonState.FAILED ? Formatting.RED : Formatting.WHITE;
-						info(Text.literal(a.name() + " " + a.version()).formatted(f)
-							.append(Text.literal("  " + Myriad.modules().ownedBy(a.id()).size() + " modules").formatted(Formatting.GRAY)));
+						ChatFormatting f = a.state() == AddonState.FAILED ? ChatFormatting.RED : ChatFormatting.WHITE;
+						info(Component.literal(a.name() + " " + a.version()).withStyle(f)
+							.append(Component.literal("  " + Myriad.modules().ownedBy(a.id()).size() + " modules").withStyle(ChatFormatting.GRAY)));
 					}
 					return SINGLE_SUCCESS;
 				});
@@ -172,11 +171,11 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("help", "Lists commands.", "commands") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					String p = Myriad.config().commandPrefix();
 					for (Command cmd : Myriad.commands()) {
-						info(Text.literal(p + cmd.name()).formatted(Formatting.AQUA).append(Text.literal("  " + cmd.description()).formatted(Formatting.GRAY)));
+						info(Component.literal(p + cmd.name()).withStyle(ChatFormatting.AQUA).append(Component.literal("  " + cmd.description()).withStyle(ChatFormatting.GRAY)));
 					}
 					return SINGLE_SUCCESS;
 				});
@@ -185,7 +184,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("panic", "Disables every module.") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					int n = 0;
 					for (Module m : Myriad.modules().enabled()) {
@@ -200,7 +199,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("prefix", "Changes the command prefix.") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("prefix", StringArgumentType.word()).executes(c -> {
 					Myriad.config().setCommandPrefix(StringArgumentType.getString(c, "prefix"));
 					info("Prefix is now " + Myriad.config().commandPrefix());
@@ -211,7 +210,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("theme", "Lists themes, or applies one by name.") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				ThemeManager themes = ((WindowManager) Myriad.ui()).themes();
 				b.executes(c -> {
 					StringBuilder sb = new StringBuilder("Themes: ");
@@ -220,7 +219,7 @@ public final class CoreCommands {
 					return SINGLE_SUCCESS;
 				});
 				b.then(argument("name", StringArgumentType.greedyString())
-					.suggests((c, s) -> CommandSource.suggestMatching(themes.all().stream().map(t -> t.id().path()), s))
+					.suggests((c, s) -> SharedSuggestionProvider.suggest(themes.all().stream().map(t -> t.id().path()), s))
 					.executes(c -> {
 						String n = StringArgumentType.getString(c, "name");
 						var found = themes.find(n);
@@ -236,16 +235,16 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("modules", "Lists modules by category; click one to toggle it.", "mods") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					for (Category category : Myriad.categories()) {
 						var modules = Myriad.modules().inCategory(category);
 						if (modules.isEmpty()) continue;
-						MutableText line = Text.literal(category.name() + ": ").formatted(Formatting.GRAY);
+						MutableComponent line = Component.literal(category.name() + ": ").withStyle(ChatFormatting.GRAY);
 						for (int i = 0; i < modules.size(); i++) {
 							Module m = modules.get(i);
-							if (i > 0) line.append(Text.literal(", ").formatted(Formatting.DARK_GRAY));
-							line.append(Texts.command(m.name(), "toggle " + m.id().path()).formatted(m.isEnabled() ? Formatting.GREEN : Formatting.WHITE));
+							if (i > 0) line.append(Component.literal(", ").withStyle(ChatFormatting.DARK_GRAY));
+							line.append(Texts.command(m.name(), "toggle " + m.id().path()).withStyle(m.isEnabled() ? ChatFormatting.GREEN : ChatFormatting.WHITE));
 						}
 						info(line);
 					}
@@ -256,17 +255,17 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("binds", "Lists every keybind: modules and key actions.") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					int n = 0;
 					for (Module m : Myriad.modules()) {
 						if (!m.keybind.get().isSet()) continue;
-						info(Text.literal(m.keybind.get().displayName()).formatted(Formatting.AQUA).append(Text.literal("  " + m.name()).formatted(Formatting.WHITE)));
+						info(Component.literal(m.keybind.get().displayName()).withStyle(ChatFormatting.AQUA).append(Component.literal("  " + m.name()).withStyle(ChatFormatting.WHITE)));
 						n++;
 					}
 					for (KeyAction a : Myriad.keyActions()) {
 						if (!a.bind().isSet()) continue;
-						info(Text.literal(a.bind().displayName()).formatted(Formatting.AQUA).append(Text.literal("  " + a.name()).formatted(Formatting.GRAY)));
+						info(Component.literal(a.bind().displayName()).withStyle(ChatFormatting.AQUA).append(Component.literal("  " + a.name()).withStyle(ChatFormatting.GRAY)));
 						n++;
 					}
 					if (n == 0) info("Nothing is bound. Bind a module with .bind <module> <key>.");
@@ -277,7 +276,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("say", "Sends a chat message as-is, even one starting with the command prefix.") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("message", StringArgumentType.greedyString()).executes(c -> {
 					MyriadImpl.get().commandManager().sendRaw(StringArgumentType.getString(c, "message"));
 					return SINGLE_SUCCESS;
@@ -287,7 +286,7 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("reload", "Reloads the active profile from disk (after editing config files by hand).") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					Myriad.config().reload();
 					info("Reloaded profile " + Myriad.config().activeProfile());
@@ -298,14 +297,11 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("disconnect", "Leaves the server or world.", "dc") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.executes(c -> {
 					// After the command finishes: disconnecting tears down the chat that's running it.
 					mc.execute(() -> {
-						if (mc.world == null) return;
-						boolean singleplayer = mc.isInSingleplayer();
-						mc.world.disconnect();
-						mc.disconnect(singleplayer ? new TitleScreen() : new MultiplayerScreen(new TitleScreen()));
+						if (mc.level != null) mc.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE);
 					});
 					return SINGLE_SUCCESS;
 				});
@@ -314,12 +310,12 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("fakeplayer", "Spawns client-side dummy players for testing (only you see them).", "fp") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(literal("add").executes(c -> spawn("Dummy", 20))
 					.then(argument("name", StringArgumentType.word()).executes(c -> spawn(StringArgumentType.getString(c, "name"), 20))
 						.then(argument("health", FloatArgumentType.floatArg(1, 1024)).executes(c ->
 							spawn(StringArgumentType.getString(c, "name"), FloatArgumentType.getFloat(c, "health"))))));
-				b.then(literal("remove").then(argument("name", Arguments.suggesting(() -> FakePlayers.all().stream().map(p -> p.getGameProfile().getName()).toList()))
+				b.then(literal("remove").then(argument("name", Arguments.suggesting(() -> FakePlayers.all().stream().map(p -> p.getGameProfile().name()).toList()))
 					.executes(c -> {
 						String name = StringArgumentType.getString(c, "name");
 						if (FakePlayers.remove(name)) info("Removed " + name);
@@ -334,7 +330,7 @@ public final class CoreCommands {
 				}));
 				b.then(literal("list").executes(c -> {
 					if (FakePlayers.all().isEmpty()) info("No fake players.");
-					for (var p : FakePlayers.all()) info(Text.literal(p.getGameProfile().getName() + "  ").append(Texts.coords(p.getBlockPos())));
+					for (var p : FakePlayers.all()) info(Component.literal(p.getGameProfile().name() + "  ").append(Texts.coords(p.blockPosition())));
 					return SINGLE_SUCCESS;
 				}));
 			}
@@ -351,10 +347,10 @@ public final class CoreCommands {
 
 		ctx.registerCommand(new Command("menu", "Opens the Myriad menu.", "gui", "desktop") {
 			@Override
-			public void build(LiteralArgumentBuilder<CommandSource> b) {
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				// Opening a screen from chat must wait until the chat screen has closed.
 				b.executes(c -> {
-					mc.send(() -> Myriad.ui().open());
+					mc.schedule(() -> Myriad.ui().open());
 					return SINGLE_SUCCESS;
 				});
 			}

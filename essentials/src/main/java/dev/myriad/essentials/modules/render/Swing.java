@@ -7,9 +7,9 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.IntSetting;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.util.Hand;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
 
 /**
  * Hand animation tweaks: change how long a swing takes, skip the dip when you switch items, and draw off-hand
@@ -32,7 +32,7 @@ public class Swing extends Module {
 	public static int swingDuration(LivingEntity entity) {
 		Swing m = Modules.active(Swing.class);
 		if (m == null || !m.customSpeed.get()) return -1;
-		if (m.selfOnly.get() && entity != MinecraftClient.getInstance().player) return -1;
+		if (m.selfOnly.get() && entity != Minecraft.getInstance().player) return -1;
 		return m.swingSpeed.get();
 	}
 
@@ -43,6 +43,6 @@ public class Swing extends Module {
 
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
-		if (inGame() && alwaysMainHand.get() && mc.player.handSwinging && mc.player.preferredHand == Hand.OFF_HAND) mc.player.preferredHand = Hand.MAIN_HAND;
+		if (inGame() && alwaysMainHand.get() && mc.player.swinging && mc.player.swingingArm == InteractionHand.OFF_HAND) mc.player.swingingArm = InteractionHand.MAIN_HAND;
 	}
 }

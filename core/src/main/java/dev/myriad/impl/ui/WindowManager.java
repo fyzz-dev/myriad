@@ -25,8 +25,6 @@ import dev.myriad.impl.render.UiRenderer;
 import dev.myriad.impl.ui.layout.DwindleLayout;
 import dev.myriad.impl.ui.panels.CorePanels;
 import dev.myriad.impl.ui.panels.DialogPanel;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +41,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /**
  * The Hyprland-inspired window manager behind {@link Desktop}: workspaces with tiling layouts and floating windows,
@@ -56,7 +56,7 @@ public final class WindowManager implements Desktop {
 	private static final int LAYOUT_VERSION = 2;
 	private static final float SNAP = 4;
 
-	private final MinecraftClient mc = MinecraftClient.getInstance();
+	private final Minecraft mc = Minecraft.getInstance();
 	private final ThemeSettings theme = new ThemeSettings();
 	private final ThemeManager themes = new ThemeManager(theme);
 	private final SettingWidgetsImpl settingWidgets = new SettingWidgetsImpl();
@@ -100,17 +100,17 @@ public final class WindowManager implements Desktop {
 
 	@Override
 	public void open() {
-		if (!(mc.currentScreen instanceof DesktopScreen)) mc.setScreen(new DesktopScreen(this));
+		if (!(mc.gui.screen() instanceof DesktopScreen)) mc.gui.setScreen(new DesktopScreen(this));
 	}
 
 	@Override
 	public void close() {
-		if (mc.currentScreen instanceof DesktopScreen) mc.setScreen(null);
+		if (mc.gui.screen() instanceof DesktopScreen) mc.gui.setScreen(null);
 	}
 
 	@Override
 	public boolean isOpen() {
-		return mc.currentScreen instanceof DesktopScreen;
+		return mc.gui.screen() instanceof DesktopScreen;
 	}
 
 	@Override
@@ -418,8 +418,8 @@ public final class WindowManager implements Desktop {
 
 	private void updateScale() {
 		if (mc.getWindow() == null) return;
-		int fbH = mc.getWindow().getFramebufferHeight();
-		int fbW = mc.getWindow().getFramebufferWidth();
+		int fbH = mc.getWindow().getHeight();
+		int fbW = mc.getWindow().getWidth();
 		pixelScale = (float) (Math.max(1f, fbH / 540f) * theme.uiScale.get());
 		screenW = fbW / pixelScale;
 		screenH = fbH / pixelScale;
@@ -508,11 +508,11 @@ public final class WindowManager implements Desktop {
 	// Rendering
 
 	@Override
-	public void draw(DrawContext ctx, java.util.function.Consumer<dev.myriad.api.render.Canvas> drawer) {
+	public void draw(GuiGraphicsExtractor ctx, java.util.function.Consumer<dev.myriad.api.render.Canvas> drawer) {
 		UiRenderer c = UiRenderer.get();
 		if (c.isActive()) return;
 		prepareRenderer(c);
-		c.begin(ctx, (float) mc.getWindow().getScaleFactor());
+		c.begin(ctx, (float) mc.getWindow().getGuiScale());
 		try {
 			drawer.accept(c);
 		} finally {
@@ -522,23 +522,23 @@ public final class WindowManager implements Desktop {
 
 	private void prepareRenderer(UiRenderer r) {
 		r.setDefaults(theme.fontFamily(), theme.fontSize.get().floatValue());
-		r.setBlur(theme.blur.get(), theme.blurPasses.get(), theme.blurSize.get().floatValue());
+		// No world, nothing worth blurring: the desktop's own background is drawn as part of the GUI.
+		r.setBlur(theme.blur.get() && mc.level != null, theme.blurPasses.get(), theme.blurSize.get().floatValue());
 	}
 
 	private float toUnits(double guiCoord) {
-		return (float) (guiCoord * mc.getWindow().getScaleFactor() / pixelScale);
+		return (float) (guiCoord * mc.getWindow().getGuiScale() / pixelScale);
 	}
 
-	void renderDesktop(DrawContext ctx, int guiMouseX, int guiMouseY) {
+	void renderDesktop(GuiGraphicsExtractor ctx, int guiMouseX, int guiMouseY) {
 		updateScale();
 		mouseX = toUnits(guiMouseX);
 		mouseY = toUnits(guiMouseY);
 		UiRenderer c = UiRenderer.get();
 		prepareRenderer(c);
-		c.nextFrame();
 		c.begin(ctx, pixelScale);
 		try {
-			if (mc.world == null) c.gradientRect(0, 0, screenW, screenH, 0, 0xFF11111B, 0xFF1E1E2E, 90);
+			if (mc.level == null) c.gradientRect(0, 0, screenW, screenH, 0, 0xFF11111B, 0xFF1E1E2E, 90);
 			c.captureBlur();
 			if (active != HUD_WORKSPACE) c.rect(0, 0, screenW, screenH, theme.desktopTint.argb());
 
@@ -566,13 +566,12 @@ public final class WindowManager implements Desktop {
 	}
 
 	/** In game: draw HUD elements and notifications. */
-	public void renderHud(DrawContext ctx) {
-		if (mc.options.hudHidden || isOpen()) return;
+	public void renderHud(GuiGraphicsExtractor ctx) {
+		if (mc.gui.hud.isHidden() || isOpen()) return;
 		updateScale();
 		UiRenderer c = UiRenderer.get();
 		if (c.isActive()) return;
 		prepareRenderer(c);
-		c.nextFrame();
 		c.begin(ctx, pixelScale);
 		try {
 			for (WindowImpl w : new ArrayList<>(workspaces[HUD_WORKSPACE].floating)) {
@@ -990,7 +989,7 @@ public final class WindowManager implements Desktop {
 	}
 
 	private boolean modHeld() {
-		long handle = mc.getWindow().getHandle();
+		long handle = mc.getWindow().handle();
 		return switch (theme.modKey.get()) {
 			case ALT -> down(handle, GLFW.GLFW_KEY_LEFT_ALT) || down(handle, GLFW.GLFW_KEY_RIGHT_ALT);
 			case SUPER -> down(handle, GLFW.GLFW_KEY_LEFT_SUPER) || down(handle, GLFW.GLFW_KEY_RIGHT_SUPER);

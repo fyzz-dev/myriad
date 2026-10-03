@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * The settings of one module or panel, organised in groups. Setting ids are unique within their group; the JSON
@@ -15,6 +16,7 @@ import java.util.Optional;
  */
 public class Settings {
 	private final List<SettingGroup> groups = new ArrayList<>();
+	private final List<Consumer<Setting<?>>> listeners = new ArrayList<>(1);
 
 	/** Returns the group with this name, creating it if needed. */
 	public SettingGroup group(String name) {
@@ -24,6 +26,18 @@ public class Settings {
 		g.setExpanded(groups.isEmpty());
 		groups.add(g);
 		return g;
+	}
+
+	/**
+	 * Runs {@code listener} after any of these settings changes, including ones added later. Use it to drop work
+	 * cached from the settings, e.g. {@code settings.onAnyChanged(s -> storage.invalidateAll())}.
+	 */
+	public void onAnyChanged(Consumer<Setting<?>> listener) {
+		listeners.add(listener);
+	}
+
+	void changed(Setting<?> setting) {
+		for (Consumer<Setting<?>> l : listeners) l.accept(setting);
 	}
 
 	public List<SettingGroup> groups() {

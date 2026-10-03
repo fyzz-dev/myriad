@@ -9,17 +9,16 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.Setting;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.Text;
-
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.network.chat.Component;
 
 /**
  * A setting id of the module parsed by a preceding {@link ModuleArgumentType} argument named {@code module}.
  */
 public class SettingArgumentType implements ArgumentType<String> {
 	private static final DynamicCommandExceptionType NO_SUCH_SETTING =
-		new DynamicCommandExceptionType(name -> Text.literal("No setting named '" + name + "'"));
+		new DynamicCommandExceptionType(name -> Component.literal("No setting named '" + name + "'"));
 
 	private final String moduleArg;
 
@@ -46,7 +45,7 @@ public class SettingArgumentType implements ArgumentType<String> {
 	public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
 		try {
 			Module m = ModuleArgumentType.get(context, moduleArg);
-			return CommandSource.suggestMatching(m.settings.all().stream().filter(Setting::isSerializable).map(m.settings::keyOf), builder);
+			return SharedSuggestionProvider.suggest(m.settings.all().stream().filter(Setting::isSerializable).map(m.settings::keyOf), builder);
 		} catch (IllegalArgumentException e) {
 			return Suggestions.empty();
 		}

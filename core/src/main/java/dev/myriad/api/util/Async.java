@@ -1,12 +1,11 @@
 package dev.myriad.api.util;
 
-import net.minecraft.client.MinecraftClient;
-
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import net.minecraft.client.Minecraft;
 
 /**
  * A shared pool of background threads for slow work (files, network, heavy searches) so addons don't each start
@@ -41,8 +40,8 @@ public final class Async {
 
 	/** Runs {@code task} on the render thread (now if already there, otherwise at the next opportunity). */
 	public static void onRenderThread(Runnable task) {
-		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.isOnThread()) task.run();
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.isSameThread()) task.run();
 		else mc.execute(task);
 	}
 }

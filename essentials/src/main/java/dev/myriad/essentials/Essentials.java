@@ -38,6 +38,7 @@ import dev.myriad.essentials.modules.render.FreeLook;
 import dev.myriad.essentials.modules.render.Freecam;
 import dev.myriad.essentials.modules.render.Fullbright;
 import dev.myriad.essentials.modules.render.NoRender;
+import dev.myriad.essentials.modules.render.Storage;
 import dev.myriad.essentials.modules.render.Tracers;
 import dev.myriad.essentials.modules.render.ViewModel;
 
@@ -60,7 +61,7 @@ public final class Essentials implements MyriadAddon {
 			// Player
 			new FastUse(), new AutoEat(), new AirPlace(), new SpeedMine(), new XCarry(), new AntiAFK(),
 			// Render
-			new ESP(), new Tracers(), new Fullbright(), new NoRender(), new Chams(), new Freecam(), new FreeLook(), new ViewModel(),
+			new ESP(), new Storage(), new Tracers(), new Fullbright(), new NoRender(), new Chams(), new Freecam(), new FreeLook(), new ViewModel(),
 			new LogoutSpots(), new ShulkerPreview(), new Zoom(), new Nametags(), new NameProtect(), new Swing(),
 			// Misc
 			new AutoReconnect(), new MiddleClick()

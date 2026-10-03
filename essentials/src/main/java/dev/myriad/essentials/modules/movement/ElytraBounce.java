@@ -13,25 +13,24 @@ import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.util.Mining;
 import dev.myriad.api.util.Packets;
 import dev.myriad.essentials.modules.player.SpeedMine;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.registry.tag.BlockTags;
-import net.minecraft.registry.tag.ItemTags;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Elytra bouncing for highway travel. Holds forward (and jump), reopens the elytra the moment it closes on the
@@ -56,8 +55,8 @@ public class ElytraBounce extends Module {
 
 	private boolean previouslyGliding, holdingInput, bouncing, clearing, pickaxeHeld, spoofing;
 	private float lane, spoofYaw, spoofPitch;
-	private Vec3d travelDir = new Vec3d(0, 0, 1);
-	private Vec3d lastPos;
+	private Vec3 travelDir = new Vec3(0, 0, 1);
+	private Vec3 lastPos;
 
 	public ElytraBounce() {
 		super(Categories.MOVEMENT, "Elytra Bounce", "Bounce along highways with an elytra.");
@@ -68,10 +67,10 @@ public class ElytraBounce extends Module {
 		holdingInput = bouncing = clearing = spoofing = false;
 		releasePickaxe();
 		if (!inGame()) return;
-		previouslyGliding = mc.player.isGliding();
-		lane = snap(mc.player.getYaw());
-		travelDir = Vec3d.fromPolar(0, mc.player.getYaw());
-		lastPos = mc.player.getPos();
+		previouslyGliding = mc.player.isFallFlying();
+		lane = snap(mc.player.getYRot());
+		travelDir = Vec3.directionFromRotation(0, mc.player.getYRot());
+		lastPos = mc.player.position();
 	}
 
 	@Override
@@ -127,49 +126,49 @@ public class ElytraBounce extends Module {
 		if (!bouncing && !clearing) {
 			stopRotation();
 			holdingInput = false;
-			previouslyGliding = mc.player.isGliding();
+			previouslyGliding = mc.player.isFallFlying();
 			return;
 		}
-		if (highwayYaw.get() && !clearing) lane = snap(mc.player.getYaw());
+		if (highwayYaw.get() && !clearing) lane = snap(mc.player.getYRot());
 		updateTravelDir();
 		tickClearing();
 
 		if (clearing) {
 			stopRotation();
 			pauseFlight();
-			previouslyGliding = mc.player.isGliding();
+			previouslyGliding = mc.player.isFallFlying();
 			return;
 		}
 		if (!bouncing) {
 			stopRotation();
 			holdingInput = false;
-			previouslyGliding = mc.player.isGliding();
+			previouslyGliding = mc.player.isFallFlying();
 			return;
 		}
 		tickRotation();
 
 		// Vanilla closes the elytra on touching the ground; reopen it straight away to keep bouncing.
-		if (previouslyGliding && !mc.player.isGliding()) recast();
-		previouslyGliding = mc.player.isGliding();
-		if (mc.options.jumpKey.isPressed() && !mc.player.isGliding()) recast();
+		if (previouslyGliding && !mc.player.isFallFlying()) recast();
+		previouslyGliding = mc.player.isFallFlying();
+		if (mc.options.keyJump.isDown() && !mc.player.isFallFlying()) recast();
 
 		holdingInput = true;
-		mc.player.setSprinting(!mc.player.isGliding() || mc.player.isOnGround());
+		mc.player.setSprinting(!mc.player.isFallFlying() || mc.player.onGround());
 	}
 
 	private void tickRotation() {
-		float yaw = highwayYaw.get() ? MathHelper.wrapDegrees(lane) : mc.player.getYaw();
+		float yaw = highwayYaw.get() ? Mth.wrapDegrees(lane) : mc.player.getYRot();
 		if (!highwayYaw.get() && !lockPitch.get()) {
 			stopRotation();
 			return;
 		}
 		if (!silent.get() || !lockPitch.get()) {
 			stopRotation();
-			if (lockPitch.get()) mc.player.setPitch(pitch.getFloat());
+			if (lockPitch.get()) mc.player.setXRot(pitch.getFloat());
 			if (highwayYaw.get()) {
-				mc.player.setYaw(yaw);
-				mc.player.setHeadYaw(yaw);
-				mc.player.setBodyYaw(yaw);
+				mc.player.setYRot(yaw);
+				mc.player.setYHeadRot(yaw);
+				mc.player.setYBodyRot(yaw);
 			}
 			return;
 		}
@@ -186,42 +185,42 @@ public class ElytraBounce extends Module {
 	private void recast() {
 		if (!canBounce() || clearing) return;
 		mc.player.setOnGround(false);
-		mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
-		mc.player.startGliding();
+		mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
+		mc.player.startFallFlying();
 	}
 
 	private void pauseFlight() {
 		holdingInput = false;
-		Vec3d v = mc.player.getVelocity();
-		mc.player.setVelocity(0, Math.min(v.y, 0), 0);
-		mc.player.velocityModified = true;
-		if (mc.player.isGliding()) mc.player.stopGliding();
+		Vec3 v = mc.player.getDeltaMovement();
+		mc.player.setDeltaMovement(0, Math.min(v.y, 0), 0);
+		mc.player.hurtMarked = true;
+		if (mc.player.isFallFlying()) mc.player.stopFallFlying();
 	}
 
 	private boolean canBounce() {
 		var p = mc.player;
-		if (p.getAbilities().flying || p.hasVehicle() || p.isTouchingWater() || p.hasStatusEffect(StatusEffects.LEVITATION)) return false;
-		if (p.getBlockStateAtPos().isIn(BlockTags.CLIMBABLE)) return false;
-		for (EquipmentSlot slot : EquipmentSlot.VALUES) if (LivingEntity.canGlideWith(p.getEquippedStack(slot), slot)) return true;
+		if (p.getAbilities().flying || p.isPassenger() || p.isInWater() || p.hasEffect(MobEffects.LEVITATION)) return false;
+		if (p.getInBlockState().is(BlockTags.CLIMBABLE)) return false;
+		for (EquipmentSlot slot : EquipmentSlot.VALUES) if (LivingEntity.canGlideUsing(p.getItemBySlot(slot), slot)) return true;
 		return false;
 	}
 
 	private void updateTravelDir() {
-		Vec3d p = mc.player.getPos();
+		Vec3 p = mc.player.position();
 		if (!clearing) {
-			Vec3d v = mc.player.getVelocity();
-			Vec3d horizontal = new Vec3d(v.x, 0, v.z);
-			if (horizontal.lengthSquared() > 0.0025) travelDir = horizontal.normalize();
+			Vec3 v = mc.player.getDeltaMovement();
+			Vec3 horizontal = new Vec3(v.x, 0, v.z);
+			if (horizontal.lengthSqr() > 0.0025) travelDir = horizontal.normalize();
 			else if (lastPos != null) {
-				Vec3d d = new Vec3d(p.x - lastPos.x, 0, p.z - lastPos.z);
-				if (d.lengthSquared() > 1e-4) travelDir = d.normalize();
+				Vec3 d = new Vec3(p.x - lastPos.x, 0, p.z - lastPos.z);
+				if (d.lengthSqr() > 1e-4) travelDir = d.normalize();
 			}
 		}
 		lastPos = p;
 	}
 
 	private static float snap(float yaw) {
-		return Math.round(MathHelper.wrapDegrees(yaw) / 45f) * 45f;
+		return Math.round(Mth.wrapDegrees(yaw) / 45f) * 45f;
 	}
 
 	// ---- obstacle pass --------------------------------------------------------------------------------------------
@@ -246,7 +245,7 @@ public class ElytraBounce extends Module {
 		}
 		clearing = true;
 		if (!blocked.isEmpty()) {
-			holdPickaxe(mc.world.getBlockState(blocked.getFirst()));
+			holdPickaxe(mc.level.getBlockState(blocked.getFirst()));
 			mineLane(blocked, speedMine);
 		}
 	}
@@ -271,18 +270,18 @@ public class ElytraBounce extends Module {
 	}
 
 	private boolean mineBlock(BlockPos p, SpeedMine speedMine) {
-		BlockState state = mc.world.getBlockState(p);
+		BlockState state = mc.level.getBlockState(p);
 		if (!isLaneBlock(state, p)) return false;
-		Direction face = Direction.getFacing(travelDir.x, 0, travelDir.z);
-		if (speedMine != null && state.getHardness(mc.world, p) >= 0) return speedMine.offerMine(p);
+		Direction face = Direction.getApproximateNearest(travelDir.x, 0, travelDir.z);
+		if (speedMine != null && state.getDestroySpeed(mc.level, p) >= 0) return speedMine.offerMine(p);
 		if (isPortal(state)) {
-			Packets.sendSequenced(seq -> new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, p, face, seq));
-			Packets.sendSequenced(seq -> new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, p, face, seq));
-			mc.player.swingHand(Hand.MAIN_HAND);
+			Packets.sendSequenced(seq -> new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, p, face, seq));
+			Packets.sendSequenced(seq -> new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, p, face, seq));
+			mc.player.swing(InteractionHand.MAIN_HAND);
 			return true;
 		}
-		mc.interactionManager.attackBlock(p, face);
-		mc.player.swingHand(Hand.MAIN_HAND);
+		mc.gameMode.startDestroyBlock(p, face);
+		mc.player.swing(InteractionHand.MAIN_HAND);
 		return true;
 	}
 
@@ -300,55 +299,55 @@ public class ElytraBounce extends Module {
 
 	/** Best hotbar tool, preferring pickaxes. */
 	private int bestToolSlot(BlockState state) {
-		int best = Myriad.inventory().bestInHotbar(s -> s.isEmpty() ? 0 : s.getMiningSpeedMultiplier(state) + (s.isIn(ItemTags.PICKAXES) ? 100 : 0));
+		int best = Myriad.inventory().bestInHotbar(s -> s.isEmpty() ? 0 : s.getDestroySpeed(state) + (s.is(ItemTags.PICKAXES) ? 100 : 0));
 		return best >= 0 ? best : Mining.fastestSlot(state, 0, 9);
 	}
 
 	private List<BlockPos> laneBlocks() {
 		List<BlockPos> found = new ArrayList<>();
-		Vec3d forward = travelDir.lengthSquared() < 1e-6 ? Vec3d.fromPolar(0, highwayYaw.get() ? lane : mc.player.getYaw()) : travelDir;
+		Vec3 forward = travelDir.lengthSqr() < 1e-6 ? Vec3.directionFromRotation(0, highwayYaw.get() ? lane : mc.player.getYRot()) : travelDir;
 		double range = Math.max(passDistance.get(), 2.0);
-		Vec3d origin = mc.player.getPos();
-		Box box = mc.player.getBoundingBox();
-		int minY = MathHelper.floor(box.minY + 0.2), maxY = MathHelper.floor(box.maxY + 0.6);
-		Vec3d side = new Vec3d(-forward.z, 0, forward.x);
-		int steps = Math.max(1, MathHelper.ceil(range * 2));
+		Vec3 origin = mc.player.position();
+		AABB box = mc.player.getBoundingBox();
+		int minY = Mth.floor(box.minY + 0.2), maxY = Mth.floor(box.maxY + 0.6);
+		Vec3 side = new Vec3(-forward.z, 0, forward.x);
+		int steps = Math.max(1, Mth.ceil(range * 2));
 		for (int i = 1; i <= steps; i++) {
 			for (double offset : new double[]{-0.4, 0, 0.4}) {
-				Vec3d sample = origin.add(forward.multiply(i * 0.5)).add(side.multiply(offset));
-				BlockPos column = BlockPos.ofFloored(sample.x, origin.y, sample.z);
+				Vec3 sample = origin.add(forward.scale(i * 0.5)).add(side.scale(offset));
+				BlockPos column = BlockPos.containing(sample.x, origin.y, sample.z);
 				for (int y = minY; y <= maxY; y++) addLaneBlock(found, new BlockPos(column.getX(), y, column.getZ()));
 			}
 		}
 		if (mc.player.horizontalCollision) {
-			BlockPos bump = BlockPos.ofFloored(origin.add(forward.multiply(0.8)));
+			BlockPos bump = BlockPos.containing(origin.add(forward.scale(0.8)));
 			for (int y = minY; y <= maxY; y++) addLaneBlock(found, new BlockPos(bump.getX(), y, bump.getZ()));
 		}
-		found.sort(Comparator.comparingDouble(p -> p.getSquaredDistance(mc.player.getPos())));
+		found.sort(Comparator.comparingDouble(p -> p.distToCenterSqr(mc.player.position())));
 		return found;
 	}
 
 	private void addLaneBlock(List<BlockPos> found, BlockPos p) {
-		if (found.contains(p) || !isLaneBlock(mc.world.getBlockState(p), p)) return;
-		found.add(p.toImmutable());
+		if (found.contains(p) || !isLaneBlock(mc.level.getBlockState(p), p)) return;
+		found.add(p.immutable());
 	}
 
 	private boolean isLaneBlock(BlockState state, BlockPos p) {
 		if (state.isAir() || !state.getFluidState().isEmpty()) return false;
 		if (isPortal(state)) return true;
-		if (state.getHardness(mc.world, p) < 0) return false;
-		return !state.getCollisionShape(mc.world, p).isEmpty();
+		if (state.getDestroySpeed(mc.level, p) < 0) return false;
+		return !state.getCollisionShape(mc.level, p).isEmpty();
 	}
 
 	private boolean laneStillMining(SpeedMine speedMine, List<BlockPos> blocked) {
 		if (!speedMine.isMining()) return false;
 		BlockPos primary = speedMine.primaryPos(), secondary = speedMine.secondaryPos();
-		if (primary != null && (blocked.contains(primary) || isLaneBlock(mc.world.getBlockState(primary), primary))) return true;
-		if (secondary != null && (blocked.contains(secondary) || isLaneBlock(mc.world.getBlockState(secondary), secondary))) return true;
+		if (primary != null && (blocked.contains(primary) || isLaneBlock(mc.level.getBlockState(primary), primary))) return true;
+		if (secondary != null && (blocked.contains(secondary) || isLaneBlock(mc.level.getBlockState(secondary), secondary))) return true;
 		return speedMine.hasExternalWork();
 	}
 
 	private static boolean isPortal(BlockState state) {
-		return state.isOf(Blocks.NETHER_PORTAL) || state.isOf(Blocks.END_PORTAL) || state.isOf(Blocks.END_GATEWAY);
+		return state.is(Blocks.NETHER_PORTAL) || state.is(Blocks.END_PORTAL) || state.is(Blocks.END_GATEWAY);
 	}
 }

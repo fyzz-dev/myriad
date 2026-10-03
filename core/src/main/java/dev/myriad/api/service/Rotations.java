@@ -1,6 +1,6 @@
 package dev.myriad.api.service;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Server-side rotation arbitration. Modules {@link #request} a rotation every tick they need one; each tick the
@@ -21,7 +21,7 @@ public interface Rotations {
 	 */
 	void request(Object owner, float yaw, float pitch, int priority, Runnable afterSent);
 
-	default void lookAt(Object owner, Vec3d target, int priority) {
+	default void lookAt(Object owner, Vec3 target, int priority) {
 		float[] r = anglesTo(target);
 		request(owner, r[0], r[1], priority);
 	}
@@ -35,5 +35,5 @@ public interface Rotations {
 	float serverPitch();
 
 	/** Yaw and pitch from the player's eyes to {@code target}. */
-	float[] anglesTo(Vec3d target);
+	float[] anglesTo(Vec3 target);
 }

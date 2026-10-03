@@ -47,6 +47,8 @@ public final class MyriadEventBus implements EventBus {
 	/** Flattened, sorted listeners per concrete event class. Replaced wholesale on change. */
 	private volatile Map<Class<?>, Listener[]> dispatch = new ConcurrentHashMap<>();
 	private final Map<Method, MethodHandle> factories = new ConcurrentHashMap<>();
+	private final Map<Class<?>, List<Handler>> instanceHandlers = new ConcurrentHashMap<>();
+	private final Map<Class<?>, List<Handler>> staticHandlers = new ConcurrentHashMap<>();
 	private long order;
 	private volatile Function<Class<?>, String> ownerResolver = Class::getName;
 
@@ -159,18 +161,8 @@ public final class MyriadEventBus implements EventBus {
 		}
 		List<Listener> found = new ArrayList<>();
 		String ownerName = ownerResolver.apply(klass);
-		for (Class<?> c = klass; c != null && c != Object.class; c = c.getSuperclass()) {
-			for (Method m : c.getDeclaredMethods()) {
-				Subscribe sub = m.getAnnotation(Subscribe.class);
-				if (sub == null) continue;
-				if (Modifier.isStatic(m.getModifiers()) != statics) continue;
-				if (m.getParameterCount() != 1 || m.getReturnType() != void.class || m.getParameterTypes()[0].isPrimitive()) {
-					throw new IllegalArgumentException("Invalid @Subscribe method " + c.getName() + "#" + m.getName()
-						+ ": must be void and take exactly one event parameter");
-				}
-				Consumer<Object> invoker = createInvoker(m, statics ? null : owner);
-				found.add(new Listener(m.getParameterTypes()[0], sub.priority(), sub.receiveCancelled(), invoker, ownerName));
-			}
+		for (Handler h : handlers(klass, statics)) {
+			found.add(new Listener(h.event, h.priority, h.receiveCancelled, createInvoker(h.method, statics ? null : owner), ownerName));
 		}
 		synchronized (lock) {
 			if (byOwner.containsKey(owner)) return;
@@ -181,6 +173,30 @@ public final class MyriadEventBus implements EventBus {
 			byOwner.put(owner, found);
 			if (!found.isEmpty()) invalidate();
 		}
+	}
+
+	/** The @Subscribe methods of a class and its superclasses, found once per class (modules re-subscribe on every enable). */
+	private List<Handler> handlers(Class<?> klass, boolean statics) {
+		Map<Class<?>, List<Handler>> cache = statics ? staticHandlers : instanceHandlers;
+		return cache.computeIfAbsent(klass, k -> {
+			List<Handler> list = new ArrayList<>();
+			for (Class<?> c = k; c != null && c != Object.class; c = c.getSuperclass()) {
+				for (Method m : c.getDeclaredMethods()) {
+					Subscribe sub = m.getAnnotation(Subscribe.class);
+					if (sub == null) continue;
+					if (Modifier.isStatic(m.getModifiers()) != statics) continue;
+					if (m.getParameterCount() != 1 || m.getReturnType() != void.class || m.getParameterTypes()[0].isPrimitive()) {
+						throw new IllegalArgumentException("Invalid @Subscribe method " + c.getName() + "#" + m.getName()
+							+ ": must be void and take exactly one event parameter");
+					}
+					list.add(new Handler(m, m.getParameterTypes()[0], sub.priority(), sub.receiveCancelled()));
+				}
+			}
+			return List.copyOf(list);
+		});
+	}
+
+	private record Handler(Method method, Class<?> event, int priority, boolean receiveCancelled) {
 	}
 
 	@SuppressWarnings("unchecked")

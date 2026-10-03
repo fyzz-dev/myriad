@@ -5,6 +5,7 @@ import com.example.myriadaddon.commands.WaypointCommand;
 import com.example.myriadaddon.hud.NearestWaypointHud;
 import com.example.myriadaddon.hud.SessionStatsHud;
 import com.example.myriadaddon.modules.AutoTool;
+import com.example.myriadaddon.modules.BlockSearch;
 import com.example.myriadaddon.modules.ChatTimestamps;
 import com.example.myriadaddon.modules.SettingsShowcase;
 import com.example.myriadaddon.modules.Waypoints;
@@ -23,7 +24,7 @@ import dev.myriad.api.ui.widget.HBox;
 import dev.myriad.api.ui.widget.Slider;
 import dev.myriad.api.util.Keybind;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -61,6 +62,7 @@ public final class ExampleAddon implements MyriadAddon {
 		// 2. Modules, in menu order. Each gets what it needs through its constructor.
 		ctx.registerModules(
 			new Waypoints(waypoints),
+			new BlockSearch(),
 			new AutoTool(),
 			new ChatTimestamps(),
 			new SettingsShowcase(showcase)
@@ -76,10 +78,10 @@ public final class ExampleAddon implements MyriadAddon {
 
 		// 5. Global key actions: work in game, rebindable in the Keybinds panel (mod+K).
 		ctx.registerKeyAction("Add Waypoint", Keybind.key(GLFW.GLFW_KEY_B, GLFW.GLFW_MOD_ALT), () -> {
-			var player = MinecraftClient.getInstance().player;
+			var player = Minecraft.getInstance().player;
 			if (player == null) return;
 			String name = waypoints.nextName("Waypoint");
-			if (waypoints.put(name, player.getBlockPos())) Myriad.notifications().success("Waypoints", "Added " + name);
+			if (waypoints.put(name, player.blockPosition())) Myriad.notifications().success("Waypoints", "Added " + name);
 		});
 		ctx.registerKeyAction("Open Waypoints", Keybind.NONE, () -> {
 			Myriad.ui().open();

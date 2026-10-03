@@ -10,7 +10,7 @@ import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.util.Entities;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 public class Tracers extends Module {
 	private final BoolSetting players = sgGeneral.bool("Players").defaultValue(true).build();
@@ -27,8 +27,8 @@ public class Tracers extends Module {
 	private void onRender(Render3DEvent e) {
 		if (!inGame()) return;
 		double max = maxDistance.get() * maxDistance.get();
-		for (Entity entity : mc.world.getEntities()) {
-			if (!Entities.isAliveTarget(entity) || mc.player.squaredDistanceTo(entity) > max) continue;
+		for (Entity entity : mc.level.entitiesForRendering()) {
+			if (!Entities.isAliveTarget(entity) || mc.player.distanceToSqr(entity) > max) continue;
 			boolean show = switch (Entities.kind(entity)) {
 				case PLAYER -> players.get();
 				case HOSTILE -> hostiles.get();

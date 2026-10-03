@@ -7,10 +7,10 @@ import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.ui.Rect;
 import dev.myriad.api.ui.hud.HudPanel;
 import dev.myriad.api.ui.hud.ItemHud;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import dev.myriad.api.ui.hud.HudStyle;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
 
 /**
  * The item in your off hand, with how many of it you carry in total (handy for totems, crystals or gapples) and its
@@ -32,16 +32,16 @@ public final class OffhandPanel extends HudPanel {
 	}
 
 	private ItemStack stack() {
-		return mc.player == null ? Items.TOTEM_OF_UNDYING.getDefaultStack() : mc.player.getOffHandStack();
+		return mc.player == null ? Items.TOTEM_OF_UNDYING.getDefaultInstance() : mc.player.getOffhandItem();
 	}
 
 	private int total(Item item) {
 		if (mc.player == null) return 1;
 		int n = 0;
 		var inv = mc.player.getInventory();
-		for (int i = 0; i < inv.size(); i++) {
-			ItemStack s = inv.getStack(i);
-			if (s.isOf(item)) n += s.getCount();
+		for (int i = 0; i < inv.getContainerSize(); i++) {
+			ItemStack s = inv.getItem(i);
+			if (s.is(item)) n += s.getCount();
 		}
 		return n;
 	}
@@ -64,7 +64,7 @@ public final class OffhandPanel extends HudPanel {
 		}
 		float size = size();
 		c.item(stack, 0, 0, size, false);
-		if (durabilityBar.get() && stack.isDamageable() && ItemHud.percent(stack) < 1f) ItemHud.bar(c, stack, 0, 0, size);
+		if (durabilityBar.get() && stack.isDamageableItem() && ItemHud.percent(stack) < 1f) ItemHud.bar(c, stack, 0, 0, size);
 		int n = switch (count.get()) {
 			case TOTAL -> total(stack.getItem());
 			case STACK -> stack.getCount();

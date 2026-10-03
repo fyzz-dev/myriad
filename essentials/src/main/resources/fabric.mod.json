@@ -24,6 +24,5 @@
 	"depends": {
 		"myriad": ">=${version}",
 		"minecraft": "~${minecraft_version}"
-	},
-	"accessWidener": "myriad-essentials.accesswidener"
+	}
 }

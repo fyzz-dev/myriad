@@ -1,5 +1,6 @@
 package dev.myriad.essentials.modules.movement;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.TickEvent;
@@ -12,24 +13,23 @@ import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.Interactions;
 import dev.myriad.api.util.Packets;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.CobwebBlock;
-import net.minecraft.block.SweetBerryBushBlock;
-import net.minecraft.client.gui.screen.ChatScreen;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInteractItemC2SPacket;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.SweetBerryBushBlock;
+import net.minecraft.world.level.block.WebBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -65,11 +65,11 @@ public class NoSlow extends Module {
 	public static boolean skipItemSlow() {
 		NoSlow m = Modules.active(NoSlow.class);
 		var p = mc.player;
-		if (m == null || p == null || p.hasVehicle() || p.isSneaking() || !p.isUsingItem()) return false;
+		if (m == null || p == null || p.isPassenger() || p.isShiftKeyDown() || !p.isUsingItem()) return false;
 		return switch (m.items.get()) {
 			case OFF -> false;
 			case NORMAL, GRIM_V2 -> true;
-			case PULSE -> !p.isCrawling() && p.getItemUseTimeLeft() < 5 || (p.getItemUseTime() > 1 && p.getItemUseTime() % 2 != 0);
+			case PULSE -> !p.isVisuallyCrawling() && p.getUseItemRemainingTicks() < 5 || (p.getTicksUsingItem() > 1 && p.getTicksUsingItem() % 2 != 0);
 		};
 	}
 
@@ -81,17 +81,17 @@ public class NoSlow extends Module {
 	public static boolean skipClimb() {
 		NoSlow m = Modules.active(NoSlow.class);
 		if (m == null || !m.climbing.get()) return false;
-		return !m.grim.get() || !mc.player.getVelocity().equals(Vec3d.ZERO);
+		return !m.grim.get() || !mc.player.getDeltaMovement().equals(Vec3.ZERO);
 	}
 
 	/** The web/berry bush multiplier to use instead of vanilla's, or null to keep vanilla's. */
-	public static Vec3d webMultiplier(BlockState state, Vec3d original) {
+	public static Vec3 webMultiplier(BlockState state, Vec3 original) {
 		NoSlow m = Modules.active(NoSlow.class);
 		if (m == null || !m.webs.get()) return null;
-		if (!(state.getBlock() instanceof CobwebBlock) && !(state.getBlock() instanceof SweetBerryBushBlock)) return null;
+		if (!(state.getBlock() instanceof WebBlock) && !(state.getBlock() instanceof SweetBerryBushBlock)) return null;
 		double speed = m.webSpeed.get();
 		// A zero multiplier means "no slowdown" to the movement code.
-		return speed >= 1 ? Vec3d.ZERO : original.multiply(speed);
+		return speed >= 1 ? Vec3.ZERO : original.scale(speed);
 	}
 
 	@Subscribe
@@ -99,45 +99,45 @@ public class NoSlow extends Module {
 		if (!inGame()) return;
 		var p = mc.player;
 		if (jumpDelay.get()) Interactions.setJumpCooldown(0);
-		if (items.get() == ItemsMode.GRIM_V2 && p.isUsingItem() && !p.isSneaking()) {
-			if (p.getActiveHand() == Hand.OFF_HAND && reusable(p.getMainHandStack())) {
-				Packets.sendSequenced(id -> new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, id, p.getYaw(), p.getPitch()));
-			} else if (reusable(p.getOffHandStack())) {
-				Packets.sendSequenced(id -> new PlayerInteractItemC2SPacket(Hand.OFF_HAND, id, p.getYaw(), p.getPitch()));
+		if (items.get() == ItemsMode.GRIM_V2 && p.isUsingItem() && !p.isShiftKeyDown()) {
+			if (p.getUsedItemHand() == InteractionHand.OFF_HAND && reusable(p.getMainHandItem())) {
+				Packets.sendSequenced(id -> new ServerboundUseItemPacket(InteractionHand.MAIN_HAND, id, p.getYRot(), p.getXRot()));
+			} else if (reusable(p.getOffhandItem())) {
+				Packets.sendSequenced(id -> new ServerboundUseItemPacket(InteractionHand.OFF_HAND, id, p.getYRot(), p.getXRot()));
 			}
 		}
 		if (inventoryMove.get() && screenAllowsMove()) {
-			long handle = mc.getWindow().getHandle();
-			for (KeyBinding k : new KeyBinding[]{mc.options.jumpKey, mc.options.forwardKey, mc.options.backKey, mc.options.rightKey, mc.options.leftKey, mc.options.sprintKey}) {
-				InputUtil.Key bound = InputUtil.fromTranslationKey(k.getBoundKeyTranslationKey());
-				k.setPressed(bound.getCategory() == InputUtil.Type.KEYSYM && InputUtil.isKeyPressed(handle, bound.getCode()));
+			var handle = mc.getWindow();
+			for (KeyMapping k : new KeyMapping[]{mc.options.keyJump, mc.options.keyUp, mc.options.keyDown, mc.options.keyRight, mc.options.keyLeft, mc.options.keySprint}) {
+				InputConstants.Key bound = InputConstants.getKey(k.saveString());
+				k.setDown(bound.getType() == InputConstants.Type.KEYSYM && InputConstants.isKeyDown(handle, bound.getValue()));
 			}
 			if (arrowLook.get()) {
-				float yaw = p.getYaw(), pitch = p.getPitch();
-				if (InputUtil.isKeyPressed(handle, GLFW.GLFW_KEY_UP)) pitch -= 3;
-				if (InputUtil.isKeyPressed(handle, GLFW.GLFW_KEY_DOWN)) pitch += 3;
-				if (InputUtil.isKeyPressed(handle, GLFW.GLFW_KEY_LEFT)) yaw -= 3;
-				if (InputUtil.isKeyPressed(handle, GLFW.GLFW_KEY_RIGHT)) yaw += 3;
-				p.setYaw(yaw);
-				p.setPitch(MathHelper.clamp(pitch, -90, 90));
+				float yaw = p.getYRot(), pitch = p.getXRot();
+				if (InputConstants.isKeyDown(handle, GLFW.GLFW_KEY_UP)) pitch -= 3;
+				if (InputConstants.isKeyDown(handle, GLFW.GLFW_KEY_DOWN)) pitch += 3;
+				if (InputConstants.isKeyDown(handle, GLFW.GLFW_KEY_LEFT)) yaw -= 3;
+				if (InputConstants.isKeyDown(handle, GLFW.GLFW_KEY_RIGHT)) yaw += 3;
+				p.setYRot(yaw);
+				p.setXRot(Mth.clamp(pitch, -90, 90));
 			}
 		}
 		if (grim.get() && webs.get()) {
-			for (BlockPos pos : BlockPos.iterate(BlockPos.ofFloored(p.getBoundingBox().expand(1).getMinPos()), BlockPos.ofFloored(p.getBoundingBox().expand(1).getMaxPos()))) {
-				if (mc.world.getBlockState(pos).getBlock() instanceof CobwebBlock) {
-					mc.getNetworkHandler().sendPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, pos.toImmutable(), Direction.DOWN));
+			for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(p.getBoundingBox().inflate(1).getMinPosition()), BlockPos.containing(p.getBoundingBox().inflate(1).getMaxPosition()))) {
+				if (mc.level.getBlockState(pos).getBlock() instanceof WebBlock) {
+					mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, pos.immutable(), Direction.DOWN));
 				}
 			}
 		}
 	}
 
 	private static boolean reusable(ItemStack stack) {
-		return !stack.contains(DataComponentTypes.FOOD) && !stack.isOf(Items.BOW) && !stack.isOf(Items.CROSSBOW) && !stack.isOf(Items.SHIELD);
+		return !stack.has(DataComponents.FOOD) && !stack.is(Items.BOW) && !stack.is(Items.CROSSBOW) && !stack.is(Items.SHIELD);
 	}
 
 	/** Screens where moving is safe: not chat, signs, death, or Myriad's own menu (which uses the keyboard). */
 	private boolean screenAllowsMove() {
-		var s = mc.currentScreen;
+		var s = mc.gui.screen();
 		return s != null && !(s instanceof ChatScreen) && !(s instanceof AbstractSignEditScreen) && !(s instanceof DeathScreen) && !Myriad.ui().isOpen();
 	}
 }

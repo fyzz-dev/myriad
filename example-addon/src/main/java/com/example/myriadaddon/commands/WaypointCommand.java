@@ -9,13 +9,12 @@ import dev.myriad.api.command.arguments.Arguments;
 import dev.myriad.api.command.arguments.BlockPosArgumentType;
 import dev.myriad.api.util.Format;
 import dev.myriad.api.util.Texts;
-import net.minecraft.command.CommandSource;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
-
 import java.util.List;
+import net.minecraft.ChatFormatting;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 /**
  * {@code .waypoint} (or {@code .wp}): list, add, remove, hide and show waypoints. Commands are plain Brigadier, so
@@ -39,7 +38,7 @@ public final class WaypointCommand extends Command {
 	}
 
 	@Override
-	public void build(LiteralArgumentBuilder<CommandSource> b) {
+	public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 		b.executes(c -> list());
 		b.then(literal("list").executes(c -> list()));
 
@@ -47,7 +46,7 @@ public final class WaypointCommand extends Command {
 		b.then(literal("add").then(argument("name", StringArgumentType.string())
 			.executes(c -> {
 				if (mc.player == null) return fail("Join a world first.");
-				return add(StringArgumentType.getString(c, "name"), mc.player.getBlockPos());
+				return add(StringArgumentType.getString(c, "name"), mc.player.blockPosition());
 			})
 			.then(argument("pos", Arguments.blockPos())
 				.executes(c -> add(StringArgumentType.getString(c, "name"), BlockPosArgumentType.get(c, "pos"))))));
@@ -80,9 +79,9 @@ public final class WaypointCommand extends Command {
 		String dim = WaypointStore.currentDimension();
 		for (Waypoint w : all) {
 			// Texts builds clickable chat: coordinates copy on click, and [remove] runs the command.
-			MutableText line = Text.literal(" " + w.name() + "  ").formatted(w.visible() ? Formatting.WHITE : Formatting.GRAY).append(Texts.coords(w.pos()));
-			if (!w.dimension().equals(dim)) line.append(Text.literal("  " + w.dimension().replace("minecraft:", "")).formatted(Formatting.DARK_GRAY));
-			else if (mc.player != null) line.append(Text.literal("  " + Format.distance(w.center().distanceTo(mc.player.getPos()))).formatted(Formatting.AQUA));
+			MutableComponent line = Component.literal(" " + w.name() + "  ").withStyle(w.visible() ? ChatFormatting.WHITE : ChatFormatting.GRAY).append(Texts.coords(w.pos()));
+			if (!w.dimension().equals(dim)) line.append(Component.literal("  " + w.dimension().replace("minecraft:", "")).withStyle(ChatFormatting.DARK_GRAY));
+			else if (mc.player != null) line.append(Component.literal("  " + Format.distance(w.center().distanceTo(mc.player.position()))).withStyle(ChatFormatting.AQUA));
 			info(line.append("  ").append(Texts.command("[remove]", "waypoint remove " + quote(w.name()))));
 		}
 		return SINGLE_SUCCESS;

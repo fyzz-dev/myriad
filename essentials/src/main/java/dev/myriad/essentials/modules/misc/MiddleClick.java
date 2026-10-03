@@ -7,12 +7,12 @@ import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.util.Interactions;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.hit.HitResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -33,12 +33,12 @@ public class MiddleClick extends Module {
 	private void onMouse(MouseButtonEvent e) {
 		if (!inGame() || e.inScreen() || !e.isPress() || e.button() != GLFW.GLFW_MOUSE_BUTTON_MIDDLE) return;
 		if (mc.player.isUsingItem() && !whileUsing.get()) return;
-		if (mc.player.isGliding()) {
+		if (mc.player.isFallFlying()) {
 			if (rocket.get() && use(Items.FIREWORK_ROCKET)) e.cancel();
 			return;
 		}
-		if (mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY
-			&& ((EntityHitResult) mc.crosshairTarget).getEntity() instanceof PlayerEntity p) {
+		if (mc.hitResult != null && mc.hitResult.getType() == HitResult.Type.ENTITY
+			&& ((EntityHitResult) mc.hitResult).getEntity() instanceof Player p) {
 			if (friend.get()) {
 				toggleFriend(p);
 				e.cancel();
@@ -48,8 +48,8 @@ public class MiddleClick extends Module {
 		if (pearl.get() && use(Items.ENDER_PEARL)) e.cancel();
 	}
 
-	private void toggleFriend(PlayerEntity p) {
-		String name = p.getGameProfile().getName();
+	private void toggleFriend(Player p) {
+		String name = p.getGameProfile().name();
 		if (Myriad.friends().isFriend(name)) {
 			Myriad.friends().remove(name);
 			info("Removed " + name + " from friends");
@@ -61,16 +61,16 @@ public class MiddleClick extends Module {
 
 	/** Uses {@code item} from the hotbar without changing the visible slot. */
 	private boolean use(Item item) {
-		if (mc.player.getOffHandStack().isOf(item)) {
-			Interactions.useItem(Hand.OFF_HAND);
-			Interactions.swing(Hand.OFF_HAND);
+		if (mc.player.getOffhandItem().is(item)) {
+			Interactions.useItem(InteractionHand.OFF_HAND);
+			Interactions.swing(InteractionHand.OFF_HAND);
 			return true;
 		}
-		int slot = Myriad.inventory().findInHotbar(s -> s.isOf(item));
+		int slot = Myriad.inventory().findInHotbar(s -> s.is(item));
 		if (slot < 0) return false;
 		Myriad.inventory().silentSwap(slot, () -> {
-			Interactions.useItem(Hand.MAIN_HAND);
-			Interactions.swing(Hand.MAIN_HAND);
+			Interactions.useItem(InteractionHand.MAIN_HAND);
+			Interactions.swing(InteractionHand.MAIN_HAND);
 		});
 		return true;
 	}

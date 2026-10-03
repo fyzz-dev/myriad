@@ -9,7 +9,7 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.Mth;
 
 /**
  * Zooms the camera by dividing the field of view, easing in and out. Mouse turning slows down to match, and you can
@@ -65,14 +65,14 @@ public class Zoom extends Module {
 
 	@Subscribe
 	private void onScroll(MouseScrollEvent e) {
-		if (!scroll.get() || mc.currentScreen != null) return;
-		scrollFactor = MathHelper.clamp(scrollFactor * (e.vertical() > 0 ? 1.2 : 1 / 1.2), 1 / factor.get(), 50 / factor.get());
+		if (!scroll.get() || mc.gui.screen() != null) return;
+		scrollFactor = Mth.clamp(scrollFactor * (e.vertical() > 0 ? 1.2 : 1 / 1.2), 1 / factor.get(), 50 / factor.get());
 		e.cancel();
 	}
 
 	@Subscribe
 	private void onLook(MouseLookEvent e) {
-		double s = MathHelper.lerp(update(), 1, 1 / zoomFactor());
+		double s = Mth.lerp(update(), 1, 1 / zoomFactor());
 		if (smoothCamera.get()) s *= smoothCameraSpeed.get();
 		e.set(e.deltaX() * s, e.deltaY() * s);
 	}
@@ -84,7 +84,7 @@ public class Zoom extends Module {
 		if (m == null) return fov;
 		float p = m.update();
 		if (p <= 0.001f) return fov;
-		return (float) MathHelper.lerp(p, fov, Math.max(1, fov / m.zoomFactor()));
+		return (float) Mth.lerp(p, fov, Math.max(1, fov / m.zoomFactor()));
 	}
 
 	private float update() {
@@ -106,12 +106,12 @@ public class Zoom extends Module {
 			restoreSmoothCamera();
 			return;
 		}
-		if (previousSmoothCamera == null) previousSmoothCamera = mc.options.smoothCameraEnabled;
-		mc.options.smoothCameraEnabled = true;
+		if (previousSmoothCamera == null) previousSmoothCamera = mc.options.smoothCamera;
+		mc.options.smoothCamera = true;
 	}
 
 	private void restoreSmoothCamera() {
-		if (previousSmoothCamera != null) mc.options.smoothCameraEnabled = previousSmoothCamera;
+		if (previousSmoothCamera != null) mc.options.smoothCamera = previousSmoothCamera;
 		previousSmoothCamera = null;
 	}
 }

@@ -19,18 +19,17 @@ import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.Entities;
 import dev.myriad.api.util.ItemInfo;
 import dev.myriad.essentials.util.PopColors;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Replaces player name tags with Myriad's: head, name, health, ping, totem pops and gamemode, with their armour and
@@ -81,22 +80,22 @@ public class Nametags extends Module {
 	private void onRender(Render2DEvent e) {
 		if (!inGame()) return;
 		Canvas c = e.canvas();
-		Vec3d cam = Projection.camera();
-		List<PlayerEntity> players = new ArrayList<>(mc.world.getPlayers());
+		Vec3 cam = Projection.camera();
+		List<Player> players = new ArrayList<>(mc.level.players());
 		// Far tags first so near ones draw on top.
-		players.sort(Comparator.comparingDouble(p -> -p.squaredDistanceTo(cam)));
-		for (PlayerEntity p : players) {
+		players.sort(Comparator.comparingDouble(p -> -p.distanceToSqr(cam)));
+		for (Player p : players) {
 			if (!p.isAlive()) continue;
-			if (p == mc.player && (!self.get() || mc.options.getPerspective().isFirstPerson())) continue;
-			if (range.get() > 0 && p.squaredDistanceTo(cam) > range.get() * range.get()) continue;
+			if (p == mc.player && (!self.get() || mc.options.getCameraType().isFirstPerson())) continue;
+			if (range.get() > 0 && p.distanceToSqr(cam) > range.get() * range.get()) continue;
 			draw(c, p, e.tickDelta());
 		}
 	}
 
-	private void draw(Canvas c, PlayerEntity p, float tickDelta) {
-		Box box = Entities.lerpedBox(p, tickDelta);
-		Vec3d at = new Vec3d(box.getCenter().x, box.maxY + offset.get(), box.getCenter().z);
-		Vec3d s = Projection.toScreen(at);
+	private void draw(Canvas c, Player p, float tickDelta) {
+		AABB box = Entities.lerpedBox(p, tickDelta);
+		Vec3 at = new Vec3(box.getCenter().x, box.maxY + offset.get(), box.getCenter().z);
+		Vec3 s = Projection.toScreen(at);
 		if (s == null || !Projection.onScreen(s, 100)) return;
 		double dist = Projection.camera().distanceTo(at);
 		float k = (float) (scale.get() * Math.clamp(1.0 - dist * 0.01, 0.5, 1.0));
@@ -106,7 +105,7 @@ public class Nametags extends Module {
 		List<Segment> segs = segments(p);
 		float width = 0;
 		for (int i = 0; i < segs.size(); i++) width += c.textWidth(FontFamily.SANS, size, segs.get(i).text) + (i > 0 ? GAP * k : 0);
-		boolean face = head.get() && p instanceof AbstractClientPlayerEntity;
+		boolean face = head.get() && p instanceof AbstractClientPlayer;
 		if (face) width += th + GAP * k;
 		float w = width + PAD_X * 2 * k, h = th + PAD_Y * 2 * k;
 		float x = (float) s.x - w / 2, y = (float) s.y - h;
@@ -131,11 +130,11 @@ public class Nametags extends Module {
 	}
 
 	/** The optional gamemode, the name, then the stats. */
-	private List<Segment> segments(PlayerEntity p) {
+	private List<Segment> segments(Player p) {
 		List<Segment> segs = new ArrayList<>();
-		PlayerListEntry entry = mc.getNetworkHandler() == null ? null : mc.getNetworkHandler().getPlayerListEntry(p.getUuid());
+		PlayerInfo entry = mc.getConnection() == null ? null : mc.getConnection().getPlayerInfo(p.getUUID());
 		if (gamemode.get()) segs.add(new Segment(p.isCreative() ? "[C]" : p.isSpectator() ? "[SP]" : "[S]", 0xFFAAAAAA));
-		segs.add(new Segment(p.getGameProfile().getName(), Entities.isFriend(p) ? friendColor.argb() : nameColor.argb()));
+		segs.add(new Segment(p.getGameProfile().name(), Entities.isFriend(p) ? friendColor.argb() : nameColor.argb()));
 		if (health.get()) {
 			float hp = p.getHealth() + p.getAbsorptionAmount();
 			segs.add(new Segment(String.format("%.1f", hp), ColorUtil.lerp(0xFFFF5555, 0xFF55FF55, Math.clamp(hp / p.getMaxHealth(), 0f, 1f))));
@@ -148,16 +147,16 @@ public class Nametags extends Module {
 		return segs;
 	}
 
-	private void drawItems(Canvas c, PlayerEntity p, float centerX, float bottom, float k, float textSize) {
+	private void drawItems(Canvas c, Player p, float centerX, float bottom, float k, float textSize) {
 		List<ItemStack> stacks = new ArrayList<>(6);
-		if (heldItems.get()) stacks.add(p.getOffHandStack());
+		if (heldItems.get()) stacks.add(p.getOffhandItem());
 		if (armor.get()) {
-			stacks.add(p.getEquippedStack(EquipmentSlot.HEAD));
-			stacks.add(p.getEquippedStack(EquipmentSlot.CHEST));
-			stacks.add(p.getEquippedStack(EquipmentSlot.LEGS));
-			stacks.add(p.getEquippedStack(EquipmentSlot.FEET));
+			stacks.add(p.getItemBySlot(EquipmentSlot.HEAD));
+			stacks.add(p.getItemBySlot(EquipmentSlot.CHEST));
+			stacks.add(p.getItemBySlot(EquipmentSlot.LEGS));
+			stacks.add(p.getItemBySlot(EquipmentSlot.FEET));
 		}
-		if (heldItems.get()) stacks.add(p.getMainHandStack());
+		if (heldItems.get()) stacks.add(p.getMainHandItem());
 		if (stacks.stream().allMatch(ItemStack::isEmpty)) return;
 
 		float item = ITEM * k, step = ITEM_GAP * k;
@@ -167,21 +166,21 @@ public class Nametags extends Module {
 			if (st.isEmpty()) continue;
 			float ix = x0 + i * step + (step - item) / 2;
 			boolean main = heldItems.get() && i == stacks.size() - 1, off = heldItems.get() && i == 0;
-			if (p.isUsingItem() && ((main && p.getActiveHand() == Hand.MAIN_HAND) || (off && p.getActiveHand() == Hand.OFF_HAND))) {
-				int max = p.getActiveItem().getMaxUseTime(p);
-				float prog = max <= 0 ? 0 : Math.clamp((max - p.getItemUseTimeLeft()) / (float) max, 0f, 1f);
+			if (p.isUsingItem() && ((main && p.getUsedItemHand() == InteractionHand.MAIN_HAND) || (off && p.getUsedItemHand() == InteractionHand.OFF_HAND))) {
+				int max = p.getUseItem().getUseDuration(p);
+				float prog = max <= 0 ? 0 : Math.clamp((max - p.getUseItemRemainingTicks()) / (float) max, 0f, 1f);
 				c.rect(ix, y, item * prog, item, useProgress.argb());
 			}
 			c.item(st, ix, y, item);
-			if (durability.get() && st.isDamageable() && !main && !off) {
+			if (durability.get() && st.isDamageableItem() && !main && !off) {
 				float pct = ItemInfo.durabilityFraction(st);
 				String t = Math.round(pct * 100) + "%";
 				float ts = textSize * 0.6f;
 				c.text(FontFamily.SANS, ts, t, ix + (item - c.textWidth(FontFamily.SANS, ts, t)) / 2, y + item, ColorUtil.lerp(0xFFFF5555, 0xFF55FF55, pct));
 			}
 		}
-		if (heldItems.get() && heldItemName.get() && !p.getMainHandStack().isEmpty()) {
-			String name = p.getMainHandStack().getName().getString();
+		if (heldItems.get() && heldItemName.get() && !p.getMainHandItem().isEmpty()) {
+			String name = p.getMainHandItem().getHoverName().getString();
 			float ts = textSize * 0.75f;
 			float tw = c.textWidth(FontFamily.SANS, ts, name);
 			c.text(FontFamily.SANS, ts, name, centerX - tw / 2, y - c.textHeight(FontFamily.SANS, ts) - 1, 0xFFFFFFFF);

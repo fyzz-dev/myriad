@@ -11,10 +11,10 @@ import dev.myriad.api.service.Rotations;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.util.Movement;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.level.block.Blocks;
 
 /**
  * Sprints for you. Legit only sprints forwards, like holding the sprint key, and can leave swimming to you. Rage
@@ -51,49 +51,49 @@ public class Sprint extends Module {
 		if (!inGame()) return;
 		var p = mc.player;
 		if (!canSprint() || !noCollision()) {
-			boolean water = p.isTouchingWater() || p.isSubmergedInWater();
+			boolean water = p.isInWater() || p.isUnderWater();
 			if (water && mode.get() == Mode.LEGIT) {
-				if (!waterToggle.get() && p.input.hasForwardMovement() && !p.isSneaking()) p.setSprinting(true);
+				if (!waterToggle.get() && p.input.hasForwardImpulse() && !p.isShiftKeyDown()) p.setSprinting(true);
 				return;
 			}
 			p.setSprinting(false);
 			return;
 		}
 		if (mode.get() == Mode.RAGE && rotate.get() && moving()) {
-			Myriad.rotations().request(this, sprintYaw(p.getYaw()), p.getPitch(), Rotations.PRIORITY_LOW);
+			Myriad.rotations().request(this, sprintYaw(p.getYRot()), p.getXRot(), Rotations.PRIORITY_LOW);
 		}
 		p.setSprinting(true);
 	}
 
 	private boolean moving() {
-		var in = mc.player.input.playerInput;
+		var in = mc.player.input.keyPresses;
 		return in.forward() || in.backward() || in.left() || in.right();
 	}
 
 	private boolean canSprint() {
 		var p = mc.player;
 		if (inWeb()) return false;
-		boolean input = mode.get() == Mode.LEGIT ? p.input.hasForwardMovement() : moving();
+		boolean input = mode.get() == Mode.LEGIT ? p.input.hasForwardImpulse() : moving();
 		boolean angle = mode.get() != Mode.LEGIT || !Myriad.rotations().isRotating()
-			|| Math.abs(MathHelper.wrapDegrees(p.getYaw() - Myriad.rotations().serverYaw())) < 1f;
-		return input && angle && !p.isSneaking() && !p.hasVehicle() && !p.isGliding() && !p.isTouchingWater() && !p.isSubmergedInWater()
-			&& !p.isInLava() && !p.isHoldingOntoLadder() && !p.hasStatusEffect(StatusEffects.BLINDNESS) && p.getHungerManager().getFoodLevel() > 6;
+			|| Math.abs(Mth.wrapDegrees(p.getYRot() - Myriad.rotations().serverYaw())) < 1f;
+		return input && angle && !p.isShiftKeyDown() && !p.isPassenger() && !p.isFallFlying() && !p.isInWater() && !p.isUnderWater()
+			&& !p.isInLava() && !p.isSuppressingSlidingDownLadder() && !p.hasEffect(MobEffects.BLINDNESS) && p.getFoodData().getFoodLevel() > 6;
 	}
 
 	private boolean noCollision() {
-		return !mc.player.horizontalCollision || mc.player.collidedSoftly;
+		return !mc.player.horizontalCollision || mc.player.minorHorizontalCollision;
 	}
 
 	private boolean inWeb() {
-		for (BlockPos pos : BlockPos.iterate(BlockPos.ofFloored(mc.player.getBoundingBox().minX, mc.player.getBoundingBox().minY, mc.player.getBoundingBox().minZ),
-			BlockPos.ofFloored(mc.player.getBoundingBox().maxX, mc.player.getBoundingBox().maxY, mc.player.getBoundingBox().maxZ))) {
-			if (mc.world.getBlockState(pos).isOf(Blocks.COBWEB)) return true;
+		for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(mc.player.getBoundingBox().minX, mc.player.getBoundingBox().minY, mc.player.getBoundingBox().minZ),
+			BlockPos.containing(mc.player.getBoundingBox().maxX, mc.player.getBoundingBox().maxY, mc.player.getBoundingBox().maxZ))) {
+			if (mc.level.getBlockState(pos).is(Blocks.COBWEB)) return true;
 		}
 		return false;
 	}
 
 	private float sprintYaw(float yaw) {
 		float moving = Movement.inputYaw(yaw);
-		return MathHelper.wrapDegrees(Float.isNaN(moving) ? yaw : moving);
+		return Mth.wrapDegrees(Float.isNaN(moving) ? yaw : moving);
 	}
 }

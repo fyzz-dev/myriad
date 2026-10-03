@@ -7,8 +7,8 @@ import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
-import net.minecraft.client.option.Perspective;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.CameraType;
+import net.minecraft.util.Mth;
 
 /**
  * Look around without turning: the camera orbits in third person while your player keeps facing (and moving) the
@@ -23,7 +23,7 @@ public class FreeLook extends Module {
 	private final BoolSetting snapBack = sgGeneral.bool("Snap Back").description("Return to your previous perspective when turned off.").defaultValue(true).build();
 
 	private float yaw, pitch;
-	private Perspective previous;
+	private CameraType previous;
 
 	public FreeLook() {
 		super(Categories.RENDER, "Free Look", "Orbit the camera without turning your player.");
@@ -32,15 +32,15 @@ public class FreeLook extends Module {
 	@Override
 	protected void onEnable() {
 		if (!inGame()) return;
-		yaw = mc.player.getYaw();
-		pitch = mc.player.getPitch();
-		previous = mc.options.getPerspective();
-		mc.options.setPerspective(view.get() == View.FRONT ? Perspective.THIRD_PERSON_FRONT : Perspective.THIRD_PERSON_BACK);
+		yaw = mc.player.getYRot();
+		pitch = mc.player.getXRot();
+		previous = mc.options.getCameraType();
+		mc.options.setCameraType(view.get() == View.FRONT ? CameraType.THIRD_PERSON_FRONT : CameraType.THIRD_PERSON_BACK);
 	}
 
 	@Override
 	protected void onDisable() {
-		if (snapBack.get() && previous != null) mc.options.setPerspective(previous);
+		if (snapBack.get() && previous != null) mc.options.setCameraType(previous);
 		previous = null;
 	}
 
@@ -48,7 +48,7 @@ public class FreeLook extends Module {
 	private void onMouse(MouseLookEvent e) {
 		e.cancel();
 		yaw += (float) (e.deltaX() * 0.15);
-		pitch = MathHelper.clamp(pitch + (float) (e.deltaY() * 0.15), -90, 90);
+		pitch = Mth.clamp(pitch + (float) (e.deltaY() * 0.15), -90, 90);
 	}
 
 	@Subscribe

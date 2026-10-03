@@ -82,13 +82,13 @@ public class ModuleListSetting extends Setting<Set<MyriadId>> {
 		return value.size() + " modules";
 	}
 
-	public static class Builder extends Setting.Builder<Builder, Set<MyriadId>, ModuleListSetting> {
+	public static class Builder extends Setting.Builder<dev.myriad.api.setting.ModuleListSetting.Builder, Set<MyriadId>, ModuleListSetting> {
 		public Builder(String name) {
 			super(name, new LinkedHashSet<>());
 		}
 
 		/** Modules chosen by default, by id ("myriad-essentials:freecam"). */
-		public Builder defaultValue(String... ids) {
+		public dev.myriad.api.setting.ModuleListSetting.Builder defaultValue(String... ids) {
 			Set<MyriadId> set = new LinkedHashSet<>();
 			for (String id : ids) set.add(MyriadId.parse(id));
 			return defaultValue(set);

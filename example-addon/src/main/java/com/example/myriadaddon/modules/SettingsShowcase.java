@@ -22,15 +22,14 @@ import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.setting.StringListSetting;
 import dev.myriad.api.setting.StringSetting;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-
 import java.util.List;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 
 /**
  * Every built-in setting type, plus this addon's own {@link RangeSetting}, in one place to look things up. It lives
@@ -64,7 +63,7 @@ public final class SettingsShowcase extends Module {
 	private final RegistryListSetting<Block> blocks = sgLists.blocks("Blocks").defaultValue(Blocks.DIAMOND_ORE, Blocks.ANCIENT_DEBRIS).build();
 	private final RegistryListSetting<Item> items = sgLists.items("Items").defaultValue(Items.TOTEM_OF_UNDYING).build();
 	private final RegistryListSetting<EntityType<?>> entities = sgLists.entityTypes("Entities").build();
-	private final RegistryListSetting<StatusEffect> effects = sgLists.statusEffects("Effects").build();
+	private final RegistryListSetting<MobEffect> effects = sgLists.statusEffects("Effects").build();
 
 	// Single values picked from somewhere: a registry, a position, a runtime list, other modules, a file.
 	private final SettingGroup sgPicks = settings.group("Picks");

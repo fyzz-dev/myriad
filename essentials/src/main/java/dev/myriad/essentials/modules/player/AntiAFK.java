@@ -9,10 +9,9 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.util.Timer;
-import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.util.Hand;
-
 import java.util.concurrent.ThreadLocalRandom;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.world.InteractionHand;
 
 /**
  * Keeps idle-kick timers from firing by doing a small action every so often. The enabled actions take turns: hold
@@ -68,20 +67,20 @@ public class AntiAFK extends Module {
 					}
 				}
 				case 1 -> {
-					if (jump.get() && mc.player.isOnGround()) {
-						mc.player.jump();
+					if (jump.get() && mc.player.onGround()) {
+						mc.player.jumpFromGround();
 						return;
 					}
 				}
 				case 2 -> {
 					if (swing.get()) {
-						mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+						mc.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
 						return;
 					}
 				}
 				case 3 -> {
 					if (rotate.get()) {
-						mc.player.setYaw(mc.player.getYaw() + (float) ThreadLocalRandom.current().nextDouble(-8, 8));
+						mc.player.setYRot(mc.player.getYRot() + (float) ThreadLocalRandom.current().nextDouble(-8, 8));
 						return;
 					}
 				}

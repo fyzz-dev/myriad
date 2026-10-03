@@ -1,6 +1,6 @@
 package dev.myriad.api.event.events;
 
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.item.ItemStack;
 
 /** The local player stopped using an item: food eaten, potion drunk, bow released. */
 public abstract class ItemUseEvent {

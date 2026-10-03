@@ -1,13 +1,19 @@
-accessWidener v2 named
-accessible method net/minecraft/client/network/ClientPlayerInteractionManager syncSelectedSlot ()V
-accessible field net/minecraft/network/packet/BundlePacket packets Ljava/lang/Iterable;
-mutable field net/minecraft/network/packet/BundlePacket packets Ljava/lang/Iterable;
+accessWidener v2 official
+accessible method net/minecraft/client/multiplayer/MultiPlayerGameMode ensureHasSentCarriedItem ()V
+accessible field net/minecraft/network/protocol/BundlePacket packets Ljava/lang/Iterable;
+mutable field net/minecraft/network/protocol/BundlePacket packets Ljava/lang/Iterable;
 # Helpers addons use instead of shipping their own wideners (Packets, Interactions, AttackEvent).
-accessible method net/minecraft/client/network/ClientPlayerInteractionManager sendSequencedPacket (Lnet/minecraft/client/world/ClientWorld;Lnet/minecraft/client/network/SequencedPacketCreator;)V
-accessible field net/minecraft/client/MinecraftClient itemUseCooldown I
-accessible field net/minecraft/entity/LivingEntity jumpingCooldown I
-accessible field net/minecraft/entity/LivingEntity lastAttackedTicks I
-accessible field net/minecraft/network/packet/c2s/play/PlayerInteractEntityC2SPacket entityId I
+accessible method net/minecraft/client/multiplayer/MultiPlayerGameMode startPrediction (Lnet/minecraft/client/multiplayer/ClientLevel;Lnet/minecraft/client/multiplayer/prediction/PredictiveAction;)V
+accessible field net/minecraft/client/Minecraft rightClickDelay I
+accessible field net/minecraft/world/entity/LivingEntity noJumpDelay I
+accessible field net/minecraft/world/entity/LivingEntity attackStrengthTicker I
 # Replaceable chat lines (Myriad.chat with an id).
-accessible field net/minecraft/client/gui/hud/ChatHud messages Ljava/util/List;
-accessible method net/minecraft/client/gui/hud/ChatHud refresh ()V
+accessible field net/minecraft/client/gui/components/ChatComponent allMessages Ljava/util/List;
+accessible method net/minecraft/client/gui/components/ChatComponent refreshTrimmedMessages ()V
+# Input changes from InputEvent.
+accessible field net/minecraft/client/player/ClientInput moveVector Lnet/minecraft/world/phys/Vec2;
+# The UI renderer writes its own vertex attributes after vanilla writes the position (UiBatch).
+accessible field com/mojang/blaze3d/vertex/BufferBuilder vertexPointer J
+# ModelShapes walks a model's boxes.
+accessible field net/minecraft/client/model/geom/ModelPart cubes Ljava/util/List;
+accessible field net/minecraft/client/model/geom/ModelPart children Ljava/util/Map;

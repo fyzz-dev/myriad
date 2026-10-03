@@ -1,17 +1,20 @@
 package dev.myriad.essentials.modules.render;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.Render2DEvent;
 import dev.myriad.api.event.events.Render3DEvent;
-import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.render.Canvas;
+import dev.myriad.api.render.ModelShapes;
 import dev.myriad.api.render.Projection;
+import dev.myriad.api.render.RenderStates;
 import dev.myriad.api.render.Renderer3D;
+import dev.myriad.api.render.WorldLabel;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
@@ -22,33 +25,30 @@ import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.Entities;
-import dev.myriad.api.render.WorldLabel;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
-import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
-import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.ChunkDeltaUpdateS2CPacket;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.chunk.ChunkSection;
-import net.minecraft.world.chunk.WorldChunk;
+import dev.myriad.api.world.BlockScan;
+import dev.myriad.api.world.ChunkCache;
+import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import net.minecraft.client.model.Model;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,24 +59,25 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Highlights things through walls. Each section can be turned on separately:
  * <ul>
- * <li>Entities: 3D hitboxes or 2D screen boxes with health bars, coloured by kind from your theme.</li>
+ * <li>Entities: 3D hitboxes, 2D screen boxes with health bars, or a wireframe of the model (Complex), coloured by kind
+ * from your theme.</li>
  * <li>Items: name tags over dropped items, grouped when they lie together.</li>
  * <li>Pearls: who threw each ender pearl.</li>
- * <li>Blocks: every block of the chosen types in loaded chunks (ender chests, spawners, …).</li>
  * <li>Holes: safe bedrock and obsidian holes around you.</li>
  * <li>Mining: blocks other players are breaking, with who and how far along.</li>
  * </ul>
  */
 public class ESP extends Module {
 	public enum Mode {
-		HITBOX, BOX_2D
+		HITBOX, BOX_2D, COMPLEX
 	}
 
 	private static final long FADE_MS = 200;
 
 	// ---- entities ----
 	private final BoolSetting entities = sgGeneral.bool("Entities").defaultValue(true).build();
-	private final EnumSetting<Mode> mode = sgGeneral.enumSetting("Mode", Mode.HITBOX).description("Hitbox draws 3D boxes; Box 2D draws screen-space boxes.").visible(entities::get).build();
+	private final EnumSetting<Mode> mode = sgGeneral.enumSetting("Mode", Mode.HITBOX).description("Hitbox: 3D boxes. Box 2D: screen-space boxes. Complex: a wireframe of the model.")
+		.visible(entities::get).build();
 	private final EnumSetting<Renderer3D.ShapeMode> shape = sgGeneral.enumSetting("Shape", Renderer3D.ShapeMode.BOTH).visible(entities::get).build();
 	private final DoubleSetting fillOpacity = sgGeneral.doubleSetting("Fill Opacity").defaultValue(0.15).range(0, 1).decimals(2)
 		.visible(() -> entities.get() && shape.get() != Renderer3D.ShapeMode.LINES).build();
@@ -93,7 +94,7 @@ public class ESP extends Module {
 	private final BoolSetting hostiles = sgTargets.bool("Hostiles").defaultValue(true).build();
 	private final BoolSetting passives = sgTargets.bool("Passives").build();
 	private final BoolSetting items = sgTargets.bool("Items").build();
-	private final RegistryListSetting<net.minecraft.entity.EntityType<?>> others = sgTargets.entityTypes("Others").description("Any other entity types to show.").build();
+	private final RegistryListSetting<net.minecraft.world.entity.EntityType<?>> others = sgTargets.entityTypes("Others").description("Any other entity types to show.").build();
 
 	private final SettingGroup sgColors = settings.group("Colors");
 	private final ColorSetting playerColor = sgColors.color("Players").defaultValue(SettingColor.role(SettingColor.Mode.ACCENT)).build();
@@ -117,18 +118,6 @@ public class ESP extends Module {
 	private final BoolSetting pearls = sgPearls.bool("Pearl Owners").description("Show who threw each ender pearl.").defaultValue(true).build();
 	private final DoubleSetting pearlNameSize = sgPearls.doubleSetting("Name Size").defaultValue(1).range(0.3, 3).decimals(1).build();
 	private final ColorSetting pearlNameColor = sgPearls.color("Name Color").defaultValue(SettingColor.role(SettingColor.Mode.TEXT)).build();
-
-	// ---- blocks ----
-	private final SettingGroup sgBlocks = settings.group("Blocks");
-	private final BoolSetting blocks = sgBlocks.bool("Block ESP").build();
-	private final RegistryListSetting<Block> blockList = sgBlocks.blocks("Blocks").defaultValue(Blocks.ENDER_CHEST, Blocks.SPAWNER).onChanged(v -> rescanBlocks()).build();
-	private final IntSetting blockRange = sgBlocks.intSetting("Range").description("Chunks around you.").defaultValue(8).range(1, 20).build();
-	private final IntSetting maxBlocks = sgBlocks.intSetting("Max Blocks").description("Cap on boxes drawn per frame.").defaultValue(2048).range(128, 8192).build();
-	private final EnumSetting<Renderer3D.ShapeMode> blockShape = sgBlocks.enumSetting("Shape", Renderer3D.ShapeMode.BOTH).build();
-	private final ColorSetting blockFill = sgBlocks.color("Fill").defaultValue(SettingColor.role(SettingColor.Mode.ACCENT, 40)).build();
-	private final ColorSetting blockLine = sgBlocks.color("Outline").defaultValue(SettingColor.role(SettingColor.Mode.ACCENT)).build();
-	private final DoubleSetting blockLineWidth = sgBlocks.doubleSetting("Line Width").defaultValue(1.5).range(0.5, 5).decimals(1).build();
-	private final BoolSetting notifyFound = sgBlocks.bool("Notify Found").description("Tell you when a chunk with these blocks loads.").build();
 
 	// ---- holes ----
 	private final SettingGroup sgHoles = settings.group("Holes");
@@ -154,42 +143,40 @@ public class ESP extends Module {
 	private final ColorSetting miningFill = sgMining.color("Fill").defaultValue(SettingColor.role(SettingColor.Mode.RED, 40)).build();
 	private final ColorSetting miningLine = sgMining.color("Line").defaultValue(SettingColor.role(SettingColor.Mode.RED)).build();
 
-	private final Map<Integer, Long> appeared = new HashMap<>();
-	private final Map<Long, List<BlockPos>> chunkBlocks = new ConcurrentHashMap<>();
-	private final ArrayDeque<Long> scanQueue = new ArrayDeque<>();
-	private final Set<Long> dirty = ConcurrentHashMap.newKeySet();
-	private final List<Hole> holeList = new ArrayList<>();
+	/** When each entity id was first drawn, for the fade-in; ids not drawn this frame are dropped. */
+	private final Int2LongOpenHashMap appeared = new Int2LongOpenHashMap();
+	private final IntOpenHashSet seen = new IntOpenHashSet();
 	private final Map<Integer, Breaking> breaking = new ConcurrentHashMap<>();
-	private int holeTimer;
 
-	private record Hole(Box box, boolean bedrockHole) {
+	/**
+	 * Holes per chunk, found when a chunk loads or changes rather than rescanned around you every few ticks. A hole looks
+	 * one block past its own chunk, so changes at a chunk's edge recompute its neighbour too. Drawn each frame, since
+	 * they fade with your distance.
+	 */
+	private final ChunkCache<List<Hole>> holeCache = ChunkCache.of(this, this::findHoles)
+		.range(() -> holes.get() ? (holeRange.get() + 15) / 16 : 0)
+		.neighbours()
+		.build();
+
+	private record Hole(AABB box, boolean bedrockHole) {
 	}
 
 	private record Breaking(BlockPos pos, int stage, long time) {
 	}
 
 	public ESP() {
-		super(Categories.RENDER, "ESP", "Highlights entities, items, blocks and holes through walls.");
+		super(Categories.RENDER, "ESP", "Highlights entities, items and holes through walls.");
+		for (var s : List.of(holes, doubleHoles, bedrock, obsidian)) s.onChanged(v -> holeCache.invalidateAll());
 	}
 
 	@Override
 	protected void onEnable() {
 		appeared.clear();
 		breaking.clear();
-		rescanBlocks();
-	}
-
-	@Override
-	protected void onDisable() {
-		chunkBlocks.clear();
-		scanQueue.clear();
-		holeList.clear();
 	}
 
 	@Subscribe
 	private void onWorld(WorldEvent e) {
-		chunkBlocks.clear();
-		scanQueue.clear();
 		breaking.clear();
 		appeared.clear();
 	}
@@ -210,15 +197,47 @@ public class ESP extends Module {
 	}
 
 	private boolean skip(Entity e) {
-		if (e == mc.player) return !self.get() || mc.options.getPerspective().isFirstPerson();
-		return distance.get() > 0 && mc.player.squaredDistanceTo(e) > distance.get() * distance.get();
+		if (e == mc.player) return !self.get() || mc.options.getCameraType().isFirstPerson();
+		return distance.get() > 0 && mc.player.distanceToSqr(e) > distance.get() * distance.get();
 	}
 
-	private float fadeFor(Entity e, Set<Integer> seen) {
+	private float fadeFor(Entity e, long now) {
 		seen.add(e.getId());
 		if (!fade.get()) return 1;
-		long now = System.currentTimeMillis();
-		return MathHelper.clamp((now - appeared.computeIfAbsent(e.getId(), id -> now)) / (float) FADE_MS, 0, 1);
+		long since = appeared.get(e.getId());
+		if (since == 0) appeared.put(e.getId(), since = now);
+		return Mth.clamp((now - since) / (float) FADE_MS, 0, 1);
+	}
+
+	/** The fade-in of an entity already seen this frame (see {@link #fadeFor}). */
+	private float fadeOf(Entity e) {
+		if (!fade.get()) return 1;
+		long since = appeared.get(e.getId());
+		return since == 0 ? 0 : Mth.clamp((System.currentTimeMillis() - since) / (float) FADE_MS, 0, 1);
+	}
+
+	private void forgetUnseen() {
+		appeared.keySet().retainAll(seen);
+		seen.clear();
+	}
+
+	/** Complex mode: called as an entity's model is submitted, to draw it again as a wireframe of its boxes and a fill. */
+	@SuppressWarnings("unchecked")
+	public void submitModel(SubmitNodeCollector submits, Model<?> model, LivingEntityRenderState state, PoseStack poseStack) {
+		if (!isEnabled() || !entities.get() || mode.get() != Mode.COMPLEX || mc.player == null) return;
+		Entity e = RenderStates.entity(state);
+		if (e == null || skip(e)) return;
+		int c = colorFor(e);
+		if (c == 0) return;
+		float f = fadeOf(e);
+		Model<LivingEntityRenderState> m = (Model<LivingEntityRenderState>) model;
+		int fill = ColorUtil.withAlpha(c, (int) (ColorUtil.alpha(c) * fillOpacity.get() * f));
+		if (ColorUtil.alpha(fill) > 0 && shape.get() != Renderer3D.ShapeMode.LINES) {
+			ModelShapes.fill(submits, poseStack, m, state, fill, throughWalls.get());
+		}
+		if (shape.get() != Renderer3D.ShapeMode.FILL) {
+			ModelShapes.wireframe(submits, poseStack, m, state, scaleAlpha(c, f), lineWidth.getFloat(), throughWalls.get());
+		}
 	}
 
 	private static int scaleAlpha(int c, float f) {
@@ -230,91 +249,71 @@ public class ESP extends Module {
 	@Subscribe
 	private void onRender3D(Render3DEvent e) {
 		if (!inGame()) return;
-		if (entities.get() && mode.get() == Mode.HITBOX) {
+		if (entities.get() && mode.get() != Mode.BOX_2D) {
 			Renderer3D.lineWidth(lineWidth.getFloat());
-			Set<Integer> seen = new HashSet<>();
-			for (Entity entity : mc.world.getEntities()) {
+			long now = System.currentTimeMillis();
+			for (Entity entity : mc.level.entitiesForRendering()) {
 				if (skip(entity)) continue;
 				int c = colorFor(entity);
 				if (c == 0) continue;
-				float f = fadeFor(entity, seen);
+				float f = fadeFor(entity, now);
+				// Complex: models draw themselves (submitModel); anything without one falls back to its box.
+				if (mode.get() == Mode.COMPLEX && entity instanceof LivingEntity) continue;
 				int line = scaleAlpha(c, f);
 				int fill = ColorUtil.withAlpha(c, (int) (ColorUtil.alpha(c) * fillOpacity.get() * f));
 				Renderer3D.box(Entities.lerpedBox(entity, e.tickDelta()), fill, line, shape.get(), throughWalls.get());
 			}
-			appeared.keySet().retainAll(seen);
+			forgetUnseen();
 		}
-		if (blocks.get()) renderBlocks();
 		if (holes.get()) renderHoles();
 		if (mining.get()) renderMining3D();
 	}
 
-	private void renderBlocks() {
-		Renderer3D.lineWidth(blockLineWidth.getFloat());
-		ChunkPos center = mc.player.getChunkPos();
-		int range = blockRange.get(), budget = maxBlocks.get(), drawn = 0;
-		List<Map.Entry<Long, List<BlockPos>>> chunks = new ArrayList<>(chunkBlocks.entrySet());
-		chunks.sort(Comparator.comparingInt(en -> {
-			ChunkPos cp = new ChunkPos(en.getKey());
-			return (cp.x - center.x) * (cp.x - center.x) + (cp.z - center.z) * (cp.z - center.z);
-		}));
-		for (Map.Entry<Long, List<BlockPos>> en : chunks) {
-			ChunkPos cp = new ChunkPos(en.getKey());
-			if (Math.abs(cp.x - center.x) > range || Math.abs(cp.z - center.z) > range) continue;
-			for (BlockPos p : en.getValue()) {
-				if (drawn >= budget) return;
-				BlockState state = mc.world.getBlockState(p);
-				if (!blockList.contains(state.getBlock())) continue;
-				Box box;
-				if (state.isOpaqueFullCube()) box = new Box(p);
-				else {
-					VoxelShape s = state.getOutlineShape(mc.world, p);
-					box = s.isEmpty() ? new Box(p) : s.getBoundingBox().offset(p);
-				}
-				Renderer3D.box(box, blockFill.argb(), blockLine.argb(), blockShape.get(), true);
-				drawn++;
-			}
-		}
-	}
-
 	private void renderHoles() {
 		Renderer3D.lineWidth(1.5f);
-		Vec3d eye = mc.player.getPos();
-		for (Hole h : holeList) {
-			if (ignoreOwn.get() && h.box.intersects(mc.player.getBoundingBox())) continue;
-			float f = 1;
-			if (holeFade.get()) {
-				f = (float) MathHelper.clamp(1 - eye.distanceTo(h.box.getCenter()) / holeRange.get(), 0, 1);
-				f *= f;
-			}
-			int base = h.bedrockHole ? bedrockColor.argb() : obsidianColor.argb();
-			double hgt = holeHeight.get();
-			Box box = new Box(h.box.minX, hgt >= 0 ? h.box.minY : h.box.minY + hgt, h.box.minZ, h.box.maxX, hgt >= 0 ? h.box.minY + hgt : h.box.minY, h.box.maxZ);
-			int fill = scaleAlpha(base, f);
-			int line = ColorUtil.withAlpha(base, (int) (255 * holeLineOpacity.get() * f));
-			Renderer3D.box(box, fill, line, Renderer3D.ShapeMode.BOTH, false);
+		Vec3 eye = mc.player.position();
+		int r = holeRange.get(), ry = Math.min(r, 6);
+		holeCache.forEach(list -> {
+			for (Hole h : list) drawHole(h, eye, r, ry);
+		});
+	}
+
+	private void drawHole(Hole h, Vec3 eye, int r, int ry) {
+		AABB b = h.box;
+		if (b.maxX < eye.x - r || b.minX > eye.x + r || b.maxZ < eye.z - r || b.minZ > eye.z + r || Math.abs(b.minY - eye.y) > ry) return;
+		if (ignoreOwn.get() && b.intersects(mc.player.getBoundingBox())) return;
+		float f = 1;
+		if (holeFade.get()) {
+			f = (float) Mth.clamp(1 - eye.distanceTo(b.getCenter()) / r, 0, 1);
+			f *= f;
 		}
+		int base = h.bedrockHole ? bedrockColor.argb() : obsidianColor.argb();
+		double hgt = holeHeight.get();
+		AABB box = new AABB(b.minX, hgt >= 0 ? b.minY : b.minY + hgt, b.minZ, b.maxX, hgt >= 0 ? b.minY + hgt : b.minY, b.maxZ);
+		int fill = scaleAlpha(base, f);
+		int line = ColorUtil.withAlpha(base, (int) (255 * holeLineOpacity.get() * f));
+		Renderer3D.box(box, fill, line, Renderer3D.ShapeMode.BOTH, false);
 	}
 
 	private void renderMining3D() {
 		Renderer3D.lineWidth(1.5f);
 		long now = System.currentTimeMillis();
-		breaking.values().removeIf(b -> now - b.time > 10_000 || mc.world.getBlockState(b.pos).isAir());
+		breaking.values().removeIf(b -> now - b.time > 10_000 || mc.level.getBlockState(b.pos).isAir());
 		for (Map.Entry<Integer, Breaking> en : breaking.entrySet()) {
 			if (!showMining(en.getKey(), en.getValue())) continue;
 			Breaking b = en.getValue();
 			double s = (b.stage + 1) / 10.0;
-			Vec3d c = Vec3d.ofCenter(b.pos);
-			Box box = new Box(c.x - s / 2, c.y - s / 2, c.z - s / 2, c.x + s / 2, c.y + s / 2, c.z + s / 2);
+			Vec3 c = Vec3.atCenterOf(b.pos);
+			AABB box = new AABB(c.x - s / 2, c.y - s / 2, c.z - s / 2, c.x + s / 2, c.y + s / 2, c.z + s / 2);
 			Renderer3D.box(box, miningFill.argb(), miningLine.argb(), Renderer3D.ShapeMode.BOTH, true);
 		}
 	}
 
 	private boolean showMining(int entityId, Breaking b) {
 		if (entityId == mc.player.getId()) return false;
-		if (mc.player.getPos().distanceTo(Vec3d.ofCenter(b.pos)) > miningRange.get()) return false;
-		Entity miner = mc.world.getEntityById(entityId);
-		return !(miningIgnoreFriends.get() && miner instanceof PlayerEntity p && Myriad.friends().isFriend(p));
+		if (mc.player.position().distanceTo(Vec3.atCenterOf(b.pos)) > miningRange.get()) return false;
+		Entity miner = mc.level.getEntity(entityId);
+		return !(miningIgnoreFriends.get() && miner instanceof Player p && Myriad.friends().isFriend(p));
 	}
 
 	// ---- 2D ---------------------------------------------------------------------------------------------------------
@@ -324,16 +323,16 @@ public class ESP extends Module {
 		if (!inGame()) return;
 		Canvas c = e.canvas();
 		if (entities.get() && mode.get() == Mode.BOX_2D) {
-			Set<Integer> seen = new HashSet<>();
-			for (Entity entity : mc.world.getEntities()) {
+			long now = System.currentTimeMillis();
+			for (Entity entity : mc.level.entitiesForRendering()) {
 				if (skip(entity)) continue;
 				int color = colorFor(entity);
 				if (color == 0) continue;
 				float[] r = project(Entities.lerpedBox(entity, e.tickDelta()));
 				if (r == null) continue;
-				drawBox2D(c, entity, r, scaleAlpha(color, fadeFor(entity, seen)));
+				drawBox2D(c, entity, r, scaleAlpha(color, fadeFor(entity, now)));
 			}
-			appeared.keySet().retainAll(seen);
+			forgetUnseen();
 		}
 		if (itemNames.get()) renderItemNames(c, e.tickDelta());
 		if (pearls.get()) renderPearlOwners(c, e.tickDelta());
@@ -349,7 +348,7 @@ public class ESP extends Module {
 			c.outline(x, y, w, h, rad, lineWidth.getFloat(), color);
 		}
 		if (healthBar.get() && entity instanceof LivingEntity living) {
-			float hp = MathHelper.clamp(living.getHealth() / living.getMaxHealth(), 0, 1);
+			float hp = Mth.clamp(living.getHealth() / living.getMaxHealth(), 0, 1);
 			float bx = x - 3.5f;
 			c.rect(bx - 0.5f, y - 0.5f, 2, h + 1, 0x99000000);
 			c.rect(bx, y + h * (1 - hp), 1, h * hp, ColorUtil.lerp(0xFFFF5555, 0xFF55FF55, hp));
@@ -357,13 +356,13 @@ public class ESP extends Module {
 	}
 
 	/** Screen rect [left, top, right, bottom] around a world box, or null when it's off screen. */
-	private static float[] project(Box b) {
+	private static float[] project(AABB b) {
 		float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
 		var window = mc.getWindow();
-		float sw = window.getScaledWidth(), sh = window.getScaledHeight();
+		float sw = window.getGuiScaledWidth(), sh = window.getGuiScaledHeight();
 		boolean any = false;
 		for (int i = 0; i < 8; i++) {
-			Vec3d s = Projection.toScreen(new Vec3d((i & 1) == 0 ? b.minX : b.maxX, (i & 2) == 0 ? b.minY : b.maxY, (i & 4) == 0 ? b.minZ : b.maxZ));
+			Vec3 s = Projection.toScreen(new Vec3((i & 1) == 0 ? b.minX : b.maxX, (i & 2) == 0 ? b.minY : b.maxY, (i & 4) == 0 ? b.minZ : b.maxZ));
 			// Corners right by the near plane project far off screen; skip them.
 			if (s == null || s.x < -sw * 2 || s.x > sw * 3 || s.y < -sh * 2 || s.y > sh * 3) continue;
 			minX = Math.min(minX, (float) s.x);
@@ -383,12 +382,12 @@ public class ESP extends Module {
 	private void renderItemNames(Canvas c, float tickDelta) {
 		double maxSq = itemDistance.get() * itemDistance.get();
 		List<List<ItemEntity>> groups = new ArrayList<>();
-		for (Entity entity : mc.world.getEntities()) {
-			if (!(entity instanceof ItemEntity item) || mc.player.squaredDistanceTo(entity) > maxSq) continue;
+		for (Entity entity : mc.level.entitiesForRendering()) {
+			if (!(entity instanceof ItemEntity item) || mc.player.distanceToSqr(entity) > maxSq) continue;
 			List<ItemEntity> target = null;
 			if (grouping.get()) {
 				for (List<ItemEntity> g : groups) {
-					if (g.getFirst().squaredDistanceTo(item) < 4) {
+					if (g.getFirst().distanceToSqr(item) < 4) {
 						target = g;
 						break;
 					}
@@ -402,7 +401,7 @@ public class ESP extends Module {
 		for (List<ItemEntity> g : groups) {
 			double x = 0, y = 0, z = 0;
 			for (ItemEntity it : g) {
-				Box box = Entities.lerpedBox(it, tickDelta);
+				AABB box = Entities.lerpedBox(it, tickDelta);
 				x += box.getCenter().x;
 				y += box.maxY;
 				z += box.getCenter().z;
@@ -411,11 +410,11 @@ public class ESP extends Module {
 			y /= g.size();
 			z /= g.size();
 			Map<String, Integer> counts = new LinkedHashMap<>();
-			for (ItemEntity it : g) counts.merge(it.getStack().getName().getString(), it.getStack().getCount(), Integer::sum);
+			for (ItemEntity it : g) counts.merge(it.getItem().getHoverName().getString(), it.getItem().getCount(), Integer::sum);
 			int line = 0;
 			for (Map.Entry<String, Integer> en : counts.entrySet()) {
 				String text = en.getValue() > 1 ? en.getKey() + " x" + en.getValue() : en.getKey();
-				Vec3d at = new Vec3d(x, y + 0.3 + line++ * 0.28, z);
+				Vec3 at = new Vec3(x, y + 0.3 + line++ * 0.28, z);
 				WorldLabel.draw(c, at, itemNameSize.getFloat() * WorldLabel.distanceScale(at), List.of(new WorldLabel.Segment(text, color)),
 					bg != 0 ? WorldLabel.Background.ROUNDED : WorldLabel.Background.NONE, bg, 0, true);
 			}
@@ -423,12 +422,12 @@ public class ESP extends Module {
 	}
 
 	private void renderPearlOwners(Canvas c, float tickDelta) {
-		for (Entity entity : mc.world.getEntities()) {
-			if (!(entity instanceof EnderPearlEntity pearl) || pearl.getOwner() == null) continue;
-			Box box = Entities.lerpedBox(entity, tickDelta);
-			Vec3d at = new Vec3d(box.getCenter().x, box.maxY + 0.25, box.getCenter().z);
+		for (Entity entity : mc.level.entitiesForRendering()) {
+			if (!(entity instanceof ThrownEnderpearl pearl) || pearl.getOwner() == null) continue;
+			AABB box = Entities.lerpedBox(entity, tickDelta);
+			Vec3 at = new Vec3(box.getCenter().x, box.maxY + 0.25, box.getCenter().z);
 			WorldLabel.draw(c, at, pearlNameSize.getFloat() * WorldLabel.distanceScale(at),
-				List.of(new WorldLabel.Segment(pearl.getOwner().getNameForScoreboard(), pearlNameColor.argb())), WorldLabel.Background.ROUNDED, 0x64000000, 0, true);
+				List.of(new WorldLabel.Segment(pearl.getOwner().getScoreboardName(), pearlNameColor.argb())), WorldLabel.Background.ROUNDED, 0x64000000, 0, true);
 		}
 	}
 
@@ -436,148 +435,80 @@ public class ESP extends Module {
 		for (Map.Entry<Integer, Breaking> en : breaking.entrySet()) {
 			if (!showMining(en.getKey(), en.getValue())) continue;
 			List<WorldLabel.Segment> segs = new ArrayList<>();
-			Entity miner = mc.world.getEntityById(en.getKey());
-			if (miningNames.get() && miner != null) segs.add(new WorldLabel.Segment(miner.getNameForScoreboard(), 0xFFFFFFFF));
+			Entity miner = mc.level.getEntity(en.getKey());
+			if (miningNames.get() && miner != null) segs.add(new WorldLabel.Segment(miner.getScoreboardName(), 0xFFFFFFFF));
 			if (miningPercent.get()) segs.add(new WorldLabel.Segment((en.getValue().stage + 1) * 10 + "%", miningLine.argb()));
 			if (segs.isEmpty()) continue;
-			Vec3d at = Vec3d.ofCenter(en.getValue().pos).add(0, 0.7, 0);
+			Vec3 at = Vec3.atCenterOf(en.getValue().pos).add(0, 0.7, 0);
 			WorldLabel.draw(c, at, WorldLabel.distanceScale(at), segs, WorldLabel.Background.ROUNDED, 0x64000000, 0, true);
 		}
 	}
 
-	// ---- block scanning ----------------------------------------------------------------------------------------------
-
-	@Subscribe
-	private void onTick(TickEvent.Post e) {
-		if (!inGame()) return;
-		if (blocks.get()) tickBlockScan();
-		if (holes.get() && --holeTimer <= 0) {
-			holeTimer = 5;
-			findHoles();
-		} else if (!holes.get()) holeList.clear();
-	}
+	// ---- ticking ----------------------------------------------------------------------------------------------------
 
 	@Subscribe
 	private void onPacket(PacketEvent.Receive e) {
-		if (e.packet() instanceof BlockBreakingProgressS2CPacket p) {
-			if (p.getProgress() < 0 || p.getProgress() > 9) breaking.remove(p.getEntityId());
-			else breaking.put(p.getEntityId(), new Breaking(p.getPos(), p.getProgress(), System.currentTimeMillis()));
-			return;
-		}
-		if (!blocks.get()) return;
-		if (e.packet() instanceof ChunkDataS2CPacket p) dirty.add(ChunkPos.toLong(p.getChunkX(), p.getChunkZ()));
-		else if (e.packet() instanceof BlockUpdateS2CPacket p) markDirty(p.getPos(), p.getState());
-		else if (e.packet() instanceof ChunkDeltaUpdateS2CPacket p) p.visitUpdates(this::markDirty);
-	}
-
-	private void markDirty(BlockPos pos, BlockState state) {
-		long key = ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4);
-		if (blockList.contains(state.getBlock())) dirty.add(key);
-		else {
-			List<BlockPos> found = chunkBlocks.get(key);
-			if (found != null && found.contains(pos)) dirty.add(key);
-		}
-	}
-
-	private void rescanBlocks() {
-		chunkBlocks.clear();
-		scanQueue.clear();
-		if (!inGame()) return;
-		ChunkPos center = mc.player.getChunkPos();
-		int r = blockRange.get();
-		for (int dx = -r; dx <= r; dx++) for (int dz = -r; dz <= r; dz++) scanQueue.add(ChunkPos.toLong(center.x + dx, center.z + dz));
-	}
-
-	private void tickBlockScan() {
-		for (Long key : dirty) {
-			if (!scanQueue.contains(key)) scanQueue.add(key);
-		}
-		dirty.clear();
-		ChunkPos center = mc.player.getChunkPos();
-		int r = blockRange.get();
-		chunkBlocks.keySet().removeIf(k -> {
-			ChunkPos cp = new ChunkPos(k);
-			return Math.abs(cp.x - center.x) > r + 2 || Math.abs(cp.z - center.z) > r + 2;
-		});
-		// Pick up chunks that came into range as you moved.
-		for (int dx = -r; dx <= r; dx++) {
-			for (int dz = -r; dz <= r; dz++) {
-				long key = ChunkPos.toLong(center.x + dx, center.z + dz);
-				if (!chunkBlocks.containsKey(key) && !scanQueue.contains(key)) scanQueue.add(key);
-			}
-		}
-		for (int i = 0; i < 4 && !scanQueue.isEmpty(); i++) scanChunk(scanQueue.poll());
-	}
-
-	private void scanChunk(long key) {
-		ChunkPos cp = new ChunkPos(key);
-		if (!mc.world.getChunkManager().isChunkLoaded(cp.x, cp.z)) return;
-		WorldChunk chunk = mc.world.getChunk(cp.x, cp.z);
-		Set<Block> targets = blockList.get();
-		List<BlockPos> found = new ArrayList<>();
-		ChunkSection[] sections = chunk.getSectionArray();
-		for (int si = 0; si < sections.length; si++) {
-			ChunkSection section = sections[si];
-			if (section == null || section.isEmpty() || !section.hasAny(s -> targets.contains(s.getBlock()))) continue;
-			int baseY = chunk.sectionIndexToCoord(si) << 4;
-			for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
-				if (targets.contains(section.getBlockState(x, y, z).getBlock())) found.add(new BlockPos(cp.getStartX() + x, baseY + y, cp.getStartZ() + z));
-			}
-		}
-		List<BlockPos> previous = found.isEmpty() ? chunkBlocks.remove(key) : chunkBlocks.put(key, found);
-		if (notifyFound.get() && !found.isEmpty() && (previous == null || previous.isEmpty())) {
-			info("Found " + found.size() + " block" + (found.size() == 1 ? "" : "s") + " in chunk " + cp.x + ", " + cp.z);
+		if (e.packet() instanceof ClientboundBlockDestructionPacket p) {
+			if (p.getProgress() < 0 || p.getProgress() > 9) breaking.remove(p.getId());
+			else breaking.put(p.getId(), new Breaking(p.getPos(), p.getProgress(), System.currentTimeMillis()));
 		}
 	}
 
 	// ---- holes ------------------------------------------------------------------------------------------------------
 
-	private void findHoles() {
-		holeList.clear();
-		BlockPos center = mc.player.getBlockPos();
-		int r = holeRange.get(), ry = Math.min(r, 6);
+	/** The holes whose floor is in {@code chunk}: every hole stands on a blast-proof block, so only those are visited. */
+	private List<Hole> findHoles(LevelChunk chunk) {
+		if (!holes.get()) return null;
+		List<Hole> found = new ArrayList<>();
 		Set<BlockPos> doubled = new HashSet<>();
-		for (BlockPos p : BlockPos.iterate(center.add(-r, -ry, -r), center.add(r, ry, r))) {
-			if (!isAirColumn(p)) continue;
+		BlockScan.forEach(chunk, ESP::isBlastProof, (floor, state) -> {
+			BlockPos p = floor.above();
+			if (!isAirColumn(p)) return;
 			int kind = enclosed(p, null);
 			if (kind > 0) {
-				addHole(new Box(p), kind == 2);
-				continue;
+				addHole(found, new AABB(p), kind == 2);
+				return;
 			}
-			if (!doubleHoles.get()) continue;
-			for (Direction d : new Direction[]{Direction.EAST, Direction.SOUTH}) {
-				BlockPos q = p.offset(d);
-				if (doubled.contains(p) || !isAirColumn(q)) continue;
+			if (!doubleHoles.get() || doubled.contains(p)) return;
+			for (Direction d : HORIZONTAL_PARTNERS) {
+				BlockPos q = p.relative(d);
+				if (!isAirColumn(q)) continue;
 				int a = enclosed(p, d), b = enclosed(q, d.getOpposite());
 				if (a > 0 && b > 0) {
-					doubled.add(p.toImmutable());
-					doubled.add(q.toImmutable());
-					addHole(new Box(p).union(new Box(q)), a == 2 && b == 2);
+					doubled.add(p);
+					doubled.add(q);
+					addHole(found, new AABB(p).minmax(new AABB(q)), a == 2 && b == 2);
 				}
 			}
-		}
+		});
+		return found.isEmpty() ? null : found;
 	}
 
-	private void addHole(Box box, boolean bedrockHole) {
-		if (bedrockHole ? bedrock.get() : obsidian.get()) holeList.add(new Hole(box, bedrockHole));
+	private static final Direction[] HORIZONTAL_PARTNERS = {Direction.EAST, Direction.SOUTH};
+	private static final Direction[] HOLE_SIDES = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+
+	private static boolean isBlastProof(BlockState state) {
+		Block b = state.getBlock();
+		return b == Blocks.BEDROCK || b == Blocks.OBSIDIAN || b == Blocks.CRYING_OBSIDIAN || b == Blocks.RESPAWN_ANCHOR
+			|| b == Blocks.ENDER_CHEST || b == Blocks.NETHERITE_BLOCK;
+	}
+
+	private void addHole(List<Hole> found, AABB box, boolean bedrockHole) {
+		if (bedrockHole ? bedrock.get() : obsidian.get()) found.add(new Hole(box, bedrockHole));
 	}
 
 	private boolean isAirColumn(BlockPos p) {
-		return mc.world.getBlockState(p).isAir() && mc.world.getBlockState(p.up()).isAir() && mc.world.getBlockState(p.up(2)).isAir();
+		return mc.level.getBlockState(p).isAir() && mc.level.getBlockState(p.above()).isAir() && mc.level.getBlockState(p.above(2)).isAir();
 	}
 
 	/** 2 = all bedrock, 1 = blast-proof mix, 0 = not a hole. {@code open} is a side left open for a double hole. */
 	private int enclosed(BlockPos p, Direction open) {
 		boolean allBedrock = true;
-		for (Direction d : new Direction[]{Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST}) {
+		for (Direction d : HOLE_SIDES) {
 			if (d == open) continue;
-			Block b = mc.world.getBlockState(p.offset(d)).getBlock();
-			if (b == Blocks.BEDROCK) continue;
-			if (b == Blocks.OBSIDIAN || b == Blocks.CRYING_OBSIDIAN || b == Blocks.RESPAWN_ANCHOR || b == Blocks.ENDER_CHEST || b == Blocks.NETHERITE_BLOCK) {
-				allBedrock = false;
-				continue;
-			}
-			return 0;
+			BlockState s = mc.level.getBlockState(p.relative(d));
+			if (!isBlastProof(s)) return 0;
+			if (!s.is(Blocks.BEDROCK)) allBedrock = false;
 		}
 		return allBedrock ? 2 : 1;
 	}

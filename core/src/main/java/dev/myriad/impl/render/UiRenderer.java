@@ -1,67 +1,60 @@
 package dev.myriad.impl.render;
 
-import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
 import dev.myriad.impl.render.font.FontManager;
 import dev.myriad.impl.render.font.Glyph;
 import dev.myriad.impl.render.font.SizedFont;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Identifier;
-import org.joml.Matrix4f;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
+import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStack;
 import org.lwjgl.system.MemoryUtil;
 
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
+import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE1;
-import static org.lwjgl.opengl.GL15.*;
-import static org.lwjgl.opengl.GL20.glEnableVertexAttribArray;
-import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
-import static org.lwjgl.opengl.GL30.glBindVertexArray;
-import static org.lwjgl.opengl.GL30.glGenVertexArrays;
-
 /**
- * The batched GL implementation of {@link Canvas}. All shapes go through one shader (ui.vert/ui.frag) with a fat
- * vertex format, so a whole desktop is usually a handful of draw calls; batches only break on texture or clip changes.
+ * The implementation of {@link Canvas}. Shapes are signed-distance quads drawn by one shader (core/ui.vsh, ui.fsh) with
+ * a fat vertex format. Quads are recorded into batches that break only on texture changes; each batch becomes one
+ * element of vanilla's GUI render state (see {@link UiBatch}), so it draws in order with vanilla items and text.
  */
 public final class UiRenderer implements Canvas {
 	private static final int FILL = 0, OUTLINE = 1, SHADOW = 2, GLYPH = 3, IMAGE = 4, BACKDROP = 5;
-	private static final int FLOATS_PER_VERTEX = 24;
-	private static final int STRIDE = FLOATS_PER_VERTEX * 4;
-	private static final int MAX_QUADS = 8192;
+	private static final int FLOATS_PER_VERTEX = UiBatch.FLOATS_PER_VERTEX;
+	private static final int MAX_QUADS = 16384;
 
 	private static UiRenderer instance;
 
-	private final MinecraftClient mc = MinecraftClient.getInstance();
-	private final GlProgram program = new GlProgram("ui.vert", "ui.frag",
-		"aPos", "aLocal", "aSize", "aRadii", "aColor1", "aColor2", "aParams", "aUv");
+	private final Minecraft mc = Minecraft.getInstance();
 	private final FontManager fonts = new FontManager();
 	private final FrameBlur blur = new FrameBlur();
-	private final GlStateSnapshot snapshot = new GlStateSnapshot();
-	private final int vao, vbo, ebo;
-	private final FloatBuffer data = MemoryUtil.memAllocFloat(MAX_QUADS * 4 * FLOATS_PER_VERTEX);
-	private final Matrix4f projection = new Matrix4f();
 	private final Deque<State> stack = new ArrayDeque<>();
+	private final GpuTextureView white;
 
+	private float[] data = new float[1024 * 4 * FLOATS_PER_VERTEX];
+	private int size;
 	private int quads;
-	private int texture;
+	private GpuTextureView texture;
+	private boolean usesBlur;
+	private float minX, minY, maxX, maxY;
 	private boolean active;
 
 	// Frame state
-	private DrawContext context;
-	private int fbW, fbH;
-	private long frame;
-	private int blurTexture;
+	private GuiGraphicsExtractor context;
+	private int fbW, fbH, guiScale;
 	private boolean blurEnabled;
 	private int blurPasses = 3;
 	private float blurOffset = 2.5f;
@@ -75,7 +68,7 @@ public final class UiRenderer implements Canvas {
 	private FontFamily defaultFont = FontFamily.SANS;
 	private float defaultSize = 7.5f;
 
-	/** The renderer if it has been created (it needs GL, so it is created on first draw). */
+	/** The renderer if it has been created (it needs the GPU device, so it is created on first draw). */
 	public static UiRenderer peek() {
 		return instance;
 	}
@@ -86,34 +79,26 @@ public final class UiRenderer implements Canvas {
 	}
 
 	private UiRenderer() {
-		snapshot.save();
-		vao = glGenVertexArrays();
-		vbo = glGenBuffers();
-		ebo = glGenBuffers();
-		glBindVertexArray(vao);
-		GlStateManager._glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, (long) data.capacity() * 4, GL_STREAM_DRAW);
-		int[] sizes = {2, 2, 2, 4, 4, 4, 4, 2};
-		int offset = 0;
-		for (int i = 0; i < sizes.length; i++) {
-			glEnableVertexAttribArray(i);
-			glVertexAttribPointer(i, sizes[i], GL_FLOAT, false, STRIDE, offset * 4L);
-			offset += sizes[i];
+		GpuTexture tex = RenderSystem.getDevice().createTexture("Myriad white", GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST,
+			GpuFormat.RGBA8_UNORM, 1, 1, 1, 1);
+		ByteBuffer px = MemoryUtil.memAlloc(4);
+		try {
+			px.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
+			RenderSystem.getDevice().createCommandEncoder().writeToTexture(tex, px, 0, 0, 0, 0, 1, 1);
+		} finally {
+			MemoryUtil.memFree(px);
 		}
-		IntBuffer idx = MemoryUtil.memAllocInt(MAX_QUADS * 6);
-		for (int q = 0; q < MAX_QUADS; q++) {
-			int b = q * 4;
-			idx.put(b).put(b + 1).put(b + 2).put(b + 2).put(b + 3).put(b);
-		}
-		idx.flip();
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx, GL_STATIC_DRAW);
-		MemoryUtil.memFree(idx);
-		snapshot.restore();
+		white = RenderSystem.getDevice().createTextureView(tex);
 	}
 
 	public FontManager fonts() {
 		return fonts;
+	}
+
+	/** Computes the frame's blur if anything drew a backdrop; called by the GUI renderer just before it draws. */
+	public void beforeGuiDraw() {
+		blur.runIfRequested();
+		GpuGarbage.tick();
 	}
 
 	public void setDefaults(FontFamily font, float size) {
@@ -127,15 +112,14 @@ public final class UiRenderer implements Canvas {
 		this.blurOffset = offset;
 	}
 
-	/** Starts drawing. {@code pixelScale} is framebuffer pixels per UI unit. */
-	public UiRenderer begin(DrawContext ctx, float pixelScale) {
+	/** Starts recording into {@code ctx}. {@code pixelScale} is framebuffer pixels per UI unit. */
+	public UiRenderer begin(GuiGraphicsExtractor ctx, float pixelScale) {
 		if (active) throw new IllegalStateException("UiRenderer.begin() called twice");
 		active = true;
 		context = ctx;
-		ctx.draw();
-		fbW = mc.getWindow().getFramebufferWidth();
-		fbH = mc.getWindow().getFramebufferHeight();
-		projection.setOrtho(0, fbW, fbH, 0, -1, 1);
+		fbW = mc.getWindow().getWidth();
+		fbH = mc.getWindow().getHeight();
+		guiScale = Math.max(1, mc.getWindow().getGuiScale());
 		long now = System.nanoTime();
 		frameDelta = lastBegin == 0 ? 16f : Math.min(100f, (now - lastBegin) / 1_000_000f);
 		lastBegin = now;
@@ -144,9 +128,7 @@ public final class UiRenderer implements Canvas {
 		state.clipX1 = fbW;
 		state.clipY1 = fbH;
 		stack.clear();
-		quads = 0;
-		texture = 0;
-		blurTexture = 0;
+		resetBatch();
 		return this;
 	}
 
@@ -158,11 +140,6 @@ public final class UiRenderer implements Canvas {
 
 	public boolean isActive() {
 		return active;
-	}
-
-	/** Advance once per rendered frame so the blur is computed at most once per frame. */
-	public void nextFrame() {
-		frame++;
 	}
 
 	// ------------------------------------------------------------------------------------------------------------
@@ -201,13 +178,13 @@ public final class UiRenderer implements Canvas {
 	@Override
 	public void roundRect(float x, float y, float w, float h, float tl, float tr, float br, float bl, int color) {
 		float s = state.scale;
-		box(px(x), py(y), w * s, h * s, tl * s, tr * s, br * s, bl * s, color, color, FILL, 0, 0, 0, 0, 0, 0, 0);
+		box(px(x), py(y), w * s, h * s, tl * s, tr * s, br * s, bl * s, color, color, FILL, 0, 0, 0, 0, 0, 0, null);
 	}
 
 	@Override
 	public void gradientRect(float x, float y, float w, float h, float radius, int from, int to, float angle) {
 		float s = state.scale, r = radius * s;
-		box(px(x), py(y), w * s, h * s, r, r, r, r, from, to, FILL, 0, (float) Math.toRadians(angle), 0, 0, 0, 0, 0);
+		box(px(x), py(y), w * s, h * s, r, r, r, r, from, to, FILL, 0, (float) Math.toRadians(angle), 0, 0, 0, 0, null);
 	}
 
 	@Override
@@ -218,25 +195,23 @@ public final class UiRenderer implements Canvas {
 	@Override
 	public void gradientOutline(float x, float y, float w, float h, float radius, float thickness, int from, int to, float angle) {
 		float s = state.scale, r = radius * s;
-		box(px(x), py(y), w * s, h * s, r, r, r, r, from, to, OUTLINE, Math.max(1f, thickness * s), (float) Math.toRadians(angle), 0, 0, 0, 0, 0);
+		box(px(x), py(y), w * s, h * s, r, r, r, r, from, to, OUTLINE, Math.max(1f, thickness * s), (float) Math.toRadians(angle), 0, 0, 0, 0, null);
 	}
 
 	@Override
 	public void shadow(float x, float y, float w, float h, float radius, float size, int color) {
 		float s = state.scale, r = radius * s, sz = size * s;
-		box(px(x) - sz, py(y) - sz, w * s + sz * 2, h * s + sz * 2, r, r, r, r, color, color, SHADOW, sz, 0, 0, 0, 0, 0, 0);
+		box(px(x) - sz, py(y) - sz, w * s + sz * 2, h * s + sz * 2, r, r, r, r, color, color, SHADOW, sz, 0, 0, 0, 0, 0, null);
 	}
 
 	@Override
 	public void backdrop(float x, float y, float w, float h, float radius, float opacity) {
 		if (!blurEnabled) return;
-		if (blurTexture == 0) {
-			flush();
-			blurTexture = blur.blurredScene(frame, blurPasses, blurOffset);
-		}
+		blur.request(blurPasses, blurOffset);
+		usesBlur = true;
 		float s = state.scale, r = radius * s;
 		int c = (Math.round(Math.clamp(opacity, 0f, 1f) * 255) << 24) | 0xFFFFFF;
-		box(px(x), py(y), w * s, h * s, r, r, r, r, c, c, BACKDROP, 0, 0, 0, 0, 0, 0, 0);
+		box(px(x), py(y), w * s, h * s, r, r, r, r, c, c, BACKDROP, 0, 0, 0, 0, 0, 0, null);
 	}
 
 	@Override
@@ -252,46 +227,49 @@ public final class UiRenderer implements Canvas {
 		if (len < 0.01f) return;
 		float th = Math.max(1f, thickness * state.scale);
 		float nx = -dy / len * th / 2, ny = dx / len * th / 2;
-		ensure(0);
+		ensure(null);
 		int c = color(color);
 		vertex(ax - nx, ay - ny, 0, 0, len, th, 0, 0, 0, 0, c, c, FILL, 0, 0, 0, 0);
 		vertex(ax + nx, ay + ny, 0, th, len, th, 0, 0, 0, 0, c, c, FILL, 0, 0, 0, 0);
 		vertex(bx + nx, by + ny, len, th, len, th, 0, 0, 0, 0, c, c, FILL, 0, 0, 0, 0);
 		vertex(bx - nx, by - ny, len, 0, len, th, 0, 0, 0, 0, c, c, FILL, 0, 0, 0, 0);
+		include(Math.min(ax, bx) - th, Math.min(ay, by) - th, Math.max(ax, bx) + th, Math.max(ay, by) + th);
 		quads++;
 	}
 
 	@Override
 	public void texture(Identifier id, float x, float y, float w, float h, float u0, float v0, float u1, float v1, int tint) {
-		texture(mc.getTextureManager().getTexture(id).getGlId(), x, y, w, h, u0, v0, u1, v1, tint);
+		texture(mc.getTextureManager().getTexture(id).getTextureView(), x, y, w, h, u0, v0, u1, v1, tint);
 	}
 
 	@Override
-	public void texture(int glTextureId, float x, float y, float w, float h, float u0, float v0, float u1, float v1, int tint) {
+	public void texture(GpuTextureView view, float x, float y, float w, float h, float u0, float v0, float u1, float v1, int tint) {
 		float s = state.scale;
-		box(px(x), py(y), w * s, h * s, 0, 0, 0, 0, tint, tint, IMAGE, 0, 0, u0, v0, u1, v1, glTextureId);
+		box(px(x), py(y), w * s, h * s, 0, 0, 0, 0, tint, tint, IMAGE, 0, 0, u0, v0, u1, v1, view);
 	}
 
 	@Override
 	public void item(ItemStack stack, float x, float y, float size, boolean overlay) {
 		if (stack.isEmpty()) return;
 		flush();
-		float gs = (float) mc.getWindow().getScaleFactor();
-		MatrixStack m = context.getMatrices();
-		m.push();
-		m.translate(px(x) / gs, py(y) / gs, 0);
-		float k = size * state.scale / gs / 16f;
-		m.scale(k, k, 1);
-		applyScissor();
-		context.drawItem(stack, 0, 0);
-		if (overlay) context.drawStackOverlay(mc.textRenderer, stack, 0, 0);
-		context.draw();
-		RenderSystem.disableScissor();
-		m.pop();
+		var pose = context.pose();
+		pose.pushMatrix();
+		pose.translate(px(x) / guiScale, py(y) / guiScale);
+		float k = size * state.scale / guiScale / 16f;
+		pose.scale(k, k);
+		boolean clipping = clipping();
+		if (clipping) {
+			context.enableScissor(Math.floorDiv(state.clipX0, guiScale), Math.floorDiv(state.clipY0, guiScale),
+				-Math.floorDiv(-state.clipX1, guiScale), -Math.floorDiv(-state.clipY1, guiScale));
+		}
+		context.item(stack, 0, 0);
+		if (overlay) context.itemDecorations(mc.font, stack, 0, 0);
+		if (clipping) context.disableScissor();
+		pose.popMatrix();
 	}
 
 	private void box(float x, float y, float w, float h, float tl, float tr, float br, float bl, int c1, int c2,
-					 int type, float param, float angle, float u0, float v0, float u1, float v1, int tex) {
+					 int type, float param, float angle, float u0, float v0, float u1, float v1, GpuTextureView tex) {
 		if (w <= 0 || h <= 0 || culled(x, y, w, h)) return;
 		c1 = color(c1);
 		c2 = color(c2);
@@ -301,23 +279,40 @@ public final class UiRenderer implements Canvas {
 		vertex(x, y + h, 0, h, w, h, tl, tr, br, bl, c1, c2, type, param, angle, u0, v1);
 		vertex(x + w, y + h, w, h, w, h, tl, tr, br, bl, c1, c2, type, param, angle, u1, v1);
 		vertex(x + w, y, w, 0, w, h, tl, tr, br, bl, c1, c2, type, param, angle, u1, v0);
+		include(x, y, x + w, y + h);
 		quads++;
 	}
 
-	private void ensure(int tex) {
+	private void ensure(GpuTextureView tex) {
 		if (!active) throw new IllegalStateException("Canvas used outside of UiRenderer.begin()/end()");
-		if (tex != 0 && texture != 0 && tex != texture) flush();
+		if (tex != null && texture != null && tex != texture) flush();
 		if (quads >= MAX_QUADS) flush();
-		if (tex != 0) texture = tex;
+		if (tex != null) texture = tex;
+		int needed = size + 4 * FLOATS_PER_VERTEX;
+		if (needed > data.length) data = Arrays.copyOf(data, Math.max(needed, data.length * 2));
+	}
+
+	private void include(float x0, float y0, float x1, float y1) {
+		minX = Math.min(minX, Math.max(x0, state.clipX0));
+		minY = Math.min(minY, Math.max(y0, state.clipY0));
+		maxX = Math.max(maxX, Math.min(x1, state.clipX1));
+		maxY = Math.max(maxY, Math.min(y1, state.clipY1));
 	}
 
 	private void vertex(float x, float y, float lx, float ly, float w, float h, float tl, float tr, float br, float bl,
 						int c1, int c2, int type, float param, float angle, float u, float v) {
-		data.put(x).put(y).put(lx).put(ly).put(w).put(h).put(tl).put(tr).put(br).put(bl);
-		data.put((c1 >> 16 & 255) / 255f).put((c1 >> 8 & 255) / 255f).put((c1 & 255) / 255f).put((c1 >>> 24) / 255f);
-		data.put((c2 >> 16 & 255) / 255f).put((c2 >> 8 & 255) / 255f).put((c2 & 255) / 255f).put((c2 >>> 24) / 255f);
-		data.put(type).put(param).put(angle).put(0);
-		data.put(u).put(v);
+		float[] d = data;
+		int i = size;
+		d[i++] = x; d[i++] = y;
+		d[i++] = lx; d[i++] = ly;
+		d[i++] = w; d[i++] = h;
+		d[i++] = tl; d[i++] = tr; d[i++] = br; d[i++] = bl;
+		d[i++] = (c1 >> 16 & 255) / 255f; d[i++] = (c1 >> 8 & 255) / 255f; d[i++] = (c1 & 255) / 255f; d[i++] = (c1 >>> 24) / 255f;
+		d[i++] = (c2 >> 16 & 255) / 255f; d[i++] = (c2 >> 8 & 255) / 255f; d[i++] = (c2 & 255) / 255f; d[i++] = (c2 >>> 24) / 255f;
+		d[i++] = type; d[i++] = param; d[i++] = angle; d[i++] = 0;
+		d[i++] = u; d[i++] = v;
+		d[i++] = state.clipX0; d[i++] = state.clipY0; d[i++] = state.clipX1; d[i++] = state.clipY1;
+		size = i;
 	}
 
 	// ------------------------------------------------------------------------------------------------------------
@@ -346,9 +341,9 @@ public final class UiRenderer implements Canvas {
 			int cp = text.codePointAt(i);
 			i += Character.charCount(cp);
 			if (cp == '§' && i < text.length()) {
-				Formatting fmt = Formatting.byCode(text.charAt(i++));
-				if (fmt == null || fmt == Formatting.RESET) current = base;
-				else if (fmt.getColorValue() != null) current = (base & 0xFF000000) | fmt.getColorValue();
+				ChatFormatting fmt = ChatFormatting.getByCode(text.charAt(i++));
+				if (fmt == null || fmt == ChatFormatting.RESET) current = base;
+				else if (TextColor.fromLegacyFormat(fmt) instanceof TextColor tc) current = (base & 0xFF000000) | tc.getValue();
 				continue;
 			}
 			Glyph g = f.glyph(cp);
@@ -362,6 +357,7 @@ public final class UiRenderer implements Canvas {
 					vertex(gx, gy + gh, 0, 0, gw, gh, 0, 0, 0, 0, current, current, GLYPH, 0, 0, g.u0(), g.v1());
 					vertex(gx + gw, gy + gh, 0, 0, gw, gh, 0, 0, 0, 0, current, current, GLYPH, 0, 0, g.u1(), g.v1());
 					vertex(gx + gw, gy, 0, 0, gw, gh, 0, 0, 0, 0, current, current, GLYPH, 0, 0, g.u1(), g.v0());
+					include(gx, gy, gx + gw, gy + gh);
 					quads++;
 				}
 			}
@@ -412,11 +408,7 @@ public final class UiRenderer implements Canvas {
 
 	@Override
 	public void pop() {
-		State prev = stack.pop();
-		if (prev.clipX0 != state.clipX0 || prev.clipY0 != state.clipY0 || prev.clipX1 != state.clipX1 || prev.clipY1 != state.clipY1) {
-			flush();
-		}
-		state = prev;
+		state = stack.pop();
 	}
 
 	/** Stack depth, so callers can recover from a panel that threw mid-render. */
@@ -428,11 +420,9 @@ public final class UiRenderer implements Canvas {
 		while (stack.size() > depth) pop();
 	}
 
-	/** Computes the frame blur now, from what has been drawn so far (call before drawing windows). */
+	/** Asks for the frame blur up front (call before drawing windows), so backdrops have it. */
 	public void captureBlur() {
-		if (!blurEnabled) return;
-		flush();
-		blurTexture = blur.blurredScene(frame, blurPasses, blurOffset);
+		if (blurEnabled) blur.request(blurPasses, blurOffset);
 	}
 
 	@Override
@@ -453,7 +443,6 @@ public final class UiRenderer implements Canvas {
 
 	@Override
 	public void clip(float x, float y, float w, float h) {
-		flush();
 		float x0 = px(x), y0 = py(y), x1 = px(x + w), y1 = py(y + h);
 		state.clipX0 = Math.max(state.clipX0, (int) Math.floor(x0));
 		state.clipY0 = Math.max(state.clipY0, (int) Math.floor(y0));
@@ -467,7 +456,7 @@ public final class UiRenderer implements Canvas {
 	}
 
 	@Override
-	public DrawContext drawContext() {
+	public GuiGraphicsExtractor drawContext() {
 		return context;
 	}
 
@@ -480,54 +469,28 @@ public final class UiRenderer implements Canvas {
 		return state.clipX0 > 0 || state.clipY0 > 0 || state.clipX1 < fbW || state.clipY1 < fbH;
 	}
 
-	private void applyScissor() {
-		if (!clipping()) {
-			RenderSystem.disableScissor();
-			return;
-		}
-		int w = Math.max(0, state.clipX1 - state.clipX0), h = Math.max(0, state.clipY1 - state.clipY0);
-		RenderSystem.enableScissor(state.clipX0, fbH - state.clipY0 - h, w, h);
-	}
-
 	@Override
 	public void flush() {
 		if (quads == 0) return;
-		data.flip();
-		snapshot.save();
-		RenderSystem.enableBlend();
-		RenderSystem.blendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-		RenderSystem.disableDepthTest();
-		RenderSystem.depthMask(false);
-		RenderSystem.disableCull();
-		applyScissor();
+		if (maxX > minX && maxY > minY) {
+			int x0 = (int) Math.floor(minX / guiScale), y0 = (int) Math.floor(minY / guiScale);
+			int x1 = (int) Math.ceil(maxX / guiScale), y1 = (int) Math.ceil(maxY / guiScale);
+			GpuSampler sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
+			GpuTextureView blurView = usesBlur ? blur.output() : white;
+			TextureSetup textures = TextureSetup.doubleTexture(texture != null ? texture : white, sampler, blurView, sampler);
+			context.guiRenderState.addGuiElement(new UiBatch(Arrays.copyOf(data, size), quads * 4, textures,
+				new ScreenRectangle(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0))));
+		}
+		resetBatch();
+	}
 
-		program.use();
-		program.set("uProj", projection);
-		program.set("uScreen", fbW, fbH);
-		program.set("uTex", 0);
-		program.set("uBlur", 1);
-		GlStateManager._activeTexture(GL_TEXTURE1);
-		GlStateManager._bindTexture(blurTexture);
-		GlStateManager._activeTexture(GL_TEXTURE0);
-		if (texture != 0) GlStateManager._bindTexture(texture);
-
-		glBindVertexArray(vao);
-		GlStateManager._glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, (long) data.capacity() * 4, GL_STREAM_DRAW);
-		glBufferSubData(GL_ARRAY_BUFFER, 0, data);
-		glDrawElements(GL_TRIANGLES, quads * 6, GL_UNSIGNED_INT, 0);
-
-		snapshot.restore();
-		RenderSystem.disableScissor();
-		RenderSystem.depthMask(true);
-		RenderSystem.enableDepthTest();
-		RenderSystem.enableCull();
-		RenderSystem.defaultBlendFunc();
-		RenderSystem.disableBlend();
-
-		data.clear();
+	private void resetBatch() {
+		size = 0;
 		quads = 0;
-		texture = 0;
+		texture = null;
+		usesBlur = false;
+		minX = minY = Float.MAX_VALUE;
+		maxX = maxY = -Float.MAX_VALUE;
 	}
 
 	private static final class State {

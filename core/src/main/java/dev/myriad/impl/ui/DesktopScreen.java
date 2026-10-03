@@ -1,29 +1,32 @@
 package dev.myriad.impl.ui;
 
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 
 /** The screen that hosts the desktop; all logic lives in {@link WindowManager}. */
 public final class DesktopScreen extends Screen {
 	private final WindowManager wm;
 
 	public DesktopScreen(WindowManager wm) {
-		super(Text.literal("Myriad"));
+		super(Component.literal("Myriad"));
 		this.wm = wm;
 	}
 
 	@Override
-	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+	public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
 		wm.renderDesktop(context, mouseX, mouseY);
 	}
 
 	@Override
-	public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+	public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
 	}
 
 	@Override
-	public boolean shouldPause() {
+	public boolean isPauseScreen() {
 		return wm.theme().pauseGame.get();
 	}
 
@@ -33,18 +36,18 @@ public final class DesktopScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		return wm.mouseClicked(mouseX, mouseY, button);
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		return wm.mouseClicked(event.x(), event.y(), event.button());
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
-		return wm.mouseReleased(mouseX, mouseY, button);
+	public boolean mouseReleased(MouseButtonEvent event) {
+		return wm.mouseReleased(event.x(), event.y(), event.button());
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-		return wm.mouseDragged(mouseX, mouseY, button);
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		return wm.mouseDragged(event.x(), event.y(), event.button());
 	}
 
 	@Override
@@ -53,13 +56,15 @@ public final class DesktopScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		return wm.keyPressed(keyCode, scanCode, modifiers);
+	public boolean keyPressed(KeyEvent event) {
+		return wm.keyPressed(event.key(), event.scancode(), event.modifiers());
 	}
 
 	@Override
-	public boolean charTyped(char chr, int modifiers) {
-		return wm.charTyped(chr, modifiers);
+	public boolean charTyped(CharacterEvent event) {
+		boolean handled = false;
+		for (char chr : Character.toChars(event.codepoint())) handled |= wm.charTyped(chr, 0);
+		return handled;
 	}
 
 	@Override

@@ -1,8 +1,8 @@
 package dev.myriad.api.render;
 
 import dev.myriad.impl.render.EntityRenderStateAccess;
-import net.minecraft.client.render.entity.state.EntityRenderState;
-import net.minecraft.entity.Entity;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.Nullable;
 
 /**

@@ -44,10 +44,10 @@ import dev.myriad.impl.ui.layout.ColumnsLayout;
 import dev.myriad.impl.ui.layout.DwindleLayout;
 import dev.myriad.impl.ui.layout.MasterLayout;
 import dev.myriad.impl.ui.panels.CorePanels;
-import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
+import net.minecraft.client.Minecraft;
 
 /**
  * Myriad core registers its own pieces through the same addon API everyone else uses: categories, layouts, themes,
@@ -98,8 +98,8 @@ public final class CoreAddon implements MyriadAddon {
 			HBox row = new HBox(3);
 			row.addWeighted(new TextField(s::valueString).onSubmit(s::parse), 1);
 			row.addFixed(new Button("Here", () -> {
-				var player = MinecraftClient.getInstance().player;
-				if (player != null) s.set(player.getBlockPos());
+				var player = Minecraft.getInstance().player;
+				if (player != null) s.set(player.blockPosition());
 			}), 32).tooltip("Where you're standing");
 			return row;
 		}, false);

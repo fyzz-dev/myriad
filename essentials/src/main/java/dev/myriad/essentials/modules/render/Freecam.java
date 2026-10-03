@@ -11,11 +11,12 @@ import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.DoubleSetting;
-import net.minecraft.client.input.KeyboardInput;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.util.PlayerInput;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Options;
+import net.minecraft.client.player.KeyboardInput;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.phys.Vec2;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Fly the camera around while your player stays put. Movement keys move the camera, Space/Shift go up/down.
@@ -25,7 +26,7 @@ public class Freecam extends Module {
 	private final BoolSetting interaction = sgGeneral.bool("Interaction").description("Break, place and target from the camera's position.").defaultValue(true).build();
 	private final BoolSetting rotate = sgGeneral.bool("Rotate").description("Turn your real player to face where the camera looks.").build();
 
-	private Vec3d position, lastPosition;
+	private Vec3 position, lastPosition;
 	private float yaw, pitch;
 	private boolean savedCulling;
 
@@ -39,21 +40,21 @@ public class Freecam extends Module {
 			disable();
 			return;
 		}
-		position = lastPosition = mc.gameRenderer.getCamera().getPos();
-		yaw = mc.player.getYaw();
-		pitch = mc.player.getPitch();
+		position = lastPosition = mc.gameRenderer.mainCamera().position();
+		yaw = mc.player.getYRot();
+		pitch = mc.player.getXRot();
 		mc.player.input = new CameraInput(mc.options);
 		// Occlusion culling is computed from the player's chunk; turn it off so terrain around the camera shows.
-		savedCulling = mc.chunkCullingEnabled;
-		mc.chunkCullingEnabled = false;
-		if (mc.worldRenderer != null) mc.worldRenderer.scheduleTerrainUpdate();
+		savedCulling = mc.smartCull;
+		mc.smartCull = false;
+		if (mc.levelRenderer != null) mc.levelRenderer.sectionOcclusionGraph().invalidate();
 	}
 
 	@Override
 	protected void onDisable() {
 		if (mc.player != null) mc.player.input = new KeyboardInput(mc.options);
-		mc.chunkCullingEnabled = savedCulling;
-		if (mc.worldRenderer != null) mc.worldRenderer.scheduleTerrainUpdate();
+		mc.smartCull = savedCulling;
+		if (mc.levelRenderer != null) mc.levelRenderer.sectionOcclusionGraph().invalidate();
 		position = lastPosition = null;
 	}
 
@@ -64,14 +65,14 @@ public class Freecam extends Module {
 
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
-		if (!inGame() || mc.player.isDead()) {
+		if (!inGame() || mc.player.isDeadOrDying()) {
 			disable();
 			return;
 		}
 		if (!(mc.player.input instanceof CameraInput)) mc.player.input = new CameraInput(mc.options);
 		if (rotate.get()) {
-			mc.player.setYaw(yaw);
-			mc.player.setPitch(pitch);
+			mc.player.setYRot(yaw);
+			mc.player.setXRot(pitch);
 		}
 	}
 
@@ -87,13 +88,13 @@ public class Freecam extends Module {
 	private void onMouse(MouseLookEvent e) {
 		e.cancel();
 		yaw += (float) (e.deltaX() * 0.15);
-		pitch = MathHelper.clamp(pitch + (float) (e.deltaY() * 0.15), -90, 90);
+		pitch = Mth.clamp(pitch + (float) (e.deltaY() * 0.15), -90, 90);
 	}
 
 	@Subscribe
 	private void onCameraPosition(CameraEvent.Position e) {
 		if (position == null) return;
-		Vec3d p = lastPosition.lerp(position, e.tickDelta());
+		Vec3 p = lastPosition.lerp(position, e.tickDelta());
 		e.x = p.x;
 		e.y = p.y;
 		e.z = p.z;
@@ -122,26 +123,25 @@ public class Freecam extends Module {
 
 	@Subscribe
 	private void onLook(PlayerViewEvent.Look e) {
-		if (interaction.get()) e.value = Vec3d.fromPolar(pitch, yaw);
+		if (interaction.get()) e.value = Vec3.directionFromRotation(pitch, yaw);
 	}
 
 	/** Replaces the player's input: keys move the camera, the player gets no movement. */
 	private final class CameraInput extends KeyboardInput {
-		private final GameOptions options;
+		private final Options options;
 
-		CameraInput(GameOptions options) {
+		CameraInput(Options options) {
 			super(options);
 			this.options = options;
 		}
 
 		@Override
 		public void tick() {
-			playerInput = PlayerInput.DEFAULT;
-			movementForward = 0;
-			movementSideways = 0;
+			keyPresses = Input.EMPTY;
+			moveVector = Vec2.ZERO;
 			if (position == null) return;
-			float forward = axis(options.forwardKey.isPressed(), options.backKey.isPressed());
-			float strafe = axis(options.leftKey.isPressed(), options.rightKey.isPressed());
+			float forward = axis(options.keyUp.isDown(), options.keyDown.isDown());
+			float strafe = axis(options.keyLeft.isDown(), options.keyRight.isDown());
 			if (forward != 0 && strafe != 0) {
 				forward *= (float) Math.sin(Math.PI / 4);
 				strafe *= (float) Math.cos(Math.PI / 4);
@@ -150,7 +150,7 @@ public class Freecam extends Module {
 			double rad = Math.toRadians(yaw);
 			double dx = (forward * -Math.sin(rad) + strafe * Math.cos(rad)) * s;
 			double dz = (forward * Math.cos(rad) + strafe * Math.sin(rad)) * s;
-			double dy = options.jumpKey.isPressed() ? s : options.sneakKey.isPressed() ? -s : 0;
+			double dy = options.keyJump.isDown() ? s : options.keyShift.isDown() ? -s : 0;
 			lastPosition = position;
 			position = position.add(dx, dy, dz);
 		}

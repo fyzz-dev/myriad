@@ -3,19 +3,18 @@ package dev.myriad.api.ui.widget;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.setting.RegistrySetting;
-import net.minecraft.registry.Registry;
 import dev.myriad.api.util.ColorUtil;
-import net.minecraft.block.Block;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.util.Identifier;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.core.Registry;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 
 /**
  * Inline searchable multi-select over a vanilla registry, instead of a separate picker screen. Selected
@@ -94,7 +93,7 @@ public class RegistryPicker<T> extends Widget {
 
 			@Override
 			public String id(T t) {
-				return String.valueOf(setting.registry().getId(t));
+				return String.valueOf(setting.registry().getKey(t));
 			}
 
 			@Override
@@ -139,7 +138,7 @@ public class RegistryPicker<T> extends Widget {
 
 			@Override
 			public String id(T t) {
-				return String.valueOf(setting.registry().getId(t));
+				return String.valueOf(setting.registry().getKey(t));
 			}
 
 			@Override
@@ -180,10 +179,10 @@ public class RegistryPicker<T> extends Widget {
 	/** A registry entry's display name (blocks, items, entities and effects), falling back to its id. */
 	public static <T> String registryName(Registry<T> registry, T t) {
 		if (t instanceof Block b) return b.getName().getString();
-		if (t instanceof Item i) return i.getName().getString();
-		if (t instanceof EntityType<?> e) return e.getName().getString();
-		if (t instanceof StatusEffect s) return s.getName().getString();
-		Identifier id = registry.getId(t);
+		if (t instanceof Item i) return i.getName(i.getDefaultInstance()).getString();
+		if (t instanceof EntityType<?> e) return e.getDescription().getString();
+		if (t instanceof MobEffect s) return s.getDisplayName().getString();
+		Identifier id = registry.getKey(t);
 		return id == null ? String.valueOf(t) : id.getPath();
 	}
 

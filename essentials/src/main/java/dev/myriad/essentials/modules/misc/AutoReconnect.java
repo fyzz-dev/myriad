@@ -8,19 +8,19 @@ import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.IntSetting;
-import net.minecraft.client.gui.screen.DisconnectedScreen;
-import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
-import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.DisconnectedScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
 
 /** Rejoins the last server after you're disconnected, up to a number of attempts. */
 public class AutoReconnect extends Module {
 	private final DoubleSetting delay = sgGeneral.doubleSetting("Delay").description("Seconds to wait on the disconnect screen.").defaultValue(5).range(0.5, 60).decimals(1).build();
 	private final IntSetting attempts = sgGeneral.intSetting("Attempts").description("Give up after this many tries in a row. 0 = never.").defaultValue(0).range(0, 50).build();
 
-	private ServerInfo lastServer;
+	private ServerData lastServer;
 	private long disconnectedAt = -1;
 	private int attemptCount;
 
@@ -40,7 +40,7 @@ public class AutoReconnect extends Module {
 
 	@Subscribe
 	private void onJoin(WorldEvent.Join e) {
-		ServerInfo info = mc.getCurrentServerEntry();
+		ServerData info = mc.getCurrentServer();
 		if (info != null) lastServer = info;
 		attemptCount = 0;
 		disconnectedAt = -1;
@@ -61,13 +61,13 @@ public class AutoReconnect extends Module {
 	@Subscribe
 	private void onTick(TickEvent.Post e) {
 		if (disconnectedAt < 0) return;
-		if (!(mc.currentScreen instanceof DisconnectedScreen)) {
+		if (!(mc.gui.screen() instanceof DisconnectedScreen)) {
 			disconnectedAt = -1;
 			return;
 		}
 		if (remaining() > 0) return;
 		disconnectedAt = -1;
 		attemptCount++;
-		ConnectScreen.connect(new MultiplayerScreen(new TitleScreen()), mc, ServerAddress.parse(lastServer.address), lastServer, false, null);
+		ConnectScreen.startConnecting(new JoinMultiplayerScreen(new TitleScreen()), mc, ServerAddress.parseString(lastServer.ip), lastServer, false, null);
 	}
 }

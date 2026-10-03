@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
-import net.minecraft.network.packet.Packet;
+import net.minecraft.network.protocol.Packet;
 
 /** Packet traffic. Bundles are split, so handlers see each inner packet. Receive is fired on the network thread. */
 public abstract class PacketEvent extends Cancellable {

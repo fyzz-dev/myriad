@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
-import net.minecraft.entity.Entity;
+import net.minecraft.world.entity.Entity;
 
 /**
  * You are about to attack an entity: posted just before the attack packet is sent, whoever sends it (vanilla

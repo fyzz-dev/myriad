@@ -3,10 +3,9 @@ package dev.myriad.essentials.hud;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.ui.hud.HudStyle;
 import dev.myriad.api.ui.hud.TextHudPanel;
-import net.minecraft.world.World;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.level.Level;
 
 public final class CoordinatesPanel extends TextHudPanel {
 	private final BoolSetting otherDimension = sgGeneral.bool("Other Dimension").description("Show the matching Nether/Overworld coordinates.").defaultValue(true).build();
@@ -26,12 +25,12 @@ public final class CoordinatesPanel extends TextHudPanel {
 		var p = mc.player;
 		String f = decimals.get() ? "%.1f %.1f %.1f" : "%.0f %.0f %.0f";
 		List<String> parts = new ArrayList<>(List.of("XYZ ", String.format(f, p.getX(), p.getY(), p.getZ())));
-		if (otherDimension.get() && mc.world.getRegistryKey() != World.END) {
-			boolean nether = mc.world.getRegistryKey() == World.NETHER;
+		if (otherDimension.get() && mc.level.dimension() != Level.END) {
+			boolean nether = mc.level.dimension() == Level.NETHER;
 			double k = nether ? 8 : 1 / 8.0;
 			parts.addAll(List.of(nether ? " [OW " : " [Nether ", String.format(decimals.get() ? "%.1f %.1f" : "%.0f %.0f", p.getX() * k, p.getZ() * k), "]", ""));
 		}
-		if (direction.get()) parts.addAll(List.of(" ", p.getHorizontalFacing().asString()));
+		if (direction.get()) parts.addAll(List.of(" ", p.getDirection().getSerializedName()));
 		out.parts(parts.toArray(String[]::new));
 	}
 }

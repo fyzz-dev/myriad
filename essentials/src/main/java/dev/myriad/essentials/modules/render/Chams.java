@@ -9,9 +9,9 @@ import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.Entities;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 /**
  * Colours entity models: a flat translucent fill (optionally visible through walls, over or instead of the normal
@@ -47,10 +47,10 @@ public class Chams extends Module {
 	/** Whether chams apply to this entity right now. */
 	public boolean appliesTo(Entity e) {
 		if (!(e instanceof LivingEntity) || !e.isAlive()) return false;
-		MinecraftClient mc = MinecraftClient.getInstance();
+		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null) return false;
 		if (e == mc.player) return self.get();
-		if (mc.player.squaredDistanceTo(e) > range.get() * range.get()) return false;
+		if (mc.player.distanceToSqr(e) > range.get() * range.get()) return false;
 		if (Entities.isFriend(e)) {
 			current = e;
 			return friends.get();

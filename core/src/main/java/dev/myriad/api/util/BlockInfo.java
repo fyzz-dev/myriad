@@ -1,27 +1,27 @@
 package dev.myriad.api.util;
 
-import net.minecraft.block.AbstractChestBlock;
-import net.minecraft.block.AbstractFurnaceBlock;
-import net.minecraft.block.AnvilBlock;
-import net.minecraft.block.BarrelBlock;
-import net.minecraft.block.BedBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.BlockWithEntity;
-import net.minecraft.block.BrewingStandBlock;
-import net.minecraft.block.ButtonBlock;
-import net.minecraft.block.CrafterBlock;
-import net.minecraft.block.CraftingTableBlock;
-import net.minecraft.block.DispenserBlock;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.FenceGateBlock;
-import net.minecraft.block.HopperBlock;
-import net.minecraft.block.LeverBlock;
-import net.minecraft.block.NoteBlock;
-import net.minecraft.block.ShulkerBoxBlock;
-import net.minecraft.block.TrapdoorBlock;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.AbstractChestBlock;
+import net.minecraft.world.level.block.AbstractFurnaceBlock;
+import net.minecraft.world.level.block.AnvilBlock;
+import net.minecraft.world.level.block.BarrelBlock;
+import net.minecraft.world.level.block.BaseEntityBlock;
+import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.BrewingStandBlock;
+import net.minecraft.world.level.block.ButtonBlock;
+import net.minecraft.world.level.block.CrafterBlock;
+import net.minecraft.world.level.block.CraftingTableBlock;
+import net.minecraft.world.level.block.DispenserBlock;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.HopperBlock;
+import net.minecraft.world.level.block.LeverBlock;
+import net.minecraft.world.level.block.NoteBlock;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * What kind of block something is, with one answer shared by every addon: can it be broken, does it survive
@@ -35,13 +35,13 @@ public final class BlockInfo {
 	}
 
 	private static BlockState state(BlockPos pos) {
-		var world = MinecraftClient.getInstance().world;
-		return world == null ? net.minecraft.block.Blocks.AIR.getDefaultState() : world.getBlockState(pos);
+		var world = Minecraft.getInstance().level;
+		return world == null ? net.minecraft.world.level.block.Blocks.AIR.defaultBlockState() : world.getBlockState(pos);
 	}
 
 	/** Bedrock, barriers, end portal frames and the like: nothing a survival player can mine. */
 	public static boolean isUnbreakable(BlockState state) {
-		return state.getBlock().getHardness() < 0;
+		return state.getBlock().defaultDestroyTime() < 0;
 	}
 
 	public static boolean isUnbreakable(BlockPos pos) {
@@ -61,7 +61,7 @@ public final class BlockInfo {
 
 	/** Survives explosions: obsidian, crying obsidian, ender chests, anvils, netherite blocks, bedrock… */
 	public static boolean isBlastResistant(BlockState state) {
-		return state.getBlock().getBlastResistance() >= BLAST_RESISTANT;
+		return state.getBlock().getExplosionResistance() >= BLAST_RESISTANT;
 	}
 
 	public static boolean isBlastResistant(BlockPos pos) {
@@ -85,13 +85,13 @@ public final class BlockInfo {
 	 */
 	public static boolean isClickable(BlockState state) {
 		Block b = state.getBlock();
-		return b instanceof BlockWithEntity || b instanceof AbstractChestBlock<?> || b instanceof DoorBlock || b instanceof TrapdoorBlock
+		return b instanceof BaseEntityBlock || b instanceof AbstractChestBlock<?> || b instanceof DoorBlock || b instanceof TrapDoorBlock
 			|| b instanceof FenceGateBlock || b instanceof ButtonBlock || b instanceof LeverBlock || b instanceof CraftingTableBlock
 			|| b instanceof AnvilBlock || b instanceof BedBlock || b instanceof NoteBlock;
 	}
 
 	/** Air, water, grass and anything else a placed block replaces. */
 	public static boolean isReplaceable(BlockPos pos) {
-		return state(pos).isReplaceable();
+		return state(pos).canBeReplaced();
 	}
 }

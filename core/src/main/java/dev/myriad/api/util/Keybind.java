@@ -1,8 +1,7 @@
 package dev.myriad.api.util;
 
-import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
-
+import com.mojang.blaze3d.platform.InputConstants;
 import java.util.Locale;
 
 /**
@@ -35,8 +34,8 @@ public record Keybind(int code, boolean mouse, int modifiers) {
 	/** Whether the key or button is held down right now (modifiers are not checked). */
 	public boolean isPressed() {
 		if (!isSet()) return false;
-		long window = net.minecraft.client.MinecraftClient.getInstance().getWindow().getHandle();
-		return mouse ? GLFW.glfwGetMouseButton(window, code) == GLFW.GLFW_PRESS : InputUtil.isKeyPressed(window, code);
+		long window = net.minecraft.client.Minecraft.getInstance().getWindow().handle();
+		return mouse ? GLFW.glfwGetMouseButton(window, code) == GLFW.GLFW_PRESS : InputConstants.isKeyDown(net.minecraft.client.Minecraft.getInstance().getWindow(), code);
 	}
 
 	public boolean matchesMouse(int button, int mods) {
@@ -66,7 +65,7 @@ public record Keybind(int code, boolean mouse, int modifiers) {
 	public static String keyName(int key) {
 		String glfw = GLFW.glfwGetKeyName(key, 0);
 		if (glfw != null) return glfw.toUpperCase(Locale.ROOT);
-		String translated = InputUtil.Type.KEYSYM.createFromCode(key).getLocalizedText().getString();
+		String translated = InputConstants.Type.KEYSYM.getOrCreate(key).getDisplayName().getString();
 		return translated.startsWith("key.keyboard.") ? "Key " + key : translated;
 	}
 

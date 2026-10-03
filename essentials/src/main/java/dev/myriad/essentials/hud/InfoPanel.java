@@ -6,10 +6,9 @@ import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.ui.hud.HudStyle;
 import dev.myriad.api.ui.hud.TextHudPanel;
 import dev.myriad.api.util.ItemInfo;
-import net.minecraft.world.World;
-
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import net.minecraft.world.level.Level;
 
 /** FPS, ping, speed, TPS, server and more, one "label value" pair per line. */
 public final class InfoPanel extends TextHudPanel {
@@ -33,25 +32,25 @@ public final class InfoPanel extends TextHudPanel {
 
 	@Override
 	protected void lines(Lines out) {
-		if (fps.get()) out.add("FPS", String.valueOf(mc.getCurrentFps()));
+		if (fps.get()) out.add("FPS", String.valueOf(mc.getFps()));
 		if (ping.get() && mc.player != null) out.add("Ping", Myriad.server().ping() + "ms");
 		if (speed.get() && mc.player != null) {
-			double dx = mc.player.getX() - mc.player.prevX, dz = mc.player.getZ() - mc.player.prevZ;
+			double dx = mc.player.getX() - mc.player.xo, dz = mc.player.getZ() - mc.player.zo;
 			double bps = Math.sqrt(dx * dx + dz * dz) * 20;
 			out.add("Speed", unit.get() == SpeedUnit.KMH ? String.format("%.1f km/h", bps * 3.6) : String.format("%.1f b/s", bps));
 		}
 		if (tps.get()) out.add("TPS", String.format("%.1f", Myriad.server().tps()));
 		if (server.get()) {
-			var entry = mc.getCurrentServerEntry();
-			out.add("Server", entry == null ? (mc.isInSingleplayer() ? "Singleplayer" : "-") : entry.address);
+			var entry = mc.getCurrentServer();
+			out.add("Server", entry == null ? (mc.isLocalServer() ? "Singleplayer" : "-") : entry.ip);
 		}
-		if (dimension.get() && mc.world != null) {
-			var key = mc.world.getRegistryKey();
-			out.add("Dimension", key == World.NETHER ? "Nether" : key == World.END ? "End" : key == World.OVERWORLD ? "Overworld" : key.getValue().getPath());
+		if (dimension.get() && mc.level != null) {
+			var key = mc.level.dimension();
+			out.add("Dimension", key == Level.NETHER ? "Nether" : key == Level.END ? "End" : key == Level.OVERWORLD ? "Overworld" : key.identifier().getPath());
 		}
 		if (time.get()) out.add("Time", LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")));
-		if (durability.get() && mc.player != null && mc.player.getMainHandStack().isDamageable()) {
-			out.add("Durability", String.valueOf(ItemInfo.durability(mc.player.getMainHandStack())));
+		if (durability.get() && mc.player != null && mc.player.getMainHandItem().isDamageableItem()) {
+			out.add("Durability", String.valueOf(ItemInfo.durability(mc.player.getMainHandItem())));
 		}
 	}
 }

@@ -62,4 +62,16 @@ public record SettingColor(int color, Mode mode) {
 	public static void setPaletteProvider(ToIntFunction<Mode> provider) {
 		palette = provider;
 	}
+
+	/**
+	 * A number that changes whenever a theme role resolves to a different colour (the user switched or edited the
+	 * theme). Compare it with the value from when you cached colours to know when to rebuild.
+	 */
+	public static int paletteStamp() {
+		int h = 1;
+		for (Mode m : Mode.values()) {
+			if (m != Mode.STATIC && m != Mode.RAINBOW) h = h * 31 + palette.applyAsInt(m);
+		}
+		return h;
+	}
 }

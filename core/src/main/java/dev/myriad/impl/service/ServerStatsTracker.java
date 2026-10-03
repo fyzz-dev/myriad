@@ -5,16 +5,15 @@ import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.service.ServerStats;
 import dev.myriad.api.util.RateCounter;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
-import net.minecraft.network.packet.s2c.play.WorldTimeUpdateS2CPacket;
-
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 
 /** Server TPS from the once-a-second time updates, and totem pops from entity status 35 (pop) and 3 (death). */
 public final class ServerStatsTracker implements ServerStats {
@@ -34,17 +33,17 @@ public final class ServerStatsTracker implements ServerStats {
 	private void onPacket(PacketEvent.Receive e) {
 		lastPacket = System.currentTimeMillis();
 		received.record();
-		if (e.packet() instanceof PlayerPositionLookS2CPacket) lastRubberband = System.currentTimeMillis();
-		if (e.packet() instanceof WorldTimeUpdateS2CPacket) sample();
-		else if (e.packet() instanceof EntityStatusS2CPacket p && (p.getStatus() == 35 || p.getStatus() == 3)) {
-			MinecraftClient mc = MinecraftClient.getInstance();
-			byte status = p.getStatus();
+		if (e.packet() instanceof ClientboundPlayerPositionPacket) lastRubberband = System.currentTimeMillis();
+		if (e.packet() instanceof ClientboundSetTimePacket) sample();
+		else if (e.packet() instanceof ClientboundEntityEventPacket p && (p.getEventId() == 35 || p.getEventId() == 3)) {
+			Minecraft mc = Minecraft.getInstance();
+			byte status = p.getEventId();
 			mc.execute(() -> {
-				if (mc.world == null) return;
-				Entity entity = p.getEntity(mc.world);
-				if (!(entity instanceof PlayerEntity player)) return;
-				if (status == 35) pops.merge(player.getUuid(), 1, Integer::sum);
-				else pops.remove(player.getUuid());
+				if (mc.level == null) return;
+				Entity entity = p.getEntity(mc.level);
+				if (!(entity instanceof Player player)) return;
+				if (status == 35) pops.merge(player.getUUID(), 1, Integer::sum);
+				else pops.remove(player.getUUID());
 			});
 		}
 	}
@@ -81,26 +80,26 @@ public final class ServerStatsTracker implements ServerStats {
 
 	@Override
 	public int ping() {
-		MinecraftClient mc = MinecraftClient.getInstance();
-		if (mc.player == null || mc.getNetworkHandler() == null) return 0;
-		var entry = mc.getNetworkHandler().getPlayerListEntry(mc.player.getUuid());
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player == null || mc.getConnection() == null) return 0;
+		var entry = mc.getConnection().getPlayerInfo(mc.player.getUUID());
 		return entry == null ? 0 : entry.getLatency();
 	}
 
 	@Override
 	public String address() {
-		MinecraftClient mc = MinecraftClient.getInstance();
-		return mc.getCurrentServerEntry() == null || mc.isInSingleplayer() ? null : mc.getCurrentServerEntry().address;
+		Minecraft mc = Minecraft.getInstance();
+		return mc.getCurrentServer() == null || mc.isLocalServer() ? null : mc.getCurrentServer().ip;
 	}
 
 	@Override
 	public boolean isSingleplayer() {
-		return MinecraftClient.getInstance().isInSingleplayer();
+		return Minecraft.getInstance().isLocalServer();
 	}
 
 	@Override
 	public long msSinceLastPacket() {
-		return MinecraftClient.getInstance().getNetworkHandler() == null ? 0 : System.currentTimeMillis() - lastPacket;
+		return Minecraft.getInstance().getConnection() == null ? 0 : System.currentTimeMillis() - lastPacket;
 	}
 
 	@Override

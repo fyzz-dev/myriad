@@ -1,5 +1,6 @@
 package dev.myriad.essentials.modules.render;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
@@ -20,24 +21,25 @@ import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.Format;
 import dev.myriad.essentials.util.PopColors;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.EntityPose;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.s2c.play.PlayerListS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlayerRemoveS2CPacket;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Marks where players logged out: a frozen copy of their model and/or their hitbox, with a label showing their
@@ -71,10 +73,10 @@ public class LogoutSpots extends Module {
 	/** Players seen in the world during the last few ticks. */
 	private final Map<UUID, Seen> seen = new ConcurrentHashMap<>();
 
-	private record Seen(PlayerEntity player, long time) {
+	private record Seen(Player player, long time) {
 	}
 
-	private record Ghost(UUID id, String name, PlayerEntity player, Vec3d pos, Box box, RegistryKey<World> dimension, long time, int pops) {
+	private record Ghost(UUID id, String name, Player player, Vec3 pos, AABB box, ResourceKey<Level> dimension, long time, int pops) {
 	}
 
 	public LogoutSpots() {
@@ -103,28 +105,28 @@ public class LogoutSpots extends Module {
 		if (!inGame()) return;
 		long now = System.currentTimeMillis();
 		seen.values().removeIf(s -> now - s.time > 150);
-		for (PlayerEntity p : mc.world.getPlayers()) {
+		for (Player p : mc.level.players()) {
 			if (p == mc.player || (ignoreNaked.get() && naked(p))) continue;
-			seen.put(p.getUuid(), new Seen(p, now));
+			seen.put(p.getUUID(), new Seen(p, now));
 		}
 	}
 
 	@Subscribe
 	private void onPacket(PacketEvent.Receive e) {
-		if (e.packet() instanceof PlayerRemoveS2CPacket p) {
+		if (e.packet() instanceof ClientboundPlayerInfoRemovePacket p) {
 			List<UUID> ids = new ArrayList<>(p.profileIds());
 			mc.execute(() -> ids.forEach(this::left));
-		} else if (e.packet() instanceof PlayerListS2CPacket p && p.getActions().contains(PlayerListS2CPacket.Action.ADD_PLAYER)) {
-			List<PlayerListS2CPacket.Entry> entries = new ArrayList<>(p.getPlayerAdditionEntries());
+		} else if (e.packet() instanceof ClientboundPlayerInfoUpdatePacket p && p.actions().contains(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER)) {
+			List<ClientboundPlayerInfoUpdatePacket.Entry> entries = new ArrayList<>(p.newEntries());
 			mc.execute(() -> entries.forEach(entry -> joined(entry.profileId())));
 		}
 	}
 
 	private void left(UUID id) {
 		Seen s = seen.get(id);
-		if (s == null || ghosts.containsKey(id) || mc.world == null) return;
-		PlayerEntity p = s.player;
-		ghosts.put(id, new Ghost(id, p.getGameProfile().getName(), p, p.getPos(), p.getBoundingBox(), mc.world.getRegistryKey(), System.currentTimeMillis(), Myriad.server().totemPops(p)));
+		if (s == null || ghosts.containsKey(id) || mc.level == null) return;
+		Player p = s.player;
+		ghosts.put(id, new Ghost(id, p.getGameProfile().name(), p, p.position(), p.getBoundingBox(), mc.level.dimension(), System.currentTimeMillis(), Myriad.server().totemPops(p)));
 	}
 
 	private void joined(UUID id) {
@@ -137,46 +139,49 @@ public class LogoutSpots extends Module {
 	}
 
 	private boolean shown(Ghost g) {
-		if (mc.world == null || g.dimension != mc.world.getRegistryKey()) return false;
-		return unlimited.get() || mc.player.getPos().distanceTo(g.pos) <= distance.get();
+		if (mc.level == null || g.dimension != mc.level.dimension()) return false;
+		return unlimited.get() || mc.player.position().distanceTo(g.pos) <= distance.get();
 	}
 
-	private static boolean naked(PlayerEntity p) {
-		for (ItemStack s : p.getArmorItems()) if (!s.isEmpty()) return false;
+	private static boolean naked(Player p) {
+		for (EquipmentSlot slot : EquipmentSlot.values()) {
+			if (slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR && !p.getItemBySlot(slot).isEmpty()) return false;
+		}
 		return true;
 	}
 
 	@Subscribe
 	private void onRender3D(Render3DEvent e) {
 		if (!inGame()) return;
-		MatrixStack matrices = e.matrices();
-		Vec3d cam = e.camera().getPos();
-		VertexConsumerProvider.Immediate vcp = renderModel.get() ? mc.getBufferBuilders().getEntityVertexConsumers() : null;
+		Vec3 cam = e.camera().position();
 		Renderer3D.lineWidth(lineWidth.getFloat());
 		for (Ghost g : ghosts.values()) {
 			if (!shown(g)) continue;
-			if (vcp != null) renderModel(g, matrices, cam, vcp);
+			if (renderModel.get()) renderModel(g, e.matrices(), cam, e.submits());
 			Renderer3D.box(g.box, fillColor.argb(), outlineColor.argb(), switch (mode.get()) {
 				case FILL -> Renderer3D.ShapeMode.FILL;
 				case OUTLINE -> Renderer3D.ShapeMode.LINES;
 				case BOTH -> Renderer3D.ShapeMode.BOTH;
 			}, false);
 		}
-		if (vcp != null) vcp.draw();
 	}
 
-	private void renderModel(Ghost g, MatrixStack matrices, Vec3d cam, VertexConsumerProvider vcp) {
-		PlayerEntity p = g.player;
+	private void renderModel(Ghost g, PoseStack matrices, Vec3 cam, SubmitNodeCollector submits) {
+		Player p = g.player;
 		// Freeze the copy where it logged out: no interpolation, no death or hurt animation.
-		p.setPosition(g.pos);
-		p.lastRenderX = p.prevX = g.pos.x;
-		p.lastRenderY = p.prevY = g.pos.y;
-		p.lastRenderZ = p.prevZ = g.pos.z;
+		p.setPos(g.pos);
+		p.xOld = p.xo = g.pos.x;
+		p.yOld = p.yo = g.pos.y;
+		p.zOld = p.zo = g.pos.z;
 		p.hurtTime = 0;
 		p.deathTime = 0;
-		if (p.getPose() == EntityPose.DYING) p.setPose(EntityPose.STANDING);
+		if (p.getPose() == Pose.DYING) p.setPose(Pose.STANDING);
 		try {
-			mc.getEntityRenderDispatcher().render(p, g.pos.x - cam.x, g.pos.y - cam.y, g.pos.z - cam.z, 1f, matrices, vcp, LightmapTextureManager.MAX_LIGHT_COORDINATE);
+			EntityRenderDispatcher dispatcher = mc.getEntityRenderDispatcher();
+			EntityRenderState state = dispatcher.extractEntity(p, 1f);
+			state.lightCoords = LightCoordsUtil.FULL_BRIGHT;
+			CameraRenderState camera = mc.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
+			dispatcher.submit(state, camera, g.pos.x - cam.x, g.pos.y - cam.y, g.pos.z - cam.z, matrices, submits);
 		} catch (RuntimeException ignored) {
 			// A renderer that can't draw a detached entity just skips the model.
 		}
@@ -187,7 +192,7 @@ public class LogoutSpots extends Module {
 		if (!inGame() || !label.get()) return;
 		for (Ghost g : ghosts.values()) {
 			if (!shown(g)) continue;
-			Vec3d top = new Vec3d(g.pos.x, g.box.maxY + 0.5, g.pos.z);
+			Vec3 top = new Vec3(g.pos.x, g.box.maxY + 0.5, g.pos.z);
 			List<WorldLabel.Segment> segs = new ArrayList<>();
 			segs.add(new WorldLabel.Segment(g.name, 0xFFFFFFFF));
 			segs.add(new WorldLabel.Segment(ago(g.time), 0xFFAAAAAA));

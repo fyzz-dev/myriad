@@ -1,7 +1,7 @@
 package dev.myriad.api.util;
 
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /** Text for numbers people read, so every addon writes distances, times and amounts the same way. */
 public final class Format {
@@ -48,7 +48,7 @@ public final class Format {
 		return pos.getX() + " " + pos.getY() + " " + pos.getZ();
 	}
 
-	public static String coords(Vec3d pos) {
+	public static String coords(Vec3 pos) {
 		return String.format("%.1f %.1f %.1f", pos.x, pos.y, pos.z);
 	}
 
