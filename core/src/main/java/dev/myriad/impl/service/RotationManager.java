@@ -154,18 +154,29 @@ public final class RotationManager implements Rotations {
 		requests.clear();
 	}
 
-	/** Runs the callbacks of requests whose rotation has now been sent. */
 	@Subscribe
-	private void onMovementSent(MovementPacketsEvent.Post e) {
+	private synchronized void onMovementSent(MovementPacketsEvent.Post e) {
+		fixYaw = Float.NaN;
+	}
+
+	/**
+	 * Runs the callbacks of requests whose rotation was sent last tick, at the start of this one: the server already
+	 * faces that way, and actions go out before this tick's movement, where vanilla sends them (Grim flags actions sent
+	 * after a movement packet; see ActionTiming).
+	 */
+	@Subscribe(priority = ACT_PRIORITY)
+	private void onTickStart(TickEvent.Pre e) {
 		List<Runnable> run;
 		synchronized (this) {
-			fixYaw = Float.NaN;
 			if (sentCallbacks.isEmpty()) return;
 			run = new ArrayList<>(sentCallbacks);
 			sentCallbacks.clear();
 		}
 		for (Runnable r : run) r.run();
 	}
+
+	/** Where core's services act at the start of a tick: after held actions go out, before modules. */
+	static final int ACT_PRIORITY = 900;
 
 	/** Every rotation that reaches the server, including ones features send directly. */
 	@Subscribe(priority = Priority.LOWEST)

@@ -116,6 +116,7 @@ public final class MyriadImpl implements MyriadApi {
 		windowManager.setDirtyHook(config::markDirty);
 		modules.onRemove(m -> m.setEnabled(false));
 
+		events.subscribe(dev.myriad.impl.network.ActionTiming.get());
 		events.subscribe(rotations);
 		events.subscribe(inventory);
 		events.subscribe(placement);

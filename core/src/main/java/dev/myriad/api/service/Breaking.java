@@ -45,8 +45,9 @@ public interface Breaking {
 		 * start it also sends a start for the same spot far above the world: the server ignores it as out of reach,
 		 * but Grim takes it as the block being broken, and air breaks instantly, so the early finish passes its check.
 		 * Breaks take at least 7 ticks, and just before finishing a burst of those starts clears Grim's record of
-		 * starting too soon after the last finish, so the next block can begin at once. Experimental: it relies on how
-		 * the server's Grim treats those packets, and can stop working when it's updated.
+		 * starting too soon after the last finish, so the next block can begin at once. Only for older Grim builds:
+		 * current Grim (2.3.74, tested) flags each decoy as breaking air (AirLiquidBreak) and cancels it, so the finish
+		 * is refused.
 		 */
 		FAST_GRIM
 	}

@@ -11,6 +11,7 @@ import dev.myriad.api.util.Slots;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.inventory.ContainerInput;
@@ -27,8 +28,15 @@ public final class InventoryManager implements Inventory {
 		if (e.packet() instanceof ServerboundSetCarriedItemPacket p) serverSlot = p.getSlot();
 	}
 
+	/** The server can set the slot itself (on join, or by a plugin). */
 	@Subscribe
-	private void onTick(TickEvent.Post e) {
+	private void onReceive(PacketEvent.Receive e) {
+		if (e.packet() instanceof ClientboundSetHeldSlotPacket p) serverSlot = p.slot();
+	}
+
+	/** Expires holds at the start of the tick, so the slot change back goes out before movement, like vanilla's. */
+	@Subscribe(priority = 950)
+	private void onTick(TickEvent.Pre e) {
 		if (holder == null) return;
 		if (mc.player == null || --holdTicks <= 0) release(holder);
 	}
