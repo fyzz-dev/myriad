@@ -3,7 +3,9 @@ package dev.myriad.essentials.modules.combat;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.combat.TargetSettings;
 import dev.myriad.api.combat.Targets;
+import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.MovementPacketsEvent;
 import dev.myriad.api.event.events.Render3DEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
@@ -92,9 +94,26 @@ public class KillAura extends Module {
 		// counts for the item you held last tick (switching resets it), so not the tick a weapon is switched in.
 		if (!switched && Interactions.attackCharge() >= 1 && lands(t, range)) Interactions.attack(t, true);
 
-		Vec3 aim = aimPoint(t);
-		float[] r = MathUtil.anglesTo(mc.player.getEyePosition(), aim);
-		Myriad.rotations().request(this, r[0], r[1], Rotations.PRIORITY_NORMAL, new Rotations.Options(turnSpeed.get(), true), null);
+		// Aimed from where your eyes will be once you've moved this tick: the server judges the hit from there.
+		Vec3 eyes = mc.player.getEyePosition().add(mc.player.getDeltaMovement());
+		float[] r = MathUtil.anglesTo(eyes, aimPoint(t, eyes));
+		Myriad.rotations().request(this, r[0], r[1], Rotations.PRIORITY_NORMAL, options(), null);
+	}
+
+	/**
+	 * Just before the rotation goes out, now that you've moved: the pitch is aimed again from where your eyes really are.
+	 * The yaw stays (your walking already follows it, which Grim checks).
+	 */
+	@Subscribe(priority = Priority.HIGH)
+	private void onBeforeRotationSent(MovementPacketsEvent e) {
+		if (target == null || !inGame()) return;
+		Vec3 eyes = mc.player.getEyePosition();
+		float[] r = MathUtil.anglesTo(eyes, aimPoint(target, eyes));
+		Myriad.rotations().request(this, Float.NaN, r[1], Rotations.PRIORITY_NORMAL + 1, options(), null);
+	}
+
+	private Rotations.Options options() {
+		return new Rotations.Options(turnSpeed.get(), true);
 	}
 
 	private boolean paused() {
@@ -133,13 +152,13 @@ public class KillAura extends Module {
 	}
 
 	/**
-	 * The point of the target's hitbox nearest your eyes, kept a little inside the box, so the look meets it at the
-	 * shortest reach without grazing the edge (the target moves between the look and the hit).
+	 * The point of the target's hitbox nearest {@code eyes}, kept well inside the box, so the look meets it at nearly the
+	 * shortest reach without grazing the edge (you and the target move between the look and the hit).
 	 */
-	private static Vec3 aimPoint(Entity t) {
+	private static Vec3 aimPoint(Entity t, Vec3 eyes) {
 		AABB box = t.getBoundingBox();
-		double ix = Math.min(0.15, box.getXsize() * 0.25), iy = Math.min(0.15, box.getYsize() * 0.25), iz = Math.min(0.15, box.getZsize() * 0.25);
-		return MathUtil.closestPoint(box.deflate(ix, iy, iz), Reach.eyes());
+		double ix = box.getXsize() * 0.3, iy = Math.min(0.3, box.getYsize() * 0.3), iz = box.getZsize() * 0.3;
+		return MathUtil.closestPoint(box.deflate(ix, iy, iz), eyes);
 	}
 
 	/** Damage per second at full charge (with Sharpness); 0 for things that aren't weapons or are about to break. */

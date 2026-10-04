@@ -21,7 +21,6 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientboundPingPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
@@ -110,6 +109,8 @@ public class ElytraFly extends Module {
 	private static final double LAG_HEIGHT = 0.163;
 
 	private boolean wantJump, spoofing;
+	/** Open the elytra this tick (see {@link #startGliding}); and whether jump was pressed last tick. */
+	private boolean wantOpen, jumpedLastTick;
 	/** Keep gliding client-side through ground touches; set once the elytra has opened while bouncing. */
 	private boolean holdGlide;
 	private volatile boolean flagged;
@@ -196,6 +197,10 @@ public class ElytraFly extends Module {
 	@Subscribe
 	private void onInput(InputEvent e) {
 		if (wantJump) e.jump = true;
+		// Vanilla opens the elytra when jump goes from released to pressed in the air: release it for a tick if it's
+		// held, then press it.
+		if (wantOpen) e.jump = !jumpedLastTick;
+		jumpedLastTick = e.jump;
 	}
 
 	@Subscribe
@@ -249,7 +254,7 @@ public class ElytraFly extends Module {
 
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
-		wantJump = false;
+		wantJump = wantOpen = false;
 		if (!inGame()) return;
 		if (mode.get() != activeMode) {
 			reset();
@@ -420,9 +425,13 @@ public class ElytraFly extends Module {
 		Myriad.rotations().request(this, spoofYaw, spoofPitch, Rotations.PRIORITY_HIGH + 50);
 	}
 
+	/**
+	 * Opens the elytra the way vanilla does: by pressing jump in the air after a tick with it released, so vanilla
+	 * sends the start itself, before the tick's input and movement. Grim checks exactly that (a start with jump released
+	 * the tick before and pressed in the same tick, and no two starts in a row); a start sent on its own is set back.
+	 */
 	private void startGliding() {
-		mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
-		mc.player.startFallFlying();
+		wantOpen = true;
 	}
 
 	/** Whether the elytra is really open (as the server last said, or as we just asked), ignoring {@link #holdsGlide()}. */

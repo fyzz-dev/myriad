@@ -67,8 +67,9 @@ public class AutoTool extends Module {
 		if (slot >= 0) use(slot, 4);
 	}
 
+	/** At the start of the tick, so switching back goes out before movement, where vanilla switches slots. */
 	@Subscribe
-	private void onTick(TickEvent.Post e) {
+	private void onTick(TickEvent.Pre e) {
 		if (!inGame()) {
 			stop();
 			return;

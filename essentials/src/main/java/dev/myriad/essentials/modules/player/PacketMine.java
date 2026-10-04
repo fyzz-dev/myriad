@@ -33,12 +33,13 @@ import java.util.List;
  * finishes aren't refused. The block you mined last can be re-broken with a single packet when something is placed
  * back there, once enough time has passed for that block.
  * <p>
- * Fast is the experimental 2b2t trick (see {@code Breaking.Mode.FAST_GRIM}): blocks finish at 70% of the time, with
- * decoy start packets that keep Grim from noticing, and Double Break mines a second block meanwhile.
+ * Fast is the decoy trick for older Grim builds (see {@code Breaking.Mode.FAST_GRIM}; current Grim catches it): blocks
+ * finish at 70% of the time, with decoy start packets that kept older Grim from noticing, and Double Break mines a
+ * second block meanwhile.
  */
 public class PacketMine extends Module {
-	private final BoolSetting fast = sgGeneral.bool("Fast").description("Experimental 2b2t trick: finish at 70% of the time and hide it from Grim with decoy start packets "
-		+ "(needs the server to run ViaVersion). If blocks come back, turn it off.").build();
+	private final BoolSetting fast = sgGeneral.bool("Fast").description("Older Grim builds only: finish at 70% of the time and hide it with decoy start "
+		+ "packets (needs ViaVersion). Current Grim flags the decoys and cancels them, so blocks come back.").build();
 	private final BoolSetting doubleBreak = sgGeneral.bool("Double Break").description("Mine a second block while the server finishes the first.")
 		.defaultValue(true).visible(fast::get).build();
 	private final BoolSetting queue = sgGeneral.bool("Queue").description("A new click adds to the line, instead of replacing the blocks still waiting. "
