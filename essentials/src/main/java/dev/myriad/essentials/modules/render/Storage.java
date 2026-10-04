@@ -25,7 +25,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ClientboundBlockEventPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.equine.AbstractChestedHorse;
-import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.world.entity.vehicle.boat.ChestBoat;
 import net.minecraft.world.entity.vehicle.boat.ChestRaft;
 import net.minecraft.world.entity.vehicle.minecart.MinecartChest;
@@ -81,6 +80,8 @@ import java.util.function.BiConsumer;
 public class Storage extends Module {
 	/** Chest model, in sixteenths of a block: the body is 10 tall, the lid sits from 9 to 14 and hinges at the back. */
 	private static final double BODY_TOP = 10 / 16.0, LID_BOTTOM = 9 / 16.0, LID_HEIGHT = 5 / 16.0;
+	/** Shulker box model: the base is the back half; the lid, 12/16 deep from 4/16, rises half a block and twists 270°. */
+	private static final double SHULKER_BASE = 8 / 16.0, SHULKER_LID_FROM = 4 / 16.0, SHULKER_RISE = 0.5;
 	/** How long after an open or close event a lid is drawn live, at least (the animation then has to settle). */
 	private static final long LID_MS = 1000;
 
@@ -202,10 +203,25 @@ public class Storage extends Module {
 		for (Found f : list) if (f.kind.enabled.get()) style.draw(mesh, meshBox(f), color(f), 1);
 	}
 
-	/** What goes in the mesh: a chest whose lid is moving keeps only its body there, and the lid is drawn live. */
+	/** What goes in the mesh: while a lid moves, a chest keeps its body there and a shulker box its base. */
 	private AABB meshBox(Found f) {
-		if (f.lid != Lid.CHEST || !animating.containsKey(f.pos)) return f.box;
+		if (f.lid == Lid.NONE || !animating.containsKey(f.pos)) return f.box;
+		if (f.lid == Lid.SHULKER) return shulkerBase(shulkerFacing(f.pos)).move(f.pos);
 		return new AABB(f.box.minX, f.box.minY, f.box.minZ, f.box.maxX, Math.min(f.box.maxY, f.box.minY + BODY_TOP), f.box.maxZ);
+	}
+
+	private Direction shulkerFacing(BlockPos pos) {
+		BlockState state = mc.level.getBlockState(pos);
+		return state.hasProperty(ShulkerBoxBlock.FACING) ? state.getValue(ShulkerBoxBlock.FACING) : Direction.UP;
+	}
+
+	/** A shulker box's base within its block: the half at its back. */
+	private static AABB shulkerBase(Direction facing) {
+		double[] min = {0, 0, 0}, max = {1, 1, 1};
+		int i = facing.getAxis().ordinal();
+		if (facing.getAxisDirection() == Direction.AxisDirection.POSITIVE) max[i] = SHULKER_BASE;
+		else min[i] = 1 - SHULKER_BASE;
+		return new AABB(min[0], min[1], min[2], max[0], max[1], max[2]);
 	}
 
 	private int color(Found f) {
@@ -256,7 +272,7 @@ public class Storage extends Module {
 	}
 
 	private AABB shapeBox(BlockState state, BlockPos pos) {
-		// A shulker box's shape grows while it's open; the box is always the closed cube (the lid is drawn live).
+		// A shulker box's shape grows while it's open; its box is the closed cube (an opening lid is drawn live).
 		if (state.getBlock() instanceof ShulkerBoxBlock) return new AABB(pos);
 		VoxelShape shape = state.getShape(mc.level, pos);
 		return shape.isEmpty() ? new AABB(pos) : shape.bounds().move(pos);
@@ -286,8 +302,8 @@ public class Storage extends Module {
 	}
 
 	/**
-	 * What Merge joins: containers of the same colour, each in its own shape (a shulker box as its closed cube, a chest
-	 * whose lid is moving as just its body).
+	 * What Merge joins: containers of the same colour, each in its own shape. While a lid moves, a shulker box counts as
+	 * its base and a chest as its body.
 	 */
 	private final MergedBoxes.Lookup mergeLookup = new MergedBoxes.Lookup() {
 		@Override
@@ -298,7 +314,7 @@ public class Storage extends Module {
 		@Override
 		public AABB shape(BlockPos pos) {
 			BlockState state = mc.level.getBlockState(pos);
-			if (state.getBlock() instanceof ShulkerBoxBlock) return null;
+			if (state.getBlock() instanceof ShulkerBoxBlock) return animating.containsKey(pos) ? shulkerBase(shulkerFacing(pos)) : null;
 			VoxelShape shape = state.getShape(mc.level, pos);
 			AABB own = shape.isEmpty() ? new AABB(0, 0, 0, 1, 1, 1) : shape.bounds();
 			BlockEntity be = mc.level.getBlockEntity(pos);
@@ -364,19 +380,12 @@ public class Storage extends Module {
 		return open;
 	}
 
-	/** Draws what the mesh leaves out while a lid moves: a chest's lid, or the part of a shulker box rising out of its block. */
+	/** Draws what the mesh leaves out while a lid moves: a chest's lid, or a shulker box's rising, twisting lid. */
 	private void drawLive(ShapeBuilder shapes, Found f, float tickDelta) {
 		int color = color(f);
 		BlockState state = mc.level.getBlockState(f.pos);
 		if (f.lid == Lid.SHULKER) {
-			Direction facing = state.hasProperty(ShulkerBoxBlock.FACING) ? state.getValue(ShulkerBoxBlock.FACING) : Direction.UP;
-			// The box vanilla uses for an opening shulker, past the block it sits in.
-			AABB open = Shulker.getProgressAabb(1, facing, 0.5f * openness(f.pos, tickDelta), Vec3.atBottomCenterOf(f.pos));
-			int i = facing.getAxis().ordinal();
-			double[] min = {open.minX, open.minY, open.minZ}, max = {open.maxX, open.maxY, open.maxZ};
-			if (facing.getAxisDirection() == Direction.AxisDirection.POSITIVE) min[i] = f.pos.get(facing.getAxis()) + 1;
-			else max[i] = f.pos.get(facing.getAxis());
-			if (max[i] - min[i] > 1e-3) style.draw(shapes, new AABB(min[0], min[1], min[2], max[0], max[1], max[2]), color, 1);
+			drawShulkerLid(shapes, f.pos, shulkerFacing(f.pos), openness(f.pos, tickDelta), color);
 			return;
 		}
 		if (f.lid != Lid.CHEST) return;
@@ -385,6 +394,23 @@ public class Storage extends Module {
 		// Vanilla's easing for the lid swing.
 		open = 1 - (1 - open) * (1 - open) * (1 - open);
 		drawLid(shapes, f.box, facing, open * Math.PI / 2, color);
+	}
+
+	/** A shulker box's lid, risen and twisted by {@code progress} (0-1) along {@code facing}, as the model does. */
+	private void drawShulkerLid(ShapeBuilder shapes, BlockPos pos, Direction facing, float progress, int color) {
+		Vec3 n = Vec3.atLowerCornerOf(facing.getUnitVec3i());
+		// Two axes across the facing, and the middle of the box's back face.
+		Vec3 u = facing.getAxis() == Direction.Axis.X ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0);
+		Vec3 v = n.cross(u);
+		Vec3 back = Vec3.atCenterOf(pos).subtract(n.scale(0.5));
+		double rise = SHULKER_RISE * progress, angle = Math.toRadians(270 * progress), cos = Math.cos(angle), sin = Math.sin(angle);
+		Vec3[] c = new Vec3[8];
+		for (int i = 0; i < 8; i++) {
+			double x = (i & 1) == 0 ? -0.5 : 0.5, y = (i & 2) == 0 ? -0.5 : 0.5;
+			double h = ((i & 4) == 0 ? SHULKER_LID_FROM : 1) + rise;
+			c[i] = back.add(n.scale(h)).add(u.scale(x * cos - y * sin)).add(v.scale(x * sin + y * cos));
+		}
+		orientedBox(shapes, c, color);
 	}
 
 	/** The lid of a chest occupying {@code b}, swung up by {@code angle} about the hinge along its back edge. */
