@@ -174,10 +174,15 @@ public final class DevConsole {
 			return;
 		}
 		var v = p.getDeltaMovement();
-		LOG.info("[dev] status: pos {} {} {} motion {} {} {} ({} b/s) rot {} {} ground={} gliding={} health={} slot={} item={} mode={}",
+		String target = switch (mc.hitResult) {
+			case BlockHitResult b when b.getType() == HitResult.Type.BLOCK -> "block " + b.getBlockPos().toShortString() + " " + b.getDirection();
+			case EntityHitResult en -> "entity " + en.getEntity().getName().getString();
+			case null, default -> "none";
+		};
+		LOG.info("[dev] status: pos {} {} {} motion {} {} {} ({} b/s) rot {} {} ground={} gliding={} health={} slot={} item={} mode={} target={}",
 			fmt(p.getX()), fmt(p.getY()), fmt(p.getZ()), fmt(v.x), fmt(v.y), fmt(v.z), fmt(v.length() * 20), fmt(p.getYRot()), fmt(p.getXRot()),
 			p.onGround(), p.isFallFlying(), fmt(p.getHealth()), p.getInventory().getSelectedSlot() + 1, p.getMainHandItem().getItem(),
-			mc.gameMode == null ? "?" : mc.gameMode.getPlayerMode().getName());
+			mc.gameMode == null ? "?" : mc.gameMode.getPlayerMode().getName(), target);
 	}
 
 	private static String fmt(double d) {

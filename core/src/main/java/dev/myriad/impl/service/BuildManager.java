@@ -291,8 +291,8 @@ public final class BuildManager implements Building {
 		}
 		if (best >= 0) return best;
 		if (Myriad.inventory().findInInventory(s -> target.preference(s) >= 0) < 0) return -2;
-		// Grim cancels inventory clicks while you move, so material comes in while you stand still.
-		if (!movedMaterialThisTick && Myriad.inventory().safeToClick()) {
+		// Grim cancels inventory clicks while you move: keys are released for a tick first if needed.
+		if (!movedMaterialThisTick && Myriad.inventory().prepareClick()) {
 			movedMaterialThisTick = true;
 			Myriad.inventory().ensureInHotbar(s -> target.preference(s) >= 0, -1);
 		}
