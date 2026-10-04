@@ -15,6 +15,7 @@
 		"EntityRenderDispatcherMixin",
 		"EntityRendererMixin",
 		"ExperienceBarMixin",
+		"FireworkRocketEntityAccessor",
 		"FogEnvironmentMixin",
 		"FogRendererMixin",
 		"GameRendererMixin",
