@@ -15,9 +15,14 @@ import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.ItemInfo;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.client.renderer.state.MapRenderState;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
@@ -27,12 +32,10 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.MapItem;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Better inventory tooltips:
@@ -40,6 +43,7 @@ import java.util.Map;
  * <li>Containers: hovering a shulker box shows its 27 slots in a themed panel instead of the vanilla tooltip, and so
  * does an ender chest, with what your ender chest held when you last opened it. Hold the lock key to pin the panel
  * so you can hover its items.</li>
+ * <li>Maps: hovering a filled map shows the map itself, as far as the server has sent it.</li>
  * <li>Icons: shulker boxes in slots and in the hotbar show their most common item.</li>
  * <li>Durability and food: exact durability, and the hunger and saturation food restores.</li>
  * </ul>
@@ -47,10 +51,16 @@ import java.util.Map;
 public class Tooltips extends Module {
 	private static final int COLS = 9, ROWS = 3, SLOT = 18, WIDTH = COLS * SLOT + 14, HEADER = 16, FOOTER = 7;
 	private static final int HEIGHT = HEADER + ROWS * SLOT + FOOTER;
+	/** Maps are 128 pixels; drawn at this scale inside the panel. */
+	private static final float MAP_SCALE = 0.75f;
+	private static final int MAP_SIZE = (int) (128 * MAP_SCALE), MAP_WIDTH = MAP_SIZE + 14, MAP_HEIGHT = HEADER + MAP_SIZE + FOOTER;
+
+	private final MapRenderState mapState = new MapRenderState();
 
 	private final SettingGroup sgContainers = settings.group("Containers");
 	private final BoolSetting shulkers = sgContainers.bool("Shulker Boxes").description("Preview shulker box contents.").defaultValue(true).build();
 	private final BoolSetting enderChest = sgContainers.bool("Ender Chest").description("Preview your ender chest on ender chest items (once you've opened it).").defaultValue(true).build();
+	private final BoolSetting maps = sgContainers.bool("Maps").description("Show what a filled map shows (once its data has reached you).").defaultValue(true).build();
 	private final BoolSetting emptyPreview = sgContainers.bool("Empty Boxes").description("Preview empty shulker boxes too.").build();
 	private final KeybindSetting lockKey = sgContainers.keybind("Lock Preview").description("Hold to pin the preview so you can hover its items.").build();
 	private final BoolSetting slotIcons = sgContainers.bool("Slot Icons").description("Show the most common item on shulker boxes in inventories.").defaultValue(true).build();
@@ -69,7 +79,7 @@ public class Tooltips extends Module {
 	private int lockedX, lockedY;
 
 	public Tooltips() {
-		super(Categories.RENDER, "Tooltips", "Container previews, durability and food values in tooltips.");
+		super(Categories.RENDER, "Tooltips", "Container and map previews, durability and food values in tooltips.");
 	}
 
 	@Override
@@ -186,6 +196,8 @@ public class Tooltips extends Module {
 			lockedContents = null;
 		}
 
+		if (locked == null && hoveredStack != null && maps.get() && renderMap(ctx, hoveredStack, mouseX, mouseY)) return true;
+
 		String title;
 		List<ItemStack> items;
 		int ax, ay;
@@ -212,10 +224,34 @@ public class Tooltips extends Module {
 		return true;
 	}
 
+	/** A filled map's picture in place of its tooltip; false if it isn't a map or its data hasn't arrived. */
+	private boolean renderMap(GuiGraphicsExtractor ctx, ItemStack stack, int mouseX, int mouseY) {
+		MapId id = stack.get(DataComponents.MAP_ID);
+		MapItemSavedData data = id == null || mc.level == null ? null : MapItem.getSavedData(id, mc.level);
+		if (data == null) return false;
+		int[] p = position(mouseX, mouseY, MAP_WIDTH, MAP_HEIGHT);
+		String title = stack.getHoverName().getString();
+		ctx.nextStratum();
+		Myriad.ui().draw(ctx, c -> drawFrame(c, title, p[0], p[1], MAP_WIDTH, MAP_HEIGHT));
+		// The map on a layer above the panel, as the cartography table draws it.
+		ctx.nextStratum();
+		mc.getMapRenderer().extractRenderState(id, data, mapState);
+		ctx.pose().pushMatrix();
+		ctx.pose().translate(p[0] + 7, p[1] + HEADER);
+		ctx.pose().scale(MAP_SCALE, MAP_SCALE);
+		ctx.map(mapState);
+		ctx.pose().popMatrix();
+		return true;
+	}
+
 	private static int[] position(int mouseX, int mouseY) {
+		return position(mouseX, mouseY, WIDTH, HEIGHT);
+	}
+
+	private static int[] position(int mouseX, int mouseY, int width, int height) {
 		int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
-		int x = Math.max(4, Math.min(mouseX + 12, sw - WIDTH - 4));
-		int y = Math.max(4, Math.min(mouseY - 6, sh - HEIGHT - 4));
+		int x = Math.max(4, Math.min(mouseX + 12, sw - width - 4));
+		int y = Math.max(4, Math.min(mouseY - 6, sh - height - 4));
 		return new int[]{x, y};
 	}
 
@@ -226,15 +262,21 @@ public class Tooltips extends Module {
 		return s.isEmpty() ? null : s;
 	}
 
-	private static void drawPanel(Canvas c, String name, List<ItemStack> items, float x, float y) {
+	/** A themed panel with a title, like a window. */
+	private static void drawFrame(Canvas c, String name, float x, float y, int width, int height) {
 		ThemeSettings theme = Myriad.ui().theme();
 		float r = theme.rounding.get();
-		if (theme.shadow.get()) c.shadow(x, y, WIDTH, HEIGHT, r, theme.shadowRange.get(), theme.shadowColor.argb());
-		c.backdrop(x, y, WIDTH, HEIGHT, r, 1);
-		c.roundRect(x, y, WIDTH, HEIGHT, r, ColorUtil.withAlpha(theme.windowBackground.argb(), Math.max(200, ColorUtil.alpha(theme.windowBackground.argb()))));
-		c.gradientOutline(x, y, WIDTH, HEIGHT, r, Math.max(1, theme.borderSize.get()), theme.activeBorderFrom.argb(), theme.activeBorderTo.argb(), theme.borderAngle.get().floatValue());
-		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), name, WIDTH - 14);
+		if (theme.shadow.get()) c.shadow(x, y, width, height, r, theme.shadowRange.get(), theme.shadowColor.argb());
+		c.backdrop(x, y, width, height, r, 1);
+		c.roundRect(x, y, width, height, r, ColorUtil.withAlpha(theme.windowBackground.argb(), Math.max(200, ColorUtil.alpha(theme.windowBackground.argb()))));
+		c.gradientOutline(x, y, width, height, r, Math.max(1, theme.borderSize.get()), theme.activeBorderFrom.argb(), theme.activeBorderTo.argb(), theme.borderAngle.get().floatValue());
+		String title = c.ellipsize(FontFamily.SANS_BOLD, c.defaultFontSize(), name, width - 14);
 		c.text(FontFamily.SANS_BOLD, c.defaultFontSize(), title, x + 7, y + (HEADER - c.textHeight()) / 2 + 1, theme.text.argb());
+	}
+
+	private static void drawPanel(Canvas c, String name, List<ItemStack> items, float x, float y) {
+		ThemeSettings theme = Myriad.ui().theme();
+		drawFrame(c, name, x, y, WIDTH, HEIGHT);
 		float gx = x + 7, gy = y + HEADER;
 		int cell = ColorUtil.withAlpha(theme.surface.argb(), 110);
 		for (int i = 0; i < 27; i++) {

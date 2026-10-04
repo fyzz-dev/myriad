@@ -34,7 +34,8 @@ import net.minecraft.world.item.enchantment.Enchantments;
  */
 public class AutoArmor extends Module {
 	public enum Protection {
-		PROTECTION, BLAST, FIRE, PROJECTILE
+		/** Protection, but Blast Protection on leggings: the usual PvP kit. */
+		BLAST_LEGS, PROTECTION, BLAST, FIRE, PROJECTILE
 	}
 
 	public enum Chest {
@@ -44,7 +45,8 @@ public class AutoArmor extends Module {
 	private static final EquipmentSlot[] SLOTS = {EquipmentSlot.CHEST, EquipmentSlot.HEAD, EquipmentSlot.LEGS, EquipmentSlot.FEET};
 
 	private final IntSetting delay = sgGeneral.intSetting("Delay").description("Ticks between equipping pieces.").defaultValue(2).range(0, 20).build();
-	private final EnumSetting<Protection> prefer = sgGeneral.enumSetting("Prefer", Protection.PROTECTION).description("Protection enchantment to favour between otherwise equal pieces.").build();
+	private final EnumSetting<Protection> prefer = sgGeneral.enumSetting("Prefer", Protection.BLAST_LEGS)
+		.description("Protection enchantment to favour between otherwise equal pieces. Blast Legs: Protection, with Blast Protection on leggings.").build();
 	private final BoolSetting avoidBinding = sgGeneral.bool("Avoid Binding").description("Never put on armour with curse of binding.").defaultValue(true).build();
 	private final DoubleSetting preserve = sgGeneral.doubleSetting("Preserve").description("Skip pieces with less durability than this (%).").defaultValue(5).range(0, 50).decimals(0).build();
 	private final BoolSetting pauseInContainers = sgGeneral.bool("Pause In Containers").description("Don't swap while a chest or other container is open.").defaultValue(true).build();
@@ -140,12 +142,13 @@ public class AutoArmor extends Module {
 		ItemAttributeModifiers mods = s.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
 		double armor = mods.compute(Attributes.ARMOR, 0, slot), toughness = mods.compute(Attributes.ARMOR_TOUGHNESS, 0, slot);
 		double protection = ItemInfo.enchantmentLevel(s, Enchantments.PROTECTION);
-		double preferred = ItemInfo.enchantmentLevel(s, preferredKey());
+		double preferred = ItemInfo.enchantmentLevel(s, preferredKey(slot));
 		return armor * 10 + toughness * 4 + protection * 2 + preferred * 3 + ItemInfo.durabilityFraction(s) * 0.1;
 	}
 
-	private ResourceKey<Enchantment> preferredKey() {
+	private ResourceKey<Enchantment> preferredKey(EquipmentSlot slot) {
 		return switch (prefer.get()) {
+			case BLAST_LEGS -> slot == EquipmentSlot.LEGS ? Enchantments.BLAST_PROTECTION : Enchantments.PROTECTION;
 			case PROTECTION -> Enchantments.PROTECTION;
 			case BLAST -> Enchantments.BLAST_PROTECTION;
 			case FIRE -> Enchantments.FIRE_PROTECTION;

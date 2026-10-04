@@ -26,7 +26,7 @@ import java.util.function.Predicate;
 /**
  * Keeps an item in your off hand: a totem, an end crystal, a golden apple or a shield. Whatever you pick, it falls back
  * to a totem when it matters: at low health, while flying with an elytra, or when something nearby (crystals, beds,
- * anchors, players, a fall) could kill you. A totem that pops is replaced the same tick.
+ * anchors, creepers, players, a fall) could kill you. A totem that pops is replaced the same tick.
  * <p>
  * Sword Gap puts a golden apple in your off hand while you hold right click with a sword, so you can eat without
  * switching. A hotbar slot can also keep a spare totem that's selected when your health gets low.
@@ -52,6 +52,7 @@ public class Offhand extends Module {
 	private final BoolSetting useHotbar = sgGeneral.bool("Use Hotbar").description("Also take items from the hotbar.").defaultValue(true).build();
 	private final IntSetting delay = sgGeneral.intSetting("Delay").description("Ticks between swaps.").defaultValue(0).range(0, 20).build();
 	private final BoolSetting pauseInContainers = sgGeneral.bool("Pause In Containers").description("Don't swap while a chest or other container is open.").defaultValue(true).build();
+	private final BoolSetting mainHandTotem = sgGeneral.bool("Main Hand Totem").description("A totem you hold in your main hand counts: don't force another into the off hand.").build();
 	private final BoolSetting notify = sgGeneral.bool("Notify").description("Say when one of your totems pops.").build();
 
 	private final SettingGroup sgSafety = settings.group("Safety");
@@ -61,6 +62,7 @@ public class Offhand extends Module {
 		.visible(() -> lethal.get() && crystals.get()).build();
 	private final BoolSetting beds = sgSafety.bool("Beds").description("Beds outside the Overworld.").defaultValue(true).visible(lethal::get).build();
 	private final BoolSetting anchors = sgSafety.bool("Anchors").description("Charged respawn anchors outside the Nether.").defaultValue(true).visible(lethal::get).build();
+	private final BoolSetting creepers = sgSafety.bool("Creepers").description("Creepers about to explode.").defaultValue(true).visible(lethal::get).build();
 	private final BoolSetting players = sgSafety.bool("Players").description("Players close enough to hit you.").defaultValue(true).visible(lethal::get).build();
 	private final BoolSetting falling = sgSafety.bool("Falling").defaultValue(true).visible(lethal::get).build();
 	private final DoubleSetting buffer = sgSafety.doubleSetting("Buffer").description("Extra health kept as a margin.").defaultValue(1).range(0, 6).decimals(1).visible(lethal::get).build();
@@ -108,6 +110,8 @@ public class Offhand extends Module {
 		boolean danger = inDanger();
 		if (hotbarTotem.get()) tickHotbarTotem(danger);
 
+		// Already holding a totem in the main hand: that one saves you, so leave the off hand as it is.
+		if (danger && mainHandTotem.get() && TOTEM.test(mc.player.getMainHandItem())) danger = false;
 		Predicate<ItemStack> want = danger ? TOTEM : wanted();
 		if (want.test(mc.player.getOffhandItem())) return;
 		int slot = find(want);
@@ -116,7 +120,10 @@ public class Offhand extends Module {
 			slot = find(TOTEM);
 		}
 		if (slot < 0) return;
-		Myriad.inventory().swapWithOffhand(slot);
+		int from = slot;
+		// A totem matters more than the packet budget; other items wait for room.
+		if (TOTEM.test(mc.player.getInventory().getItem(from))) Myriad.limits().urgent(() -> Myriad.inventory().swapWithOffhand(from));
+		else if (!Myriad.inventory().swapWithOffhand(from)) return;
 		wait = delay.get();
 	}
 
@@ -130,6 +137,7 @@ public class Offhand extends Module {
 		if (crystals.get()) worst = Math.max(worst, Threats.crystals(12, sumCrystals.get()));
 		if (beds.get()) worst = Math.max(worst, Threats.beds(8));
 		if (anchors.get()) worst = Math.max(worst, Threats.anchors(8));
+		if (creepers.get()) worst = Math.max(worst, Threats.creepers(8));
 		if (players.get()) worst = Math.max(worst, Threats.players(5));
 		if (falling.get()) worst = Math.max(worst, Threats.fall());
 		return worst > 0 && worst + buffer.get() >= hp;

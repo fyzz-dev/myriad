@@ -18,18 +18,25 @@ import dev.myriad.essentials.hud.TpsPanel;
 import dev.myriad.essentials.hud.WatermarkPanel;
 import dev.myriad.essentials.modules.combat.AutoArmor;
 import dev.myriad.essentials.modules.combat.AutoDisconnect;
+import dev.myriad.essentials.modules.combat.KillAura;
 import dev.myriad.essentials.modules.combat.Offhand;
 import dev.myriad.essentials.modules.movement.ElytraFly;
+import dev.myriad.essentials.modules.movement.InventoryMove;
 import dev.myriad.essentials.modules.movement.Velocity;
 import dev.myriad.essentials.modules.player.AutoEat;
 import dev.myriad.essentials.modules.player.AutoTool;
+import dev.myriad.essentials.modules.player.InventoryTweaks;
 import dev.myriad.essentials.modules.player.MiddleClick;
+import dev.myriad.essentials.modules.player.PacketMine;
 import dev.myriad.essentials.modules.player.Reach;
+import dev.myriad.essentials.modules.player.StackReplenish;
 import dev.myriad.essentials.modules.player.WallInteract;
 import dev.myriad.essentials.modules.player.XCarry;
+import dev.myriad.essentials.modules.render.BlockESP;
 import dev.myriad.essentials.modules.render.ESP;
 import dev.myriad.essentials.modules.render.FreeLook;
 import dev.myriad.essentials.modules.render.Freecam;
+import dev.myriad.essentials.modules.render.FullBright;
 import dev.myriad.essentials.modules.render.Nametags;
 import dev.myriad.essentials.modules.render.NoRender;
 import dev.myriad.essentials.modules.render.Storage;
@@ -37,6 +44,8 @@ import dev.myriad.essentials.modules.render.Tooltips;
 import dev.myriad.essentials.modules.render.Tracers;
 import dev.myriad.essentials.modules.render.ViewModel;
 import dev.myriad.essentials.modules.render.Zoom;
+import dev.myriad.essentials.modules.world.AirPlace;
+import dev.myriad.essentials.modules.world.Scaffold;
 
 import static dev.myriad.api.ui.PanelType.Anchor.BOTTOM_LEFT;
 import static dev.myriad.api.ui.PanelType.Anchor.TOP_LEFT;
@@ -51,13 +60,16 @@ public final class Essentials implements MyriadAddon {
 	public void initialize(AddonContext ctx) {
 		ctx.registerModules(
 			// Combat
-			new Offhand(), new AutoArmor(), new AutoDisconnect(),
+			new Offhand(), new AutoArmor(), new AutoDisconnect(), new KillAura(),
 			// Movement
-			new ElytraFly(), new Velocity(),
+			new ElytraFly(), new InventoryMove(), new Velocity(),
 			// Player
-			new AutoEat(), new AutoTool(), new MiddleClick(), new Reach(), new WallInteract(), new XCarry(),
+			new AutoEat(), new AutoTool(), new InventoryTweaks(), new MiddleClick(), new PacketMine(), new Reach(), new StackReplenish(), new WallInteract(), new XCarry(),
 			// Render
-			new ESP(), new Storage(), new Tracers(), new Nametags(), new NoRender(), new Tooltips(), new FreeLook(), new Freecam(), new ViewModel(), new Zoom()
+			new ESP(), new BlockESP(), new Storage(), new Tracers(), new Nametags(), new NoRender(), new Tooltips(), new FullBright(), new FreeLook(), new Freecam(),
+			new ViewModel(), new Zoom(),
+			// World
+			new AirPlace(), new Scaffold()
 		);
 
 		// HUD elements. The ones with a position are placed on a fresh install; the rest are added from the HUD workspace.

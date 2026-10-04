@@ -1,9 +1,11 @@
 package dev.myriad.essentials.mixin;
 
 import dev.myriad.api.module.Modules;
+import dev.myriad.essentials.modules.player.InventoryTweaks;
 import dev.myriad.essentials.modules.render.Tooltips;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,5 +30,11 @@ public abstract class HandledScreenMixin {
 		if (preview != null && preview.slotIcons() && slot.hasItem() && Tooltips.isShulker(slot.getItem())) {
 			Tooltips.drawIcon(context, slot.getItem(), slot.x, slot.y);
 		}
+	}
+
+	@Inject(method = "slotClicked", at = @At("HEAD"), cancellable = true)
+	private void essentials$slotClick(Slot slot, int slotId, int button, ContainerInput input, CallbackInfo ci) {
+		InventoryTweaks tweaks = Modules.active(InventoryTweaks.class);
+		if (tweaks != null && tweaks.onSlotClick(slot, button, input)) ci.cancel();
 	}
 }

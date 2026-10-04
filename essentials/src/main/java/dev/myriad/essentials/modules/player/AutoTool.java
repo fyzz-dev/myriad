@@ -21,10 +21,15 @@ import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.function.ToDoubleFunction;
+
 /**
  * Switches to the best tool for the block you're mining, and optionally the best weapon when you attack. Silent mode
  * swaps only on the server, so your hotbar doesn't move and mining still runs at the tool's speed; otherwise it selects
  * the tool and (with Swap Back) returns to your previous slot when you stop. Tools about to break are left alone.
+ * A better tool in your inventory is brought into the hotbar (an empty slot, over a worse tool, or over building
+ * blocks) while you stand still, since Grim (2b2t) refuses inventory clicks while you move; until then the best
+ * hotbar tool is used.
  */
 public class AutoTool extends Module {
 	private final BoolSetting silent = sgGeneral.bool("Silent").description("Swap on the server only; your selected slot stays put.").defaultValue(true).build();
@@ -75,7 +80,14 @@ public class AutoTool extends Module {
 	private void equipFor(BlockPos pos) {
 		if (!inGame() || mc.player.isCreative()) return;
 		BlockState state = mc.level.getBlockState(pos);
-		int slot = Myriad.inventory().bestInHotbar(s -> toolScore(s, state));
+		ToDoubleFunction<ItemStack> score = s -> toolScore(s, state);
+		int slot = Myriad.inventory().bestInHotbar(score);
+		int best = Myriad.inventory().bestInInventory(score);
+		if (best >= 9) {
+			// Better than anything in the hotbar: bring it in (a worse tool makes room), once you stand still.
+			int pulled = Myriad.inventory().pullToHotbar(best, s -> toolScore(s, state) > 0);
+			if (pulled >= 0) slot = pulled;
+		}
 		if (slot >= 0) use(slot, 2);
 	}
 

@@ -6,6 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
@@ -14,7 +15,8 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * How much damage nearby dangers could do to you right now: end crystals, beds (which explode outside the Overworld),
- * charged respawn anchors (which explode outside the Nether), players about to hit you, and the fall you're in. Offhand
+ * charged respawn anchors (which explode outside the Nether), creepers about to explode, players about to hit you, and the
+ * fall you're in. Offhand
  * and Auto Disconnect use it to decide when a hit could kill you.
  */
 public final class Threats {
@@ -79,5 +81,16 @@ public final class Threats {
 	public static float fall() {
 		LocalPlayer p = player();
 		return p.fallDistance > 3 ? Damage.fall(p, (float) p.fallDistance) : 0;
+	}
+
+	/** The worst blast from a creeper within {@code range} that's about to explode (swelling, or lit with flint and steel). */
+	public static float creepers(double range) {
+		LocalPlayer p = player();
+		float max = 0;
+		for (Creeper c : p.level().getEntitiesOfClass(Creeper.class, p.getBoundingBox().inflate(range), c -> c.getSwelling(1) > 0 || c.isIgnited())) {
+			// A creeper's blast is power 3, doubled when it's charged.
+			max = Math.max(max, Damage.explosion(p, c.position(), c.isPowered() ? 6 : 3));
+		}
+		return max;
 	}
 }

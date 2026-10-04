@@ -8,12 +8,12 @@ import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
+import dev.myriad.api.service.Breaking;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.util.Baritone;
 import dev.myriad.api.util.Interactions;
-import dev.myriad.api.util.Mining;
 import dev.myriad.api.util.Packets;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -23,7 +23,6 @@ import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.tags.ItemTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
@@ -110,7 +109,7 @@ public class ElytraFly extends Module {
 	/** Fake Lag holds packets while you're less than this above the last ground you touched. */
 	private static final double LAG_HEIGHT = 0.163;
 
-	private boolean wantJump, spoofing, toolHeld;
+	private boolean wantJump, spoofing;
 	/** Keep gliding client-side through ground touches; set once the elytra has opened while bouncing. */
 	private boolean holdGlide;
 	private volatile boolean flagged;
@@ -147,9 +146,8 @@ public class ElytraFly extends Module {
 		cruiseY = groundY = Double.NaN;
 		wantJump = spoofing = holdGlide = flagged = false;
 		flushLag();
-		mining = null;
 		pathWait = pauseTicks = 0;
-		releaseTool();
+		stopMining();
 	}
 
 	@Override
@@ -329,10 +327,7 @@ public class ElytraFly extends Module {
 			handleObstacle(blocked);
 			return;
 		}
-		if (state == State.MINING) {
-			mining = null;
-			releaseTool();
-		}
+		if (state == State.MINING) stopMining();
 		state = State.BOUNCING;
 		if (pauseTicks > 0) {
 			// The server rejected a move: let its correction land before bouncing on from there.
@@ -468,31 +463,22 @@ public class ElytraFly extends Module {
 
 	private void mine(BlockPos pos) {
 		BlockState block = mc.level.getBlockState(pos);
-		holdTool(block);
-		Direction face = Direction.getApproximateNearest(-laneDir().x, 0, -laneDir().z);
 		if (isPortal(block)) {
 			// Portals break instantly server-side but not client-side: send the dig directly.
+			Direction face = Direction.getApproximateNearest(-laneDir().x, 0, -laneDir().z);
 			Packets.sendSequenced(seq -> new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, pos, face, seq));
 			Packets.sendSequenced(seq -> new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, pos, face, seq));
-		} else if (!pos.equals(mining)) {
-			mc.gameMode.startDestroyBlock(pos, face);
+			mc.player.swing(InteractionHand.MAIN_HAND);
 		} else {
-			mc.gameMode.continueDestroyBlock(pos, face);
+			// The breaking service picks and holds the tool, and swings.
+			Myriad.breaking().breakBlock(this, pos, Rotations.PRIORITY_HIGH, Breaking.Options.DEFAULT);
 		}
 		mining = pos.immutable();
-		mc.player.swing(InteractionHand.MAIN_HAND);
 	}
 
-	private void holdTool(BlockState state) {
-		int best = Myriad.inventory().bestInHotbar(s -> s.isEmpty() ? 0 : s.getDestroySpeed(state) + (s.is(ItemTags.PICKAXES) ? 100 : 0));
-		int slot = best >= 0 ? best : Mining.fastestSlot(state, 0, 9);
-		if (slot >= 0 && Myriad.inventory().hold(this, slot, 80)) toolHeld = true;
-	}
-
-	private void releaseTool() {
-		if (!toolHeld) return;
-		toolHeld = false;
-		Myriad.inventory().release(this);
+	private void stopMining() {
+		mining = null;
+		Myriad.breaking().cancel(this);
 	}
 
 	private List<BlockPos> laneBlocks() {

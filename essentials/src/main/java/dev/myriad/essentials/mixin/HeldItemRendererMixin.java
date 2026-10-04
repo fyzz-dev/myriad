@@ -79,7 +79,8 @@ public abstract class HeldItemRendererMixin {
 		HumanoidArm arm = main ? player.getMainArm() : player.getMainArm().getOpposite();
 		float mirror = arm == HumanoidArm.RIGHT ? 1 : -1;
 		matrices.pushPose();
-		matrices.translate(vm.x.get() * mirror, vm.y.get(), vm.z.get());
+		boolean own = !main && vm.separateOffhand.get();
+		matrices.translate((own ? vm.offX.get() : vm.x.get()) * mirror, own ? vm.offY.get() : vm.y.get(), own ? vm.offZ.get() : vm.z.get());
 		matrices.mulPose(Axis.YP.rotationDegrees(vm.rotY.get() * mirror));
 		matrices.mulPose(Axis.XP.rotationDegrees(vm.rotX.get()));
 		matrices.mulPose(Axis.ZP.rotationDegrees(vm.rotZ.get() * mirror));

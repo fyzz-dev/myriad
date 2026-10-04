@@ -16,6 +16,8 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /** Hides distracting overlays, HUD parts, entities and blocks. Read by this addon's render mixins. */
 public class NoRender extends Module {
+	/** Where fog starts with Fog hidden: never reached. Start and end must differ, or the fog shader divides by zero. */
+	public static final float FOG_FAR = 1_000_000f;
 
 	private final SettingGroup sgOverlays = settings.group("Overlays");
 	public final BoolSetting hurtCam = sgGeneral.bool("Hurt Camera").description("No camera shake when you take damage.").defaultValue(true).build();
@@ -28,17 +30,27 @@ public class NoRender extends Module {
 	public final BoolSetting vignette = sgOverlays.bool("Vignette").defaultValue(true).build();
 	public final BoolSetting portal = sgOverlays.bool("Portal Overlay").description("No purple swirl or nausea overlay.").defaultValue(true).build();
 	public final BoolSetting pumpkin = sgOverlays.bool("Pumpkin Overlay").defaultValue(true).build();
+	public final BoolSetting powderSnow = sgOverlays.bool("Powder Snow Overlay").description("No frost around the screen while freezing.").defaultValue(true).build();
+	public final BoolSetting spyglass = sgOverlays.bool("Spyglass Overlay").description("Zoom with a spyglass without the black ring.").build();
+
+	private final SettingGroup sgEffects = settings.group("Effects");
+	public final BoolSetting blindness = sgEffects.bool("Blindness").description("See normally while blinded.").defaultValue(true).build();
+	public final BoolSetting darkness = sgEffects.bool("Darkness").description("No pulsing darkness near wardens and sculk shriekers.").defaultValue(true).build();
+	public final BoolSetting nausea = sgEffects.bool("Nausea").description("No screen warping from nausea.").defaultValue(true).build();
 
 	private final SettingGroup sgHud = settings.group("HUD");
 	public final BoolSetting bossBar = sgHud.bool("Boss Bar").build();
 	public final BoolSetting statusEffects = sgHud.bool("Status Effects").description("No potion icons in the top right.").build();
 	public final BoolSetting xpBar = sgHud.bool("XP Bar").build();
 	public final BoolSetting itemName = sgHud.bool("Item Name").description("No item name above the hotbar when switching.").build();
+	public final BoolSetting scoreboard = sgHud.bool("Scoreboard").description("No scoreboard on the right of the screen.").build();
 
 	private final SettingGroup sgWorld = settings.group("World");
 	public final BoolSetting armor = sgWorld.bool("Armor").description("No armour on players and mobs.").build();
 	public final BoolSetting burning = sgWorld.bool("Burning").description("No flames on burning entities.").build();
 	public final BoolSetting damageTint = sgWorld.bool("Damage Tint").description("No red tint on hurt entities.").build();
+	public final BoolSetting fog = sgWorld.bool("Fog").description("No distance or weather fog (water and lava fog stay).").build();
+	public final BoolSetting glint = sgWorld.bool("Enchantment Glint").description("No shimmer on enchanted items and armour.").build();
 	public final BoolSetting deadEntities = sgWorld.bool("Dead Entities").description("Hide entities as soon as they die.").build();
 	private final RegistryListSetting<EntityType<?>> entities = sgWorld.entityTypes("Entities").description("Entity types never drawn.").build();
 	private final RegistryListSetting<Block> blocks = sgWorld.blocks("Blocks").description("Blocks never drawn.").onChanged(v -> reload()).build();

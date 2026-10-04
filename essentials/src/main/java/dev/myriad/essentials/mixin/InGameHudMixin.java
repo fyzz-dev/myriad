@@ -32,6 +32,7 @@ public abstract class InGameHudMixin {
 	@Inject(method = "extractTextureOverlay", at = @At("HEAD"), cancellable = true)
 	private void essentials$pumpkin(GuiGraphicsExtractor context, Identifier texture, float opacity, CallbackInfo ci) {
 		if (texture.getPath().contains("pumpkinblur") && NoRender.hides(n -> n.pumpkin)) ci.cancel();
+		if (texture.getPath().contains("powder_snow_outline") && NoRender.hides(n -> n.powderSnow)) ci.cancel();
 	}
 
 	@Inject(method = "extractItemHotbar", at = @At("TAIL"))
@@ -61,5 +62,15 @@ public abstract class InGameHudMixin {
 	@Inject(method = "extractSelectedItemName", at = @At("HEAD"), cancellable = true)
 	private void essentials$itemName(GuiGraphicsExtractor context, CallbackInfo ci) {
 		if (NoRender.hides(n -> n.itemName)) ci.cancel();
+	}
+
+	@Inject(method = "extractSpyglassOverlay", at = @At("HEAD"), cancellable = true)
+	private void essentials$spyglass(GuiGraphicsExtractor context, float scale, CallbackInfo ci) {
+		if (NoRender.hides(n -> n.spyglass)) ci.cancel();
+	}
+
+	@Inject(method = "extractScoreboardSidebar", at = @At("HEAD"), cancellable = true)
+	private void essentials$scoreboard(GuiGraphicsExtractor context, DeltaTracker tickCounter, CallbackInfo ci) {
+		if (NoRender.hides(n -> n.scoreboard)) ci.cancel();
 	}
 }
