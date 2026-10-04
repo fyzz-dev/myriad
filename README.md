@@ -26,8 +26,13 @@ Requires JDK 25+.
 ./gradlew :example-addon:runClient -PopenDesktop   # …and open the menu on the title screen
 ./gradlew :example-addon:runClient -PquickPlay="New World"   # …or load straight into a singleplayer world
 ./gradlew :example-addon:runClient -PscreenshotEvery=10   # …saving a screenshot every 10 s (run/screenshots)
+./gradlew :example-addon:runClient -PquickPlayServer=localhost:25565 -Pusername=GrimTester   # …or join a server
 ./gradlew publishToMavenLocal            # publish dev.myriad:myriad(-essentials) for addons outside this repo
 ```
+
+To check a module against Grim (2b2t's anti-cheat) before trying it there, [`tools/grim-test/`](tools/grim-test)
+runs a local 2b2t-like server with Grim, with scripts to run server commands, drive the dev client and read Grim's
+flags.
 
 To install, put `myriad-<v>.jar` in `mods/` (with Fabric API), then add `myriad-essentials-<v>.jar` and any other
 addons next to it.
@@ -104,7 +109,7 @@ The stock modules, in the standard categories (each module's settings explain it
 | Movement | **Elytra Fly** (highway bouncing; mines or, with Baritone, walks round obstacles), **Inventory Move** (walk with screens open, arrow keys to look), **Velocity** |
 | Player | **Auto Eat** (pauses Baritone), **Auto Tool** (silent; brings tools in from your inventory), **Inventory Tweaks** (right-click a shulker box or ender chest in your inventory to open it on the spot), **Middle Click** (friend, experience, rocket or pearl by what you point at), **Packet Mine** (hit once and the block is mined for you with your hand free, timed for Grim; experimental Fast mode with double break for 2b2t; hold and drag to queue blocks, auto rebreak, tools from your inventory), **Reach** (starts at vanilla; Grim flags more), **Stack Replenish** (tops up hotbar stacks and refills used-up slots), **Wall Interact**, **X Carry** |
 | Render | **ESP**, **Blocks** (highlight chosen blocks, like spawners or beds, in their own colours), **Storage**, **Tracers**, **Nametags** (players, mobs, items, pearl owners), **Tooltips** (shulker, ender chest and map previews, durability, food), **Full Bright** (gamma or night vision), **Free Look**, **Freecam**, **View Model**, **Zoom** |
-| World | **Air Place** (place blocks in mid-air where you look, through the off hand so Grim accepts it), **Scaffold** (blocks under you as you walk, Grim-safe: rotates with move fix and clicks visible faces; bridges corners, towers when you jump) |
+| World | **Air Place** (place blocks in mid-air where you look; lenient servers only, current Grim refuses it), **Scaffold** (blocks under you as you walk, Grim-safe: rotates with move fix and clicks visible faces; bridges corners, towers when you jump) |
 
 HUD elements: Watermark (with the logo), Module List, Coordinates, Armor, Binds, Chest Count, Direction, Effects,
 FPS, HP, Player Count, Speed, Totems, TPS. Baritone options do nothing when Baritone isn't installed.
@@ -199,6 +204,10 @@ Following these keeps addons consistent with each other and with the stock modul
   it while it's on, or null (off, not installed, or Myriad not started yet). Don't keep a static `INSTANCE`.
   For a module from an addon you don't compile against, look it up by id:
   `Myriad.modules().get(MyriadId.of("other-addon", "their_module"))`.
+- **Timing.** Act (click, place, break, attack, switch slots) in `TickEvent.Pre`, before the player moves, as vanilla
+  does: Grim (2b2t) flags actions sent after the tick's movement packet. Myriad holds any that come later to the start
+  of the next tick, so they're still safe, just a tick late. The services already act at the right time.
+  `tools/grim-test/` checks a module against Grim.
 - **Mixins** stay thin. Put the logic in a static method on the module that starts with `Modules.active(...)`, and
   have the mixin call it. Prefix handler names with your mod id. Prefer an event over a mixin when one exists. For
   hooks into other mods (Sodium, Iris), set `"plugin": "dev.myriad.api.mixin.CompatMixinPlugin"` in your mixin config

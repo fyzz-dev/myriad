@@ -91,6 +91,12 @@ public class MyriadClient implements ClientModInitializer {
 				});
 			});
 		}
+		// Dev scripting: -Dmyriad.devConsole=<file> runs lines appended to that file (see DevConsole), so tests can drive
+		// the game from outside it.
+		String devConsole = System.getProperty("myriad.devConsole");
+		if (devConsole != null && !devConsole.isBlank()) {
+			bus.subscribe(new dev.myriad.impl.dev.DevConsole(java.nio.file.Path.of(devConsole), myriad.commandManager()));
+		}
 		// Dev check: -Dmyriad.auditMixins=true applies every mixin (Myriad's and addons') once the game has started.
 		// Mixins into classes that load late (chat, screens) otherwise only fail when you first open them.
 		if (Boolean.getBoolean("myriad.auditMixins")) {

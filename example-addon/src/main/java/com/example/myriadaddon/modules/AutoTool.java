@@ -64,8 +64,13 @@ public final class AutoTool extends Module {
 		Myriad.inventory().select(best);
 	}
 
+	/**
+	 * Actions (switching slots, clicking, attacking) belong at the start of a tick, before the player moves: that's when
+	 * vanilla sends them, and Grim flags them after the movement packet. Myriad holds late ones back to the next tick,
+	 * but acting in {@code TickEvent.Pre} means they go out when you meant them to.
+	 */
 	@Subscribe
-	private void onTick(TickEvent.Post e) {
+	private void onTick(TickEvent.Pre e) {
 		if (previousSlot != -1 && inGame() && !mc.gameMode.isDestroying()) restore();
 	}
 
