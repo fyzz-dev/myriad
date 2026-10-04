@@ -22,6 +22,7 @@ import net.minecraft.network.Connection;
 import io.netty.channel.ChannelFutureListener;
 import net.minecraft.network.protocol.BundlePacket;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.world.entity.Entity;
 
@@ -31,11 +32,20 @@ public abstract class ClientConnectionMixin {
 	private static final ThreadLocal<Boolean> MYRIAD_RESENDING = ThreadLocal.withInitial(() -> false);
 
 	@Shadow
+	public abstract PacketFlow getReceiving();
+
+	/** Only the client's end: in singleplayer the integrated server's connections run through here too. */
+	@Unique
+	private boolean myriad$isClientSide() {
+		return getReceiving() == PacketFlow.CLIENTBOUND;
+	}
+
+	@Shadow
 	public abstract void send(Packet<?> packet, @Nullable ChannelFutureListener callbacks, boolean flush);
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"), cancellable = true)
 	private void myriad$onSend(Packet<?> packet, @Nullable ChannelFutureListener callbacks, boolean flush, CallbackInfo ci) {
-		if (MYRIAD_RESENDING.get() || PacketGate.isSilent() || !Myriad.isReady()) return;
+		if (MYRIAD_RESENDING.get() || PacketGate.isSilent() || !Myriad.isReady() || !myriad$isClientSide()) return;
 		if (packet instanceof ServerboundAttackPacket attack && Myriad.events().hasListeners(AttackEvent.class)) {
 			Minecraft mc = Minecraft.getInstance();
 			Entity target = mc.level == null ? null : mc.level.getEntity(attack.entityId());
@@ -61,7 +71,7 @@ public abstract class ClientConnectionMixin {
 	/** Wraps packet handling so receive handlers can drop or replace packets. */
 	@WrapMethod(method = "channelRead0(Lio/netty/channel/ChannelHandlerContext;Lnet/minecraft/network/protocol/Packet;)V")
 	private void myriad$onReceive(ChannelHandlerContext ctx, Packet<?> packet, Operation<Void> original) {
-		if (!Myriad.isReady()) {
+		if (!Myriad.isReady() || !myriad$isClientSide()) {
 			original.call(ctx, packet);
 			return;
 		}
