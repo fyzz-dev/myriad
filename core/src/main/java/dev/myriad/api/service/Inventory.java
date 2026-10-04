@@ -75,10 +75,19 @@ public interface Inventory {
 	boolean safeToClick();
 
 	/**
+	 * For a click that shouldn't wait for you to stop moving: true if one is safe now ({@link #safeToClick()});
+	 * otherwise your movement keys, sneak and sprint are released for the next tick (sprint comes back after) and it
+	 * returns false, so asking again next tick gets a safe click. Costs a moment of slowing down, so moves that can
+	 * wait (refills) should use {@link #safeToClick()} instead.
+	 */
+	boolean prepareClick();
+
+	/**
 	 * Brings the item at {@code inventoryIndex} (9-35) into the hotbar to be used, keeping out of the way of what you
 	 * use: into an empty slot, else over an item {@code replaceable} accepts (they swap places, so it lands where this
-	 * one was), else over ordinary building blocks. Never the selected slot or one a module holds. One click, and only
-	 * when {@link #safeToClick()}. Returns the hotbar slot it went to, or -1 (wait and try again later).
+	 * one was), else over ordinary building blocks. Never the selected slot or one a module holds. One click; while you
+	 * move, it first releases your keys for a tick ({@link #prepareClick()}). Returns the hotbar slot it went to, or -1
+	 * (ask again next tick).
 	 */
 	int pullToHotbar(int inventoryIndex, Predicate<ItemStack> replaceable);
 

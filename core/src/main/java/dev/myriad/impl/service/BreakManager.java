@@ -139,6 +139,11 @@ public final class BreakManager implements Breaking {
 	private final Minecraft mc = Minecraft.getInstance();
 	private final List<Job> jobs = new ArrayList<>();
 	private Job primary, delayed;
+	/** A waiting break whose better tool is being brought in from the inventory: it doesn't start until it arrives. */
+	private Job toolComing, toolWaitJob;
+	private int toolWait;
+	/** Most ticks a break waits for its tool to come in before starting with what's in the hotbar. */
+	private static final int TOOL_WAIT_TICKS = 10;
 	/** The server's remembered break: where it was last told to start, and when (client ticks). */
 	private BlockPos rebreakPos;
 	private int rebreakStart;
@@ -466,7 +471,7 @@ public final class BreakManager implements Breaking {
 			BlockState state = mc.level.getBlockState(j.pos);
 			float rate = Mining.delta(state, j.pos, toolSlot(j.options, state, j.pos));
 			if (rate >= 1 || rate <= 0) continue;
-			if (canAct(j)) return j;
+			if (j != toolComing && canAct(j)) return j;
 		}
 		return null;
 	}
@@ -563,7 +568,8 @@ public final class BreakManager implements Breaking {
 	private void finish(Job j, boolean broken) {
 		if (j == primary) {
 			if (j.phase == Phase.MINING && mc.getConnection() != null) {
-				mc.getConnection().send(new ServerboundPlayerActionPacket(Action.ABORT_DESTROY_BLOCK, j.pos, j.face));
+				// Face DOWN, as vanilla always sends it (Grim's PositionBreakB flags any other).
+				mc.getConnection().send(new ServerboundPlayerActionPacket(Action.ABORT_DESTROY_BLOCK, j.pos, Direction.DOWN));
 			}
 			if (mc.level != null) mc.level.destroyBlockProgress(CRACK_PRIMARY, j.pos, -1);
 			primary = null;
@@ -654,12 +660,19 @@ public final class BreakManager implements Breaking {
 			j = q;
 			break;
 		}
+		toolComing = null;
 		if (j == null || !j.options.autoTool()) return;
 		BlockState state = mc.level.getBlockState(j.pos);
 		int from = Mining.fastestSlot(state, 9, 36);
 		if (from < 0 || Mining.delta(state, j.pos, from) <= Mining.delta(state, j.pos, toolSlot(j.options, state, j.pos))) return;
-		// A tool that's worse for this block makes room for it.
-		Myriad.inventory().pullToHotbar(from, s -> s.getDestroySpeed(state) > 1);
+		// A tool that's worse for this block makes room for it. While you move it takes a tick longer (your keys are
+		// released first); a break that hasn't started waits for it rather than start with a worse tool, as packet
+		// breaks are timed by the tool they start with.
+		if (Myriad.inventory().pullToHotbar(from, s -> s.getDestroySpeed(state) > 1) < 0 && j.phase == Phase.QUEUED) {
+			toolWait = j == toolWaitJob ? toolWait + 1 : 0;
+			toolWaitJob = j;
+			if (toolWait < TOOL_WAIT_TICKS) toolComing = j;
+		}
 	}
 
 	private int toolSlot(Options o, BlockState state, BlockPos pos) {

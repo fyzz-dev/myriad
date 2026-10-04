@@ -2,7 +2,9 @@ package dev.myriad.impl.service;
 
 import dev.myriad.api.Myriad;
 import dev.myriad.api.build.Target;
+import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.service.Inventory;
@@ -187,9 +189,38 @@ public final class InventoryManager implements Inventory {
 		return !keys.forward() && !keys.backward() && !keys.left() && !keys.right() && !keys.shift() && !mc.player.isSprinting();
 	}
 
+	/** A still tick is wanted: the next input releases movement, sneak and sprint. */
+	private boolean stillRequested;
+	/** Sprinting was stopped for a still tick; it's pressed again once you move forward. */
+	private boolean resumeSprint;
+
+	@Override
+	public boolean prepareClick() {
+		if (safeToClick()) return true;
+		stillRequested = true;
+		return false;
+	}
+
+	/** Last, so it has the final say over what's sent: Grim takes these keys as what you were doing at the click. */
+	@Subscribe(priority = Priority.LOWEST)
+	private void onInput(InputEvent e) {
+		if (mc.player == null) return;
+		if (stillRequested) {
+			stillRequested = false;
+			e.forward = e.backward = e.left = e.right = e.sneak = e.sprint = false;
+			if (mc.player.isSprinting()) {
+				mc.player.setSprinting(false);
+				resumeSprint = true;
+			}
+		} else if (resumeSprint) {
+			resumeSprint = false;
+			if (e.forward) e.sprint = true;
+		}
+	}
+
 	@Override
 	public int pullToHotbar(int inventoryIndex, Predicate<ItemStack> replaceable) {
-		if (mc.player == null || inventoryIndex < 9 || inventoryIndex >= 36 || !safeToClick()) return -1;
+		if (mc.player == null || inventoryIndex < 9 || inventoryIndex >= 36 || !prepareClick()) return -1;
 		var inv = mc.player.getInventory();
 		int selected = inv.getSelectedSlot(), to = -1, blocks = -1;
 		for (int i = 0; i < 9; i++) {

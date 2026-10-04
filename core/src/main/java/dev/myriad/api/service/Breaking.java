@@ -60,8 +60,8 @@ public interface Breaking {
 	 * @param range       maximum distance from the eyes to the nearest point of the block, as the server and Grim
 	 *                    measure (see {@link dev.myriad.api.util.Reach#canReach(BlockPos, double)})
 	 * @param autoTool    mine with the fastest tool you have, held server-side only (the visible slot stays). One in
-	 *                    the inventory is moved into the hotbar first, while you stand still (Grim refuses inventory
-	 *                    clicks while you move); until then the best in the hotbar is used
+	 *                    the inventory is moved into the hotbar first (while you move, your keys are released for a
+	 *                    tick before the click, as Grim requires), and a break waits a few ticks for it to arrive
 	 * @param doubleBreak {@link Mode#FAST} and {@link Mode#FAST_GRIM} only: mine a second block while the server
 	 *                    finishes the first on its own
 	 */
