@@ -31,8 +31,15 @@ loom {
 			if (project.hasProperty("screenshotEvery")) property("myriad.screenshotEvery", project.property("screenshotEvery").toString())
 			// -PauditMixins applies every mixin at startup, so a broken one fails straight away instead of when its class loads.
 			property("myriad.auditMixins", project.hasProperty("auditMixins").toString())
+			// Lines appended to run/myriad-dev-inbox are run in game (Myriad commands, server commands, held keys...), so
+			// tests can be scripted from outside; tools/grim-test/client writes there.
+			property("myriad.devConsole", "myriad-dev-inbox")
 			// -PquickPlay="World name" loads straight into a singleplayer world.
 			if (project.hasProperty("quickPlay")) programArgs("--quickPlaySingleplayer", project.property("quickPlay").toString())
+			// -PquickPlayServer=localhost:25565 joins a server instead (the Grim test server in tools/grim-test, say).
+			if (project.hasProperty("quickPlayServer")) programArgs("--quickPlayMultiplayer", project.property("quickPlayServer").toString())
+			// -Pusername=Name plays as that name (offline servers), so a test server can op it once and keep it.
+			if (project.hasProperty("username")) programArgs("--username", project.property("username").toString())
 		}
 	}
 }

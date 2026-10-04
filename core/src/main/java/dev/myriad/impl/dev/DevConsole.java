@@ -1,0 +1,186 @@
+package dev.myriad.impl.dev;
+
+import dev.myriad.api.Myriad;
+import dev.myriad.api.event.Priority;
+import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.InputEvent;
+import dev.myriad.api.event.events.TickEvent;
+import dev.myriad.impl.command.CommandManager;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.EnumSet;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * Dev runs only ({@code -Dmyriad.devConsole=<file>}): runs the lines appended to a file, one script step at a time, so
+ * a test can drive the game from outside it (the Grim test server's {@code ./client} script writes here). Output goes to
+ * the game log, prefixed {@code [dev]}.
+ *
+ * <pre>
+ * .toggle packet_mine          a Myriad command
+ * /gamemode survival           a server command, sent as the player
+ * hold forward,sprint,jump 40  hold movement keys for that many ticks
+ * look 90 30                   set yaw and pitch
+ * select 3                     hotbar slot (1-9)
+ * attack | use                 a left or right click on what the crosshair is on
+ * wait 20                      pause the script for that many ticks
+ * status                       log position, motion, rotation and state
+ * echo text                    log the text (scripts use it to know they're done)
+ * </pre>
+ */
+public final class DevConsole {
+	private static final Logger LOG = LoggerFactory.getLogger("Myriad/Dev");
+
+	private enum Key {
+		FORWARD, BACK, LEFT, RIGHT, JUMP, SNEAK, SPRINT
+	}
+
+	private final Minecraft mc = Minecraft.getInstance();
+	private final Path inbox;
+	private final CommandManager commands;
+	private final Deque<String> pending = new ArrayDeque<>();
+	private final Set<Key> held = EnumSet.noneOf(Key.class);
+	private long read;
+	private int waitTicks, holdTicks;
+
+	public DevConsole(Path inbox, CommandManager commands) {
+		this.inbox = inbox;
+		this.commands = commands;
+		try {
+			// Start empty, so lines from an earlier run aren't replayed.
+			Files.createDirectories(inbox.toAbsolutePath().getParent());
+			Files.writeString(inbox, "");
+		} catch (IOException e) {
+			LOG.error("[dev] can't use {}", inbox, e);
+		}
+		LOG.info("[dev] console reading {}", inbox.toAbsolutePath());
+	}
+
+	@Subscribe(priority = Priority.HIGHEST)
+	private void onTick(TickEvent.Pre e) {
+		poll();
+		if (holdTicks > 0 && --holdTicks == 0) held.clear();
+		if (waitTicks > 0) {
+			waitTicks--;
+			return;
+		}
+		while (!pending.isEmpty() && waitTicks == 0) run(pending.poll());
+	}
+
+	@Subscribe(priority = Priority.HIGHEST)
+	private void onInput(InputEvent e) {
+		if (held.isEmpty()) return;
+		e.forward |= held.contains(Key.FORWARD);
+		e.backward |= held.contains(Key.BACK);
+		e.left |= held.contains(Key.LEFT);
+		e.right |= held.contains(Key.RIGHT);
+		e.jump |= held.contains(Key.JUMP);
+		e.sneak |= held.contains(Key.SNEAK);
+		e.sprint |= held.contains(Key.SPRINT);
+	}
+
+	/** Reads whole lines appended since last time. */
+	private void poll() {
+		try (RandomAccessFile f = new RandomAccessFile(inbox.toFile(), "r")) {
+			if (f.length() < read) read = 0;
+			if (f.length() == read) return;
+			byte[] bytes = new byte[(int) (f.length() - read)];
+			f.seek(read);
+			f.readFully(bytes);
+			String text = new String(bytes, StandardCharsets.UTF_8);
+			int end = text.lastIndexOf('\n');
+			if (end < 0) return;
+			read += text.substring(0, end + 1).getBytes(StandardCharsets.UTF_8).length;
+			for (String line : text.substring(0, end).split("\n")) if (!line.isBlank()) pending.add(line.strip());
+		} catch (IOException ignored) {
+		}
+	}
+
+	private void run(String line) {
+		LOG.info("[dev] > {}", line);
+		try {
+			if (line.startsWith(".")) {
+				commands.execute(line.substring(1));
+				return;
+			}
+			if (line.startsWith("/")) {
+				if (mc.getConnection() != null) mc.getConnection().sendCommand(line.substring(1));
+				return;
+			}
+			String[] a = line.split("\\s+");
+			switch (a[0].toLowerCase(Locale.ROOT)) {
+				case "hold" -> {
+					held.clear();
+					for (String k : a[1].split(",")) held.add(Key.valueOf(k.toUpperCase(Locale.ROOT)));
+					holdTicks = a.length > 2 ? Integer.parseInt(a[2]) : 1;
+				}
+				case "release" -> {
+					held.clear();
+					holdTicks = 0;
+				}
+				case "look" -> {
+					if (mc.player == null) return;
+					mc.player.setYRot(Float.parseFloat(a[1]));
+					mc.player.setXRot(Float.parseFloat(a[2]));
+				}
+				case "select" -> Myriad.inventory().select(Integer.parseInt(a[1]) - 1);
+				case "attack" -> attack();
+				case "use" -> use();
+				case "wait" -> waitTicks = Integer.parseInt(a[1]);
+				case "status" -> status();
+				case "echo" -> LOG.info("[dev] echo {}", line.substring(4).strip());
+				default -> LOG.warn("[dev] unknown: {}", line);
+			}
+		} catch (RuntimeException ex) {
+			LOG.warn("[dev] failed: {} ({})", line, ex.toString());
+		}
+	}
+
+	private void attack() {
+		if (mc.player == null || mc.gameMode == null) return;
+		HitResult hit = mc.hitResult;
+		if (hit instanceof EntityHitResult e) mc.gameMode.attack(mc.player, e.getEntity());
+		else if (hit instanceof BlockHitResult b && hit.getType() == HitResult.Type.BLOCK) mc.gameMode.startDestroyBlock(b.getBlockPos(), b.getDirection());
+		mc.player.swing(InteractionHand.MAIN_HAND);
+	}
+
+	private void use() {
+		if (mc.player == null || mc.gameMode == null) return;
+		if (mc.hitResult instanceof BlockHitResult b && b.getType() == HitResult.Type.BLOCK) {
+			if (mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, b).consumesAction()) mc.player.swing(InteractionHand.MAIN_HAND);
+		} else {
+			mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+		}
+	}
+
+	private void status() {
+		var p = mc.player;
+		if (p == null) {
+			LOG.info("[dev] status: not in a world");
+			return;
+		}
+		var v = p.getDeltaMovement();
+		LOG.info("[dev] status: pos {} {} {} motion {} {} {} ({} b/s) rot {} {} ground={} gliding={} health={} slot={} item={} mode={}",
+			fmt(p.getX()), fmt(p.getY()), fmt(p.getZ()), fmt(v.x), fmt(v.y), fmt(v.z), fmt(v.length() * 20), fmt(p.getYRot()), fmt(p.getXRot()),
+			p.onGround(), p.isFallFlying(), fmt(p.getHealth()), p.getInventory().getSelectedSlot() + 1, p.getMainHandItem().getItem(),
+			mc.gameMode == null ? "?" : mc.gameMode.getPlayerMode().getName());
+	}
+
+	private static String fmt(double d) {
+		return String.format(Locale.ROOT, "%.3f", d);
+	}
+}
