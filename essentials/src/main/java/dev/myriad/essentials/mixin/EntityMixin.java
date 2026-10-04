@@ -6,7 +6,6 @@ import dev.myriad.essentials.modules.movement.ElytraFly;
 import dev.myriad.essentials.modules.movement.Velocity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.Pose;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -21,17 +20,17 @@ public abstract class EntityMixin {
 		if (self == Minecraft.getInstance().player && Velocity.cancelsEntityPush()) ci.cancel();
 	}
 
-	/** Elytra Fly Silent: walking between bounces follows the lane, not the camera. */
+	/** Elytra Fly: walking between bounces follows the lane, not the camera. */
 	@ModifyExpressionValue(method = "moveRelative", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;getYRot()F"))
 	private float essentials$moveYaw(float original) {
 		Object self = this;
 		return self == Minecraft.getInstance().player && ElytraFly.spoofing() ? ElytraFly.spoofYaw() : original;
 	}
 
-	/** Elytra Fly Packet: keep the standing pose (and hitbox) while gliding. */
-	@ModifyReturnValue(method = "getPose", at = @At("RETURN"))
-	private Pose essentials$standingPose(Pose original) {
+	/** Elytra Fly: stay sprinting while gliding without holding forward, so each bounce's jump gets the sprint boost. */
+	@ModifyReturnValue(method = "isSprinting", at = @At("RETURN"))
+	private boolean essentials$bounceSprint(boolean original) {
 		Object self = this;
-		return original == Pose.FALL_FLYING && self == Minecraft.getInstance().player && ElytraFly.holdStandingPose() ? Pose.STANDING : original;
+		return original || self == Minecraft.getInstance().player && ElytraFly.holdsSprint();
 	}
 }

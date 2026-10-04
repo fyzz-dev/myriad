@@ -3,21 +3,23 @@ package dev.myriad.essentials.modules.movement;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.InputEvent;
+import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.setting.BoolSetting;
-import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.EnumSetting;
-import dev.myriad.api.setting.IntSetting;
-import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.Baritone;
+import dev.myriad.api.util.Interactions;
 import dev.myriad.api.util.Mining;
 import dev.myriad.api.util.Packets;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ClientboundPingPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.tags.BlockTags;
@@ -35,86 +37,128 @@ import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * Elytra bouncing for highway travel: holds forward (and jump), reopens the elytra the moment it closes on the ground,
- * locks your pitch and keeps you on the nearest 45° highway lane. With Silent, the lane yaw and bounce pitch only go to
- * the server and the flight physics, so you can look around freely.
- * <p>
- * Something in the lane (an ender chest, a portal, a wall) stops the bounce. Obstacles decides what happens next:
- * stop, mine through it with the best tool, or have Baritone walk you round it and carry on bouncing past it.
+ * Two ways to fly an elytra, by what you're doing:
+ * <ul>
+ * <li><b>Recast</b> bounces along a highway along the ground. It jumps each time you touch down and keeps you on the nearest 45°
+ * lane. The client keeps gliding through each ground touch instead of letting the elytra close; the server still closes
+ * it on landing, so it's reopened (one packet) once you're back in the air, but your own physics never drop to walking
+ * while that round trip happens. Jump is only pressed on the ticks you're on the ground and forward is never pressed
+ * (strict anticheats check both against the glide); sprint stays on so every jump still adds its boost. The pitch dives
+ * while you're rising and levels out as you fall, which turns each bounce into the most forward speed. Fake Lag holds
+ * your packets back while you're at ground level, so the server takes the landing and the next hop together and never
+ * sees you stop gliding. Something in the lane (an ender chest, a portal, a wall) stops the bounce, and Obstacles decides
+ * what happens next: stop, mine through it, or have Baritone walk you round it and carry on bouncing past it.</li>
+ * <li><b>Altitude</b> crosses open country without fireworks, "pitch 40" style. It dives until you're fast, pulls up hard, then eases
+ * back to level: pulling up gives back more height than the speed it costs, so the cycle holds the altitude you started
+ * gliding at (it dives harder when you're above it and climbs more when you're below). Start high, since the first dive
+ * from a slow glide drops you 50 or so blocks. Steer with the camera.</li>
+ * </ul>
+ * The flight rotation only goes to the server and the flight physics, so you can look around freely.
  */
 public class ElytraFly extends Module {
+	public enum Mode {
+		RECAST, ALTITUDE
+	}
+
 	public enum Obstacles {
 		STOP, MINE, BARITONE
 	}
 
-	private final DoubleSetting pitch = sgGeneral.doubleSetting("Pitch").description("Pitch while bouncing.").defaultValue(40).range(0, 90).decimals(0).build();
-	private final BoolSetting lockPitch = sgGeneral.bool("Lock Pitch").description("Hold the bounce pitch.").defaultValue(true).build();
-	private final BoolSetting silent = sgGeneral.bool("Silent").description("Only the server and flight physics see the locked rotation; your camera stays free.")
-		.defaultValue(true).visible(lockPitch::get).build();
-	private final BoolSetting highwayYaw = sgGeneral.bool("Highway Yaw").description("Snap your heading to the nearest 45° lane.").defaultValue(true).build();
-	private final BoolSetting autoJump = sgGeneral.bool("Auto Jump").description("Hold jump so you take off from the ground and bounce on contact.").defaultValue(true).build();
-	private final BoolSetting takeOff = sgGeneral.bool("Take Off").description("Open the elytra by itself whenever you're in the air.").defaultValue(true).build();
-	private final BoolSetting packet = sgGeneral.bool("Packet").description("Keep a standing pose while gliding, so your hitbox doesn't shrink between bounces.").build();
-
-	private final SettingGroup sgObstacles = settings.group("Obstacles");
-	private final EnumSetting<Obstacles> obstacles = sgObstacles.enumSetting("Obstacles", Obstacles.MINE)
-		.description("What to do about blocks in the lane: stop, mine them, or walk round with Baritone (mines if Baritone isn't installed).").build();
-	private final DoubleSetting lookAhead = sgObstacles.doubleSetting("Look Ahead").description("How far ahead to look for blocks in the lane.").defaultValue(3.5).range(1, 6).decimals(1).build();
-	private final IntSetting bypassDistance = sgObstacles.intSetting("Bypass Distance").description("How far past the obstacle Baritone walks before bouncing resumes.")
-		.defaultValue(8).range(3, 32).visible(() -> obstacles.get() == Obstacles.BARITONE).build();
-	private final BoolSetting forceY = sgObstacles.bool("Force Y").description("Have Baritone come back to a fixed Y level (the highway's).")
-		.visible(() -> obstacles.get() == Obstacles.BARITONE).build();
-	private final IntSetting yLevel = sgObstacles.intSetting("Y Level").defaultValue(120).range(-64, 320)
-		.visible(() -> obstacles.get() == Obstacles.BARITONE && forceY.get()).build();
+	private final EnumSetting<Mode> mode = sgGeneral.enumSetting("Mode", Mode.RECAST)
+		.description("Recast to bounce along a highway, Altitude to cross open country without fireworks.").build();
+	private final EnumSetting<Obstacles> obstacles = sgGeneral.enumSetting("Obstacles", Obstacles.MINE)
+		.description("What to do about blocks in the lane: stop, mine them, or walk round with Baritone (mines if Baritone isn't installed).")
+		.visible(() -> mode.get() == Mode.RECAST).build();
+	private final BoolSetting fakeLag = sgGeneral.bool("Fake Lag")
+		.description("Hold your packets back while you're at ground level, so the server never sees the elytra close between bounces.").defaultValue(true)
+		.visible(() -> mode.get() == Mode.RECAST).build();
 
 	private enum State {
 		IDLE, BOUNCING, MINING, PATHING
 	}
 
+	private enum Phase {
+		DIVE, PULL_UP, CLIMB
+	}
+
+	/** Recast: dive while vertical speed is above this, level out below it. */
+	private static final double DIVE_UNTIL_Y = -0.2;
+	/** Recast: how far ahead to look for blocks in the lane, and how far past them Baritone walks. */
+	private static final double LOOK_AHEAD = 3.5, BYPASS_DISTANCE = 8;
+	/** Recast: ticks to stop after the server snaps you back. */
+	private static final int FLAG_PAUSE = 5;
+	/**
+	 * Altitude, worked out on vanilla's glide physics: dive at {@code DIVE_PITCH} until faster than the threshold (blocks a
+	 * second), snap up to {@code CLIMB_PITCH} at {@code PULL_RATE} a tick, then ease back to level at {@code EASE_RATE}.
+	 * The threshold rises by {@code HOLD_GAIN} for every block above the cruise height (more speed, less climb) and falls
+	 * below it, which keeps the cycle at that height: about 28 blocks a second.
+	 */
+	private static final float DIVE_PITCH = 36, CLIMB_PITCH = -49, PULL_RATE = 5, EASE_RATE = 0.8f;
+	private static final double DIVE_SPEED = 52, HOLD_GAIN = 0.2, MIN_DIVE_SPEED = 36, MAX_DIVE_SPEED = 58;
+
+	private Mode activeMode = Mode.RECAST;
 	private State state = State.IDLE;
-	private boolean previouslyGliding, holdingInput, spoofing, toolHeld;
+	private Phase phase = Phase.DIVE;
+	private float climbPitch;
+	private double cruiseY = Double.NaN;
+	/** Recast's Fake Lag gives up and sends what it's holding after this many ticks, so a stall on the ground can't time you out. */
+	private static final int MAX_LAG_TICKS = 5;
+	/** Fake Lag holds packets while you're less than this above the last ground you touched. */
+	private static final double LAG_HEIGHT = 0.163;
+
+	private boolean wantJump, spoofing, toolHeld;
+	/** Keep gliding client-side through ground touches; set once the elytra has opened while bouncing. */
+	private boolean holdGlide;
+	private volatile boolean flagged;
+	private int pauseTicks;
+	private double groundY;
+	private final Queue<Packet<?>> heldPackets = new ConcurrentLinkedQueue<>();
+	private final Queue<ClientboundPingPacket> heldPings = new ConcurrentLinkedQueue<>();
+	private int lagTicks;
+	private boolean flushing;
 	private float lane, spoofYaw, spoofPitch;
-	private Vec3 travelDir = new Vec3(0, 0, 1);
-	private Vec3 lastPos;
 	private BlockPos mining;
 	private int pathWait;
 
 	public ElytraFly() {
-		super(Categories.MOVEMENT, "Elytra Fly", "Bounce along highways with an elytra, past whatever's in the way.");
+		super(Categories.MOVEMENT, "Elytra Fly", "Bounce along highways, or cross open country without fireworks.");
 	}
 
 	@Override
 	protected void onEnable() {
+		activeMode = mode.get();
 		reset();
-		if (!inGame()) return;
-		previouslyGliding = mc.player.isFallFlying();
-		lane = snap(mc.player.getYRot());
-		travelDir = Vec3.directionFromRotation(0, mc.player.getYRot());
-		lastPos = mc.player.position();
+		if (inGame()) lane = snap(mc.player.getYRot());
 	}
 
 	@Override
 	protected void onDisable() {
-		if (state == State.PATHING) Baritone.stop();
 		reset();
 	}
 
 	private void reset() {
+		if (state == State.PATHING) Baritone.stop();
 		state = State.IDLE;
-		holdingInput = spoofing = false;
+		phase = Phase.DIVE;
+		cruiseY = groundY = Double.NaN;
+		wantJump = spoofing = holdGlide = flagged = false;
+		flushLag();
 		mining = null;
-		pathWait = 0;
+		pathWait = pauseTicks = 0;
 		releaseTool();
 	}
 
 	@Override
 	public String hudInfo() {
+		if (activeMode == Mode.ALTITUDE) return Double.isNaN(cruiseY) ? "Altitude" : String.format("Y%.0f", cruiseY);
 		return switch (state) {
 			case MINING -> "Mining";
 			case PATHING -> "Baritone";
-			case BOUNCING -> String.format("%.0f°", lane);
+			case BOUNCING -> pauseTicks > 0 ? "Flagged" : String.format("%.0f°", lane);
 			case IDLE -> null;
 		};
 	}
@@ -138,41 +182,151 @@ public class ElytraFly extends Module {
 		return m == null ? 0 : m.spoofPitch;
 	}
 
-	/** Keep the standing pose (Packet option). */
-	public static boolean holdStandingPose() {
+	/** Whether the local player should count as gliding even though the elytra closed (it closes on every landing). */
+	public static boolean holdsGlide() {
 		ElytraFly m = Modules.active(ElytraFly.class);
-		return m != null && m.packet.get() && m.state == State.BOUNCING;
+		return m != null && m.holdGlide;
+	}
+
+	/** Keep sprinting while gliding, so each jump off the ground adds the sprint boost without holding forward. */
+	public static boolean holdsSprint() {
+		return holdsGlide();
 	}
 
 	// ---- tick -----------------------------------------------------------------------------------------------------
 
 	@Subscribe
 	private void onInput(InputEvent e) {
-		if (!holdingInput) return;
-		e.forward = true;
-		if (autoJump.get()) e.jump = true;
+		if (wantJump) e.jump = true;
+	}
+
+	@Subscribe
+	private void onPacket(PacketEvent.Receive e) {
+		if (e.packet() instanceof ClientboundPlayerPositionPacket) flagged = true;
+		// Grim and the like time your packets against their pings: hold those too, so the gap reads as lag.
+		if (e.packet() instanceof ClientboundPingPacket ping && lagging()) {
+			heldPings.add(ping);
+			e.cancel();
+		}
+	}
+
+	@Subscribe
+	private void onSend(PacketEvent.Send e) {
+		if (flushing) return;
+		if (!lagging()) {
+			// Whatever was held goes out first, so the server still sees everything in order.
+			if (!heldPackets.isEmpty()) flushLag();
+			return;
+		}
+		heldPackets.add(e.packet());
+		e.cancel();
+	}
+
+	/** Fake Lag: down at ground level while gliding, where the server would see you land and close the elytra. */
+	private boolean lagging() {
+		return fakeLag.get() && holdGlide && lagTicks < MAX_LAG_TICKS && mc.player != null && mc.player.getY() - groundY < LAG_HEIGHT;
+	}
+
+	private void tickLag() {
+		if (heldPackets.isEmpty() && heldPings.isEmpty()) {
+			lagTicks = 0;
+			return;
+		}
+		if (lagging() && ++lagTicks < MAX_LAG_TICKS) return;
+		flushLag();
+	}
+
+	/** Sends the held packets, then answers the held pings, in the order they came. */
+	private void flushLag() {
+		flushing = true;
+		try {
+			for (Packet<?> p; (p = heldPackets.poll()) != null; ) Packets.sendSilently(p);
+			var connection = mc.getConnection();
+			for (ClientboundPingPacket p; (p = heldPings.poll()) != null; ) if (connection != null) p.handle(connection);
+		} finally {
+			flushing = false;
+			lagTicks = 0;
+		}
 	}
 
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
+		wantJump = false;
 		if (!inGame()) return;
+		if (mode.get() != activeMode) {
+			reset();
+			activeMode = mode.get();
+		}
+		if (activeMode == Mode.ALTITUDE) tickAltitude();
+		else tickBounce();
+	}
+
+	// ---- Altitude -------------------------------------------------------------------------------------------------
+
+	private void tickAltitude() {
+		flagged = false;
+		if (!canGlide()) {
+			spoofing = false;
+			return;
+		}
+		var p = mc.player;
+		if (!p.isFallFlying()) {
+			spoofing = false;
+			phase = Phase.DIVE;
+			cruiseY = Double.NaN;
+			// Open the elytra once you're falling: off a ledge, or on the way down from a jump.
+			if (!p.onGround() && p.getDeltaMovement().y < -0.3) startGliding();
+			return;
+		}
+		if (Double.isNaN(cruiseY)) cruiseY = p.getY();
+
+		double speed = p.getDeltaMovement().length() * 20;
+		double diveUntil = Mth.clamp(DIVE_SPEED + HOLD_GAIN * (p.getY() - cruiseY), MIN_DIVE_SPEED, MAX_DIVE_SPEED);
+		float flightPitch = switch (phase) {
+			case DIVE -> {
+				if (speed > diveUntil) {
+					phase = Phase.PULL_UP;
+					climbPitch = 0;
+				}
+				yield DIVE_PITCH;
+			}
+			case PULL_UP -> {
+				climbPitch = Math.max(CLIMB_PITCH, climbPitch - PULL_RATE);
+				if (climbPitch <= CLIMB_PITCH) phase = Phase.CLIMB;
+				yield climbPitch;
+			}
+			case CLIMB -> {
+				climbPitch = Math.min(0, climbPitch + EASE_RATE);
+				if (climbPitch >= 0) phase = Phase.DIVE;
+				yield climbPitch;
+			}
+		};
+		spoof(p.getYRot(), flightPitch);
+	}
+
+	// ---- Recast ---------------------------------------------------------------------------------------------------
+
+	private void tickBounce() {
+		tickLag();
+		if (flagged) {
+			flagged = false;
+			pauseTicks = FLAG_PAUSE;
+			flushLag();
+		}
 		if (state == State.PATHING) {
 			tickPathing();
 			return;
 		}
-		if (!canBounce()) {
+		if (!canGlide()) {
 			stopBouncing();
 			state = State.IDLE;
-			previouslyGliding = mc.player.isFallFlying();
 			return;
 		}
-		if (highwayYaw.get() && state != State.MINING) lane = snap(mc.player.getYRot());
-		updateTravelDir();
+		if (state != State.MINING) lane = snap(mc.player.getYRot());
 
 		List<BlockPos> blocked = laneBlocks();
 		if (!blocked.isEmpty()) {
 			handleObstacle(blocked);
-			previouslyGliding = mc.player.isFallFlying();
 			return;
 		}
 		if (state == State.MINING) {
@@ -180,16 +334,25 @@ public class ElytraFly extends Module {
 			releaseTool();
 		}
 		state = State.BOUNCING;
-		tickRotation();
+		if (pauseTicks > 0) {
+			// The server rejected a move: let its correction land before bouncing on from there.
+			pauseTicks--;
+			spoofing = holdGlide = false;
+			return;
+		}
+		spoof(lane, mc.player.getDeltaMovement().y > DIVE_UNTIL_Y ? 90 : 4);
+		// Vanilla waits 10 ticks between held jumps; jump the tick you touch down.
+		Interactions.setJumpCooldown(0);
+		if (mc.player.onGround()) {
+			groundY = mc.player.getY();
+			wantJump = true;
+		}
 
-		// Vanilla closes the elytra on touching the ground; reopen it straight away to keep bouncing.
-		if (previouslyGliding && !mc.player.isFallFlying()) recast();
-		previouslyGliding = mc.player.isFallFlying();
-		// Take off: once off the ground (Auto Jump's jump, a ledge, or your own jump), open the elytra.
-		if (!mc.player.isFallFlying() && !mc.player.onGround() && (takeOff.get() || mc.options.keyJump.isDown())) recast();
-
-		holdingInput = true;
-		mc.player.setSprinting(!mc.player.isFallFlying() || mc.player.onGround());
+		boolean gliding = elytraOpen();
+		if (gliding) holdGlide = true;
+		// The server closes the elytra on every landing; reopen it once you're back in the air. Take off the same way,
+		// after the first jump or off a ledge.
+		if (!gliding && !mc.player.onGround()) startGliding();
 	}
 
 	private void handleObstacle(List<BlockPos> blocked) {
@@ -215,7 +378,8 @@ public class ElytraFly extends Module {
 
 	private void stopBouncing() {
 		spoofing = false;
-		holdingInput = false;
+		holdGlide = false;
+		flushLag();
 		if (state == State.BOUNCING || state == State.MINING) pauseFlight();
 	}
 
@@ -223,8 +387,9 @@ public class ElytraFly extends Module {
 
 	private void startPathing() {
 		Vec3 lane = laneDir();
-		Vec3 target = mc.player.position().add(lane.scale(lookAhead.get() + bypassDistance.get()));
-		int y = forceY.get() ? yLevel.get() : mc.player.getBlockY();
+		Vec3 target = mc.player.position().add(lane.scale(LOOK_AHEAD + BYPASS_DISTANCE));
+		// Come back to the lane's own level, not wherever the obstacle left you standing.
+		int y = Double.isNaN(groundY) ? mc.player.getBlockY() : Mth.floor(groundY + 0.5);
 		if (!Baritone.pathTo(Mth.floor(target.x), y, Mth.floor(target.z))) {
 			state = State.MINING;
 			return;
@@ -236,8 +401,8 @@ public class ElytraFly extends Module {
 
 	/** Waits for Baritone to get past the obstacle, then bounces on (or gives up after a few seconds without a path). */
 	private void tickPathing() {
-		holdingInput = false;
 		spoofing = false;
+		holdGlide = false;
 		if (Baritone.isPathing()) {
 			pathWait = 0;
 			return;
@@ -252,43 +417,37 @@ public class ElytraFly extends Module {
 
 	// ---- rotation and flight --------------------------------------------------------------------------------------
 
-	private void tickRotation() {
-		float yaw = highwayYaw.get() ? Mth.wrapDegrees(lane) : mc.player.getYRot();
-		if (!highwayYaw.get() && !lockPitch.get()) {
-			spoofing = false;
-			return;
-		}
-		if (!silent.get() || !lockPitch.get()) {
-			spoofing = false;
-			if (lockPitch.get()) mc.player.setXRot(pitch.getFloat());
-			if (highwayYaw.get()) {
-				mc.player.setYRot(yaw);
-				mc.player.setYHeadRot(yaw);
-				mc.player.setYBodyRot(yaw);
-			}
-			return;
-		}
-		spoofYaw = yaw;
-		spoofPitch = pitch.getFloat();
+	/** Flies (and tells the server) with this rotation, leaving the camera alone. */
+	private void spoof(float yaw, float pitch) {
+		spoofYaw = Mth.wrapDegrees(yaw);
+		spoofPitch = pitch;
 		spoofing = true;
 		Myriad.rotations().request(this, spoofYaw, spoofPitch, Rotations.PRIORITY_HIGH + 50);
 	}
 
-	private void recast() {
-		if (!canBounce()) return;
-		mc.player.setOnGround(false);
+	private void startGliding() {
 		mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
 		mc.player.startFallFlying();
 	}
 
+	/** Whether the elytra is really open (as the server last said, or as we just asked), ignoring {@link #holdsGlide()}. */
+	private boolean elytraOpen() {
+		boolean held = holdGlide;
+		holdGlide = false;
+		boolean open = mc.player.isFallFlying();
+		holdGlide = held;
+		return open;
+	}
+
 	private void pauseFlight() {
+		holdGlide = false;
 		Vec3 v = mc.player.getDeltaMovement();
 		mc.player.setDeltaMovement(0, Math.min(v.y, 0), 0);
 		mc.player.hurtMarked = true;
 		if (mc.player.isFallFlying()) mc.player.stopFallFlying();
 	}
 
-	private boolean canBounce() {
+	private boolean canGlide() {
 		var p = mc.player;
 		if (p.getAbilities().flying || p.isPassenger() || p.isInWater() || p.hasEffect(MobEffects.LEVITATION)) return false;
 		if (p.getInBlockState().is(BlockTags.CLIMBABLE)) return false;
@@ -296,24 +455,9 @@ public class ElytraFly extends Module {
 		return false;
 	}
 
-	private void updateTravelDir() {
-		Vec3 p = mc.player.position();
-		if (state != State.MINING) {
-			Vec3 v = mc.player.getDeltaMovement();
-			Vec3 horizontal = new Vec3(v.x, 0, v.z);
-			if (horizontal.lengthSqr() > 0.0025) travelDir = horizontal.normalize();
-			else if (lastPos != null) {
-				Vec3 d = new Vec3(p.x - lastPos.x, 0, p.z - lastPos.z);
-				if (d.lengthSqr() > 1e-4) travelDir = d.normalize();
-			}
-		}
-		lastPos = p;
-	}
-
-	/** The way the lane runs: the snapped heading on a highway, else where you're going. */
+	/** The way the lane runs. */
 	private Vec3 laneDir() {
-		if (highwayYaw.get()) return Vec3.directionFromRotation(0, lane);
-		return travelDir.lengthSqr() < 1e-6 ? Vec3.directionFromRotation(0, mc.player.getYRot()) : travelDir;
+		return Vec3.directionFromRotation(0, lane);
 	}
 
 	private static float snap(float yaw) {
@@ -354,12 +498,11 @@ public class ElytraFly extends Module {
 	private List<BlockPos> laneBlocks() {
 		List<BlockPos> found = new ArrayList<>();
 		Vec3 forward = laneDir();
-		double range = Math.max(lookAhead.get(), 2.0);
 		Vec3 origin = mc.player.position();
 		AABB box = mc.player.getBoundingBox();
 		int minY = Mth.floor(box.minY + 0.2), maxY = Mth.floor(box.maxY + 0.6);
 		Vec3 side = new Vec3(-forward.z, 0, forward.x);
-		int steps = Math.max(1, Mth.ceil(range * 2));
+		int steps = Mth.ceil(LOOK_AHEAD * 2);
 		for (int i = 1; i <= steps; i++) {
 			for (double offset : new double[]{-0.4, 0, 0.4}) {
 				Vec3 sample = origin.add(forward.scale(i * 0.5)).add(side.scale(offset));
