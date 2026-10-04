@@ -100,10 +100,11 @@ The stock modules, in the standard categories (each module's settings explain it
 
 | | |
 |---|---|
-| Combat | **Offhand** (totem, crystal, golden apple or shield, falling back to a totem when it matters; sword gap), **Auto Armor** (best armour; a bind flips chestplate and elytra), **Auto Disconnect** (health, totem pops, totems left, players, beds, anchors, crystals, creepers) |
-| Movement | **Elytra Fly** (highway bouncing; mines or, with Baritone, walks round obstacles), **Velocity** |
-| Player | **Auto Eat** (pauses Baritone), **Auto Tool** (silent), **Middle Click** (friend, experience, rocket or pearl by what you point at), **Reach**, **Wall Interact**, **X Carry** |
-| Render | **ESP**, **Storage**, **Tracers**, **Nametags** (players, mobs, items, pearl owners), **Tooltips** (shulker and ender chest previews, durability, food), **Free Look**, **Freecam**, **View Model**, **Zoom** |
+| Combat | **Offhand** (totem, crystal, golden apple or shield, falling back to a totem when it matters; sword gap), **Auto Armor** (best armour; a bind flips chestplate and elytra), **Auto Disconnect** (health, totem pops, totems left, armour, players, beds, anchors, crystals, creepers, falls, the void, chosen entities; turns off or waits for the reason to clear), **Kill Aura** (Grim-safe: faces the target with move fix and hits only once the sent rotation lands on its hitbox within reach; full charge, vanilla packet order; weapon switch or only while holding one) |
+| Movement | **Elytra Fly** (highway bouncing; mines or, with Baritone, walks round obstacles), **Inventory Move** (walk with screens open, arrow keys to look), **Velocity** |
+| Player | **Auto Eat** (pauses Baritone), **Auto Tool** (silent; brings tools in from your inventory), **Inventory Tweaks** (right-click a shulker box or ender chest in your inventory to open it on the spot), **Middle Click** (friend, experience, rocket or pearl by what you point at), **Packet Mine** (hit once and the block is mined for you with your hand free, timed for Grim; experimental Fast mode with double break for 2b2t; hold and drag to queue blocks, auto rebreak, tools from your inventory), **Reach** (starts at vanilla; Grim flags more), **Stack Replenish** (tops up hotbar stacks and refills used-up slots), **Wall Interact**, **X Carry** |
+| Render | **ESP**, **Blocks** (highlight chosen blocks, like spawners or beds, in their own colours), **Storage**, **Tracers**, **Nametags** (players, mobs, items, pearl owners), **Tooltips** (shulker, ender chest and map previews, durability, food), **Full Bright** (gamma or night vision), **Free Look**, **Freecam**, **View Model**, **Zoom** |
+| World | **Air Place** (place blocks in mid-air where you look, through the off hand so Grim accepts it), **Scaffold** (blocks under you as you walk, Grim-safe: rotates with move fix and clicks visible faces; bridges corners, towers when you jump) |
 
 HUD elements: Watermark (with the logo), Module List, Coordinates, Armor, Binds, Chest Count, Direction, Effects,
 FPS, HP, Player Count, Speed, Totems, TPS. Baritone options do nothing when Baritone isn't installed.
@@ -112,7 +113,8 @@ FPS, HP, Player Count, Speed, Totems, TPS. Baritone options do nothing when Bari
 
 Prefix `.` (change with `.prefix`). Commands autocomplete in chat and in the console panel.
 `.toggle <module>`, `.bind <module> <key|none>`, `.set <module> [setting] [value]`, `.reset <module>`,
-`.profile [load|delete|save]`, `.friend add|remove|list`, `.theme <preset>`, `.addons`, `.panic`, `.help`, `.menu`,
+`.profile [load|delete|save]`, `.friend add|remove|list`, `.theme <preset>`, `.addons`, `.diagnostics` (copies versions,
+addons, mods and enabled modules' changed settings for a bug report), `.panic`, `.help`, `.menu`,
 `.modules` (click one to toggle it), `.binds`, `.say <message>` (sends text starting with the prefix as chat),
 `.reload` (re-read the profile from disk), `.disconnect`, and `.fakeplayer add|remove|clear|list` (client-side
 dummies for testing).
@@ -126,6 +128,10 @@ Config lives in `.minecraft/myriad/`. Module state and the menu layout belong to
 (`profiles/<name>/modules.json`, `ui.json`). `myriad.json` holds global options and key actions, and `friends.json`
 holds friends. Entries for modules or windows whose addon isn't installed are kept on save, so removing an addon and
 adding it back later loses nothing.
+
+When an update renames or reworks a module's settings, the module bumps `settingsVersion()` and moves old saved values
+over in `migrateSettings(fromVersion, saved)` (`SavedSettings.rename`, `move`, `map`, `renameGroup`), so nobody loses
+their configuration. A renamed module lists its old names with `formerNames(...)`.
 
 ---
 
@@ -256,11 +262,15 @@ Shared services keep addons from fighting over the same state:
 
 | | |
 |---|---|
-| `Myriad.rotations()` | per-tick server-side rotation requests; the highest priority wins. Pass a callback to act once the rotation has been sent |
-| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, `hold(owner, slot, ticks)` (mining runs at the held item's speed), `serverItem()`; `bestInHotbar(score)`, `count`, `moveToHotbar`, `ensureInHotbar`; `move(from, to)`, `swapWithOffhand`, `quickMove`, `drop` |
-| `Myriad.placement()` | placing blocks: neighbour clicks, rotation, silent swap, cooldowns; `clickTargets(pos)` and `place(hit, …)` when the clicked face matters (stairs, logs, slabs) |
+| `Myriad.rotations()` | per-tick server-side rotation requests, arbitrated per axis (pass `NaN` for an axis you don't need); the highest priority wins. `Options(turnSpeed, moveFix)` turns at a limited speed (easing back afterwards) and walks along the sent yaw for anti-cheats that simulate movement. Pass a callback to act once the rotation has been sent |
+| `Myriad.inventory()` | server slot tracking, `select`, silent swaps, `hold(owner, slot, ticks)` (mining runs at the held item's speed), `serverItem()`; `bestInHotbar(score)`, `count`, `moveToHotbar`, `ensureInHotbar`, `pullToHotbar` (brings an item in without disturbing what you use); `move(from, to)`, `swapWithOffhand`, `quickMove`, `drop`; `safeToClick()` (Grim cancels inventory clicks while you move) |
+| `Myriad.placement()` | placing blocks (pass an owner to have queued placements dropped with your module): neighbour clicks, silent swap, visible faces first; `check(pos)` says why a block can't go somewhere (`OUT_OF_RANGE`, `ENTITY_IN_WAY`, `NOT_VISIBLE`, `PENDING`, ...), and `place` returns an `Attempt` whose `result()` completes once the server has kept or refused the block. `Options.STRICT` rotates through `rotations()` and clicks once that rotation has been sent, where the look lands, and only on faces you can see; `DEFAULT` places at once. `clickTargets(pos)` and `place(hit, …)` when the clicked face matters (stairs, logs, slabs) |
+| `Myriad.breaking()` | breaking blocks for any number of modules: `breakBlock(owner, pos, priority, options)` queues by priority and returns an `Attempt` (asking again returns the same one). Picks and holds the fastest tool server-side, batches instant breaks by tool, shows the crack, rotates if asked, and settles from the server's answer. `Mode.VANILLA` mines like the attack button (strict servers); `Mode.PACKET` finishes the moment the server allows (70% of the time), re-breaks a block put back where the last one was instantly, and with `doubleBreak` mines a second block while the server finishes the first. Placements and breaks see each other's pending positions |
+| `Myriad.building()` | the planner: describe a shape as a `Blueprint` (`box`, `of(map)`, `dynamic(...)`) of `Target`s (`air()`, `solid()`, `anyOf(...)`, `state(...)` for orientation), and it breaks and places what's in reach each tick in a working order (top-down breaks, bottom-up placements, materials into the hotbar, oriented blocks clicked so they face the right way). `Build.steps()` says what's happening at each position or why it's stuck (`NO_ITEM`, `FLUID`, `WRONG_ANGLE`, ...); `keepUp` maintains the shape (surround) |
 | `Myriad.containers()` | `open(pos, timeout)` a chest/barrel/shulker and get a `View` once its contents arrive: `find`, `count`, `quickMove`, `swapWithHotbar`, `drop`, `close` |
-| `Myriad.tasks()` | work over ticks: `later`, `every`, and `sequence` (run / wait / waitUntil with timeouts). A module's tasks are cancelled when it's disabled |
+| `Myriad.tasks()` | work over ticks: `later`, `every`, and `sequence` (run / wait / waitUntil / `await` a future / `require` a condition, with timeouts, `retry(n)` and `onFail`). A module's tasks are cancelled when it's disabled |
+| `Myriad.limits()` | the shared packet budget for block actions, interactions and inventory clicks; `placement()` and `inventory()` respect it, `urgent(...)` skips it for must-happen actions (totems) |
+| `Myriad.tickSpeed()` | client tick speed ("timer") per owner, multiplied together so features don't overwrite each other; cleared when a module is disabled |
 | `Myriad.server()` | TPS, ping, address, lag (`isLagging(ms)`), rubberbands (`rubberbandedWithin(ms)`), packets per second, totem pops |
 | `Myriad.chat(text, id)` | a chat line that replaces the previous one with the same id (progress, status) |
 | `Myriad.friends()`, `Myriad.notifications()` | friends list; toasts |
@@ -275,9 +285,10 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 | `combat.Damage` | explosion, crystal, bed, anchor, fall and melee damage after armour, enchantments and effects; against a predicted position, with chosen blocks treated as air |
 | `util.Entities` | `kind`, `isHostile`, `isFriend`, `ping`/`gameMode` of a player, `intersects(box)`, render distance, render-interpolated boxes, `predict(entity, ticks)` |
 | `util.BlockInfo`, `util.ItemInfo` | unbreakable, instant-break, blast-resistant, storage, clickable blocks; enchantment levels, food, shulker contents, durability, weapon/tool/armour slot |
-| `util.Reach` | reach and line of sight from the eyes, `aimPoint(entity)`, `hitFor(pos)` (the face to click to open or break a block) |
+| `util.Reach` | reach and line of sight from the eyes, `canReach(pos)` (to the block's nearest point, as the server and Grim measure), `aimPoint(entity)`, `hitFor(pos)` (the nearest visible point to click to open or break a block) |
 | `util.Interactions` | attack, use, interact with a block, start/continue breaking, swing; `shouldPause(eating, mining)`; attack charge, item-use and jump cooldowns |
-| `util.Packets` | `send`, `sendSilently` (skips events, for your own tricks), `sendSequenced` (block and item actions) |
+| `util.Packets` | `send`, `sendSilently` (skips events, for your own tricks), `sendSequenced` (block and item actions; with a position it returns a future of the server's answer: the block state once it has acknowledged the action) |
+| `util.ChatMessages` | who a chat line is from and whether it's a whisper, across vanilla and common plugin formats; `ChatReceiveEvent.parsed()` |
 | `util.Mining` | mining speed and progress as the server computes them; fastest tool slot |
 | `util.Positions` | `sphere`, `cube`, `box` of block positions (nearest first), neighbours, face centres |
 | `util.MathUtil` | angles to a point, angle differences, look and ground direction vectors, closest point on a box, lerp/map/snap |
@@ -301,10 +312,10 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 
 How the pieces fit the kinds of addons people build:
 
-- **A schematic printer** walks the blocks it still needs with `Positions.sphere` (nearest first), gets materials
-  into the hotbar with `inventory().ensureInHotbar`, and places with `placement().place(hit, slot, options)`, choosing
-  the face from `placement().clickTargets(pos)` to get orientation right; on strict servers it rotates first and places
-  from the `rotations()` callback. `BlockUpdateEvent` confirms what the server actually placed, `FadeMap` with
+- **A schematic printer** turns the schematic into a `Blueprint.of(...)` of `Target.state(...)` and hands it to
+  `building()`, which works through what's in reach: wrong blocks broken, materials moved into the hotbar, each block
+  clicked and rotated so it comes out facing the right way, and `Build.steps()` drawn as the plan. On strict servers
+  `Building.Options.STRICT` rotates for everything and clicks only visible faces. Each placement's `result()` says whether the server kept the block, `FadeMap` with
   `Renderer3D.blockShape` shows the plan, `tasks()` paces it, and it pauses while `server().isLagging(...)` or right
   after a rubberband. A `FileSetting` picks the schematic and a `BlockPosSetting` its origin. Integrations with other
   mods (Litematica, Baritone) belong in the addon: keep any code touching their classes in its own class, only load it
