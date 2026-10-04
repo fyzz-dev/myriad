@@ -3,6 +3,7 @@ package dev.myriad.essentials.modules.movement;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
@@ -10,11 +11,14 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.util.MathUtil;
+import dev.myriad.api.util.Slots;
 import dev.myriad.essentials.mixin.FireworkRocketEntityAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
 import net.minecraft.world.phys.Vec3;
 
@@ -34,10 +38,19 @@ import java.util.function.ToDoubleFunction;
  * look as that box allows (with a margin): full speed straight away, and since the cap is per axis, faster when you fly
  * diagonally (about 34 blocks a second along an axis, 46 on a diagonal). Looking level holds your height. Applied by
  * this addon's LivingEntityMixin.
+ * <p>
+ * <b>No Durability.</b> The server wears an elytra by one for every 20 ticks of gliding without a break. Every 10 ticks
+ * (or half a second) the elytra is taken off for a moment, which makes the server stop the glide and start counting again, and put back
+ * the moment the server says so, opening it again with a jump press as vanilla does, so the flight isn't interrupted
+ * on your side. The keys are released for that moment, as Grim refuses inventory clicks while you move (gliding
+ * doesn't use them anyway).
  */
 public class ElytraTweaks extends Module {
 	private final BoolSetting rocketBoost = sgGeneral.bool("Rocket Boost")
 		.description("While a rocket is attached, fly as fast along your look as Grim allows: full speed at once, and faster on diagonals.")
+		.defaultValue(true).build();
+	private final BoolSetting noDurability = sgGeneral.bool("No Durability")
+		.description("Keep the elytra from wearing out: every few seconds of gliding it's taken off for a moment and put back (needs a free inventory slot).")
 		.defaultValue(true).build();
 
 	/** Grim's cap on a rocket's movement, blocks a tick per axis. */
@@ -63,12 +76,149 @@ public class ElytraTweaks extends Module {
 	 */
 	private float sentYaw, sentPitch, beforeYaw, beforePitch;
 
+	// ---- No Durability ------------------------------------------------------------------------------------------
+	// The server wears an elytra by one every 20 ticks of gliding without a break. Taking it off for a moment makes the
+	// server stop the glide, which resets that count. The cycle, all of it what Grim expects:
+	// 1. release the movement keys and sprint for a tick (Grim cancels inventory clicks while you move);
+	// 2. shift-click the elytra out of the chest slot; the server stops the glide on its next tick;
+	// 3. keep gliding until the server says the glide stopped, the moment Grim stops expecting it too;
+	// 4. that tick, shift-click it back and press jump: vanilla opens it again before you move, so no glide is lost.
+
+	private enum Cycle {
+		/** Gliding, counting ticks. */
+		IDLE,
+		/** Keys released this tick, so the next tick's click is clean. */
+		PREPARE,
+		/** Elytra off; waiting for the server to stop the glide. */
+		OFF,
+		/** Elytra back on; jump pressed to open it. */
+		REOPEN
+	}
+
+	/**
+	 * Gliding before the next break, in ticks or real time, whichever comes first: well under the server's 20 ticks,
+	 * which it counts in real time, so a client that falls behind doesn't miss it.
+	 */
+	private static final int GLIDE_TICKS = 10;
+	private static final long GLIDE_MS = 500;
+	/** Give up waiting for the server after this long (it put the elytra back, so it's no worse than vanilla). */
+	private static final int OFF_TIMEOUT = 40;
+
+	private Cycle cycle = Cycle.IDLE;
+	private int glideTicks, cycleTicks;
+	/** When the current stretch of gliding started, in wall-clock ms. */
+	private long glideStartMs;
+	private boolean warnedNoSpace;
+
 	public ElytraTweaks() {
-		super(Categories.MOVEMENT, "Elytra Tweaks", "Faster rocket boosts that Grim accepts.");
+		super(Categories.MOVEMENT, "Elytra Tweaks", "Faster rocket boosts and an elytra that doesn't wear out, Grim-safe.");
+	}
+
+	@Override
+	protected void onDisable() {
+		// Never leave the elytra in the inventory.
+		if (cycle == Cycle.OFF) putBack();
+		cycle = Cycle.IDLE;
+	}
+
+	@Subscribe
+	private void onTickStart(TickEvent.Pre e) {
+		LocalPlayer p = mc.player;
+		if (!inGame()) {
+			cycle = Cycle.IDLE;
+			return;
+		}
+		cycleTicks++;
+		// Turned off mid-cycle: finish it (elytra back on and open), then stop.
+		if (!noDurability.get() && (cycle == Cycle.IDLE || cycle == Cycle.PREPARE)) {
+			cycle = Cycle.IDLE;
+			return;
+		}
+		switch (cycle) {
+			case IDLE -> {
+				boolean gliding = p.isFallFlying() && elytraWorn();
+				if (gliding && glideTicks == 0) glideStartMs = System.currentTimeMillis();
+				glideTicks = gliding ? glideTicks + 1 : 0;
+				if (gliding && (glideTicks >= GLIDE_TICKS || System.currentTimeMillis() - glideStartMs >= GLIDE_MS)) {
+					if (freeSlot() < 0) {
+						if (!warnedNoSpace) warn("No Durability needs a free inventory slot.");
+						warnedNoSpace = true;
+						glideTicks = 0;
+						return;
+					}
+					warnedNoSpace = false;
+					p.setSprinting(false);
+					next(Cycle.PREPARE);
+				}
+			}
+			case PREPARE -> {
+				if (!p.isFallFlying() || !elytraWorn()) {
+					next(Cycle.IDLE);
+				} else if (Myriad.inventory().safeToClick() && Myriad.inventory().quickMove(Slots.CHEST)) {
+					next(Cycle.OFF);
+				} else if (cycleTicks > 5) {
+					next(Cycle.IDLE);
+				}
+			}
+			case OFF -> {
+				// The server stopped the glide (or you landed, or it's taking too long): elytra back on, and open it.
+				if (!p.isFallFlying() || p.onGround() || cycleTicks > OFF_TIMEOUT) {
+					if (putBack()) next(p.onGround() ? Cycle.IDLE : Cycle.REOPEN);
+				}
+			}
+			case REOPEN -> {
+				if (p.isFallFlying() || p.onGround() || cycleTicks > 6) next(Cycle.IDLE);
+			}
+		}
+	}
+
+	/**
+	 * While cycling: no movement keys, sneak or sprint (the click needs them released the tick before), and jump only
+	 * as the press that reopens the elytra, after a tick with it released.
+	 */
+	@Subscribe(priority = Priority.LOWEST)
+	private void onInput(InputEvent e) {
+		if (cycle == Cycle.IDLE) return;
+		e.forward = e.backward = e.left = e.right = e.sneak = e.sprint = false;
+		e.jump = cycle == Cycle.REOPEN && cycleTicks == 0;
+	}
+
+	/** Whether No Durability has the elytra off right now (Auto Armor leaves the chest slot alone meanwhile). */
+	public static boolean holdsChest() {
+		ElytraTweaks m = Modules.active(ElytraTweaks.class);
+		return m != null && m.cycle != Cycle.IDLE;
+	}
+
+	private void next(Cycle c) {
+		cycle = c;
+		cycleTicks = 0;
+		if (c == Cycle.IDLE) glideTicks = 0;
+	}
+
+	/** Shift-clicks the elytra back into the chest slot; false if it can't be found or clicked (tried again next tick). */
+	private boolean putBack() {
+		var inv = mc.player.getInventory();
+		if (elytraWorn()) return true;
+		for (int i = 0; i < Slots.MAIN_END; i++) {
+			if (inv.getItem(i).has(DataComponents.GLIDER)) return Myriad.inventory().quickMove(i);
+		}
+		return true;
+	}
+
+	private boolean elytraWorn() {
+		return mc.player.getItemBySlot(EquipmentSlot.CHEST).has(DataComponents.GLIDER);
+	}
+
+	private int freeSlot() {
+		var inv = mc.player.getInventory();
+		for (int i = 0; i < Slots.MAIN_END; i++) if (inv.getItem(i).isEmpty()) return i;
+		return -1;
 	}
 
 	@Override
 	protected void onEnable() {
+		cycle = Cycle.IDLE;
+		glideTicks = 0;
 		sentYaw = beforeYaw = Myriad.rotations().serverYaw();
 		sentPitch = beforePitch = Myriad.rotations().serverPitch();
 	}

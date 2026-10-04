@@ -26,7 +26,7 @@ import java.util.function.Predicate;
  * Places blocks under you as you walk, and a little ahead while you move so you never step off an edge. Jumping in
  * place builds a tower. When the block under you has nothing to be placed against (sprinting off a corner), a
  * neighbouring block is placed first to bridge to it. Blocks come from the hotbar, or are moved there from your
- * inventory while you stand still (Grim refuses inventory clicks while you move). Each placement faces its block first and clicks a face you can see, as Grim requires; while facing
+ * inventory, with your keys released for a tick first (Grim refuses inventory clicks while you move). Each placement faces its block first and clicks a face you can see, as Grim requires; while facing
  * backwards you walk along that yaw, so sprinting pauses for those ticks.
  */
 public class Scaffold extends Module {
@@ -99,8 +99,8 @@ public class Scaffold extends Module {
 		if (usable.test(mc.player.getInventory().getItem(selected))) return selected;
 		int slot = Myriad.inventory().findInHotbar(usable);
 		if (slot >= 0) return slot;
-		// Grim cancels inventory clicks while you move: blocks come in from the inventory once you stand still.
-		if (Myriad.inventory().safeToClick() && Myriad.inventory().findInInventory(usable) >= 0) Myriad.inventory().ensureInHotbar(usable, -1);
+		// Grim cancels inventory clicks while you move: your keys are released for a tick before blocks come in.
+		if (Myriad.inventory().findInInventory(usable) >= 0 && Myriad.inventory().prepareClick()) Myriad.inventory().ensureInHotbar(usable, -1);
 		return -1;
 	}
 }

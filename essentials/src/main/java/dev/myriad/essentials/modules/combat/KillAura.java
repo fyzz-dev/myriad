@@ -46,14 +46,14 @@ public class KillAura extends Module {
 	public enum Weapon {
 		/** Only attack while holding a weapon. */
 		HOLDING,
-		/** Switch to the best weapon in the hotbar. */
+		/** Switch to the best weapon, bringing it into the hotbar from the inventory if that's where it is. */
 		SWITCH,
 		/** Hit with whatever is in your hand. */
 		ANYTHING
 	}
 
 	private final EnumSetting<Weapon> weapon = sgGeneral.enumSetting("Weapon", Weapon.HOLDING)
-		.description("Holding: only attack while you hold a weapon. Switch: switch to your best weapon. Anything: hit with whatever you hold.").build();
+		.description("Holding: only attack while you hold a weapon. Switch: switch to your best weapon, from the inventory too. Anything: hit with whatever you hold.").build();
 	private final IntSetting turnSpeed = sgGeneral.intSetting("Turn Speed")
 		.description("Most degrees to turn per tick towards a target; 0 turns at once (fine on Grim, some anti-cheats want it limited).")
 		.defaultValue(0).range(0, 180).build();
@@ -128,6 +128,13 @@ public class KillAura extends Module {
 			case HOLDING -> weaponScore(mc.player.getMainHandItem()) > 0;
 			case SWITCH -> {
 				int best = Myriad.inventory().bestInHotbar(this::weaponScore);
+				int anywhere = Myriad.inventory().bestInInventory(this::weaponScore);
+				if (anywhere >= 9) {
+					// A better weapon in the inventory: brought into the hotbar (over a worse one if it's full), with your
+					// keys released for a tick first if you're moving, as Grim requires for the click.
+					int pulled = Myriad.inventory().pullToHotbar(anywhere, s -> weaponScore(s) > 0);
+					if (pulled >= 0) best = pulled;
+				}
 				if (best >= 0 && best != mc.player.getInventory().getSelectedSlot()
 					&& weaponScore(mc.player.getInventory().getItem(best)) > weaponScore(mc.player.getMainHandItem())) {
 					// Switching resets the attack charge, so the hit comes once it's full again.

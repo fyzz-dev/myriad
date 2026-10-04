@@ -21,8 +21,9 @@ import net.minecraft.world.level.block.state.BlockState;
  * <ul>
  *   <li>using a shared service ({@code Myriad.inventory()}) instead of poking the inventory directly, so slot changes
  *       stay in sync with other features;</li>
- *   <li>{@code pullToHotbar}, which moves an item in without disturbing what you use, and only while you stand still:
- *       Grim (2b2t) cancels inventory clicks sent while you move, so moves that can wait should;</li>
+ *   <li>{@code pullToHotbar}, which moves an item in without disturbing what you use. Grim (2b2t) cancels inventory
+ *       clicks sent while you move, so while you do it first releases your keys for a tick ({@code prepareClick}) and
+ *       the item comes in on the next call;</li>
  *   <li>using core helpers ({@link Mining}) instead of re-deriving vanilla maths;</li>
  *   <li>soft integration with another addon by id, without compiling against it: if Myriad Essentials' Packet Mine is
  *       on, it mines (and picks tools) itself and this module stays out of its way.</li>

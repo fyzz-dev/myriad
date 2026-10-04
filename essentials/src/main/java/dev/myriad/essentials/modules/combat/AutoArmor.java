@@ -1,6 +1,7 @@
 package dev.myriad.essentials.modules.combat;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.essentials.modules.movement.ElytraTweaks;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.KeyEvent;
 import dev.myriad.api.event.events.MouseButtonEvent;
@@ -104,6 +105,8 @@ public class AutoArmor extends Module {
 	private boolean equipBest(EquipmentSlot slot) {
 		ItemStack worn = mc.player.getItemBySlot(slot);
 		if (slot == EquipmentSlot.CHEST && awaitLanding.get() && mc.player.isFallFlying() && isElytra(worn)) return false;
+		// Elytra Tweaks takes the elytra off for a moment while you fly; it puts it back itself.
+		if (slot == EquipmentSlot.CHEST && ElytraTweaks.holdsChest()) return false;
 		if (avoidBinding.get() && ItemInfo.hasEnchantment(worn, Enchantments.BINDING_CURSE)) return false;
 		double current = score(worn, slot);
 		int best = -1;
