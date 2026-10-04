@@ -1,9 +1,13 @@
 # gradle
 
+# Only the root's and each subproject's output folders, so source packages named "build" aren't ignored.
 .gradle/
-build/
-out/
-classes/
+/build/
+/*/build/
+/out/
+/*/out/
+/classes/
+/*/classes/
 
 # eclipse
 
@@ -20,7 +24,8 @@ classes/
 
 .settings/
 .vscode/
-bin/
+/bin/
+/*/bin/
 .classpath
 .project
 
