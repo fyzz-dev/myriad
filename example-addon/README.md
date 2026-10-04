@@ -16,7 +16,9 @@ numbered steps.
 | **Waypoints** window: add, hide and delete waypoints | launcher (`mod+Space`) |
 | **Nearest Waypoint** and **Session Stats** HUD elements | HUD workspace → HUD window |
 | **Add Waypoint** (`Alt+B`) and **Open Waypoints** key actions | Keybinds panel (`mod+K`) |
-| **Auto Tool** module: best tool while mining, defers to Essentials' Speed Mine | Player category |
+| **Auto Tool** module: best tool while mining (brought in from the inventory when you stand still), defers to Essentials' Packet Mine | Player category |
+| **Tunnel** module: digs a tunnel the way you face through the building planner | World category |
+| **Block Search** module: highlights the blocks you pick in the chunks around you | World category |
 | **Chat Timestamps** module, driven by a mixin | Misc category |
 | **Settings Showcase** module: every setting type and a custom one | its own "Showcase" category |
 | Server TPS on the top bar, and an "Example Sunset" theme | bar / Theme panel |
@@ -29,7 +31,9 @@ numbered steps.
 | `waypoints/WaypointStore.java` | addon state shared by several features, saved with `AddonStorage` |
 | `waypoints/Waypoint.java` | an immutable record with its own JSON form |
 | `modules/Waypoints.java` | setting groups, theme-role colours, `Render3DEvent` boxes and lines, `Render2DEvent` world labels, reacting to vanilla with `ScreenOpenEvent` |
-| `modules/AutoTool.java` | the `Myriad.inventory()` service, `Mining` helpers, soft integration with another addon by id |
+| `modules/AutoTool.java` | the `Myriad.inventory()` service (`select`, `pullToHotbar`), `Mining` helpers, soft integration with another addon by id |
+| `modules/BlockSearch.java` | finding blocks cheaply: `ChunkCache` (once per chunk, again on changes), `BlockScan` palette skipping, cached meshes instead of a render handler |
+| `modules/Tunnel.java` | the planner: a `Blueprint` of `Target.air()` handed to `Myriad.building()`, drawing `Build.steps()`, one purposeful "Strict" option |
 | `modules/ChatTimestamps.java` + `mixin/ChatHudMixin.java` | the standard mixin-driven module: a static hook using `Modules.active(...)` |
 | `modules/SettingsShowcase.java` | every setting type, `visible`, `onChanged`, `sliderRange`, keybinds, action buttons |
 | `settings/RangeSetting.java` | a custom setting type (its widget is registered in `ExampleAddon`) |

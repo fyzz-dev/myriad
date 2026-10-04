@@ -14,20 +14,23 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Switches to the best hotbar tool when you start mining, and back afterwards.
+ * Switches to the best tool when you start mining, and back afterwards. A better tool in your inventory is brought
+ * into the hotbar first.
  *
  * <p>Shows:
  * <ul>
  *   <li>using a shared service ({@code Myriad.inventory()}) instead of poking the inventory directly, so slot changes
  *       stay in sync with other features;</li>
+ *   <li>{@code pullToHotbar}, which moves an item in without disturbing what you use, and only while you stand still:
+ *       Grim (2b2t) cancels inventory clicks sent while you move, so moves that can wait should;</li>
  *   <li>using core helpers ({@link Mining}) instead of re-deriving vanilla maths;</li>
- *   <li>soft integration with another addon by id, without compiling against it: if Myriad Essentials' Speed Mine is
- *       on, it manages tools itself and this module stays out of its way.</li>
+ *   <li>soft integration with another addon by id, without compiling against it: if Myriad Essentials' Packet Mine is
+ *       on, it mines (and picks tools) itself and this module stays out of its way.</li>
  * </ul>
  */
 public final class AutoTool extends Module {
 	/** Another addon's module, referenced by id so this addon still works when that one isn't installed. */
-	private static final MyriadId SPEED_MINE = MyriadId.of("myriad-essentials", "speed_mine");
+	private static final MyriadId PACKET_MINE = MyriadId.of("myriad-essentials", "packet_mine");
 
 	private final BoolSetting switchBack = sgGeneral.bool("Switch Back").description("Return to the previous slot when you stop mining.").defaultValue(true).build();
 	private final IntSetting keepDurability = sgGeneral.intSetting("Keep Durability").description("Skip tools with this much durability or less, so they don't break.")
@@ -46,9 +49,15 @@ public final class AutoTool extends Module {
 
 	@Subscribe
 	private void onStartBreaking(BlockBreakEvent.Start e) {
-		if (!inGame() || speedMineActive()) return;
+		if (!inGame() || packetMineActive()) return;
 		BlockState state = mc.level.getBlockState(e.pos());
 		int best = bestSlot(state);
+		if (best >= 9) {
+			// In the main inventory: bring it in, over a worse tool for this block if the hotbar is full. -1 means not
+			// now (you're moving), and the best hotbar tool does meanwhile.
+			best = Myriad.inventory().pullToHotbar(best, s -> s.getDestroySpeed(state) > 1);
+			if (best == -1) best = bestSlot(state, 9);
+		}
 		int current = mc.player.getInventory().getSelectedSlot();
 		if (best == -1 || best == current) return;
 		if (previousSlot == -1) previousSlot = current;
@@ -65,11 +74,16 @@ public final class AutoTool extends Module {
 		previousSlot = -1;
 	}
 
-	/** The hotbar slot that mines {@code state} fastest, or -1 if nothing beats what you're holding. */
+	/** The slot (hotbar or main inventory) that mines {@code state} fastest, or -1 if nothing beats what you're holding. */
 	private int bestSlot(BlockState state) {
+		return bestSlot(state, 36);
+	}
+
+	/** The slot below {@code end} that mines {@code state} fastest, or -1 if nothing beats what you're holding. */
+	private int bestSlot(BlockState state, int end) {
 		int best = -1;
 		float bestSpeed = Mining.speed(state, mc.player.getInventory().getSelectedSlot());
-		for (int i = 0; i < 9; i++) {
+		for (int i = 0; i < end; i++) {
 			ItemStack stack = mc.player.getInventory().getItem(i);
 			if (stack.isDamageableItem() && stack.getMaxDamage() - stack.getDamageValue() <= keepDurability.get()) continue;
 			float speed = Mining.speed(state, i);
@@ -81,7 +95,7 @@ public final class AutoTool extends Module {
 		return best;
 	}
 
-	private static boolean speedMineActive() {
-		return Myriad.modules().get(SPEED_MINE).map(Module::isEnabled).orElse(false);
+	private static boolean packetMineActive() {
+		return Myriad.modules().get(PACKET_MINE).map(Module::isEnabled).orElse(false);
 	}
 }

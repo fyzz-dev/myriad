@@ -8,6 +8,7 @@ import com.example.myriadaddon.modules.AutoTool;
 import com.example.myriadaddon.modules.BlockSearch;
 import com.example.myriadaddon.modules.ChatTimestamps;
 import com.example.myriadaddon.modules.SettingsShowcase;
+import com.example.myriadaddon.modules.Tunnel;
 import com.example.myriadaddon.modules.Waypoints;
 import com.example.myriadaddon.panels.WaypointsPanel;
 import com.example.myriadaddon.settings.RangeSetting;
@@ -64,6 +65,7 @@ public final class ExampleAddon implements MyriadAddon {
 			new Waypoints(waypoints),
 			new BlockSearch(),
 			new AutoTool(),
+			new Tunnel(),
 			new ChatTimestamps(),
 			new SettingsShowcase(showcase)
 		);
@@ -114,7 +116,7 @@ public final class ExampleAddon implements MyriadAddon {
 	@Override
 	public void postInitialize(AddonContext ctx) {
 		if (FabricLoader.getInstance().isModLoaded("myriad-essentials")) {
-			ctx.logger().info("Myriad Essentials found: Auto Tool will defer to its Speed Mine while that's on");
+			ctx.logger().info("Myriad Essentials found: Auto Tool will defer to its Packet Mine while that's on");
 		}
 	}
 }
