@@ -50,8 +50,8 @@ import java.util.concurrent.CompletableFuture;
  *   alone breaks whatever appears there again (rebreak), once enough time has passed for that block.</li>
  * </ul>
  *
- * Everything that may need a rotation happens right after the movement packet, so with {@code rotate} the server has
- * just been told where you look. Results come from the server's acknowledgements (see
+ * Everything happens at the start of a tick, before the movement packet, where vanilla sends break packets; with
+ * {@code rotate} the server has been told where you look in the tick before. Results come from the server's acknowledgements (see
  * {@link dev.myriad.impl.network.BlockAckTracker}).
  */
 public final class BreakManager implements Breaking {
@@ -96,6 +96,8 @@ public final class BreakManager implements Breaking {
 		Direction face = Direction.UP;
 		Vec3 aim;
 		int started, due, deadline, lastSent;
+		/** When the start went out, in wall-clock ms: Grim times breaks in real time. */
+		long startedMs;
 		float progress;
 		/** The best progress per tick seen since the start: what Grim times the break by. */
 		float maxRate;
@@ -150,7 +152,12 @@ public final class BreakManager implements Breaking {
 	private BlockPos serverDelayedPos;
 	private Block serverDelayedBlock;
 	private long counter;
-	private int tick, steppedTick = -1, finishCooldown, lastStop = Integer.MIN_VALUE / 2, swungTick = -1;
+	private int tick, finishCooldown, lastStop = Integer.MIN_VALUE / 2, swungTick = -1;
+	/**
+	 * When the last finish went out, in wall-clock ms. Grim measures breaks and the pause between them in real time, so
+	 * tick counts alone aren't enough: a client that falls behind runs several ticks back to back.
+	 */
+	private long lastStopMs;
 
 	// ---- API ----------------------------------------------------------------------------------------------------
 
@@ -226,7 +233,8 @@ public final class BreakManager implements Breaking {
 		if (nothingThere(state)) return false;
 		float rate = Mining.delta(state, pos, toolSlot(Options.PACKET, state, pos));
 		if (rate <= 0 || rate * ((tick - rebreakStart) * tpsFactor() + 1) < PACKET_THRESHOLD) return false;
-		return fast || tick - lastStop >= Math.ceil(1 / rate - 1e-4);
+		int needed = (int) Math.ceil(1 / rate - 1e-4);
+		return fast || tick - lastStop >= needed && msSince(lastStopMs) >= needed * 50L;
 	}
 
 	// ---- ticking ------------------------------------------------------------------------------------------------
@@ -264,15 +272,17 @@ public final class BreakManager implements Breaking {
 		Myriad.rotations().request(this, r[0], r[1], PlacementManager.REFINED_PRIORITY, PlacementManager.MOVE_FIX, null);
 	}
 
-	@Subscribe(priority = Priority.HIGH)
-	private void onRotationSent(MovementPacketsEvent.Post e) {
+	/**
+	 * Breaks at the start of the tick, before this tick's movement: the server already has the rotation sent last tick,
+	 * and it's where vanilla sends break packets (Grim flags them after a movement packet).
+	 */
+	@Subscribe(priority = RotationManager.ACT_PRIORITY - 20)
+	private void onBreakTime(TickEvent.Pre e) {
 		step();
 	}
 
 	@Subscribe
 	private void onTickEnd(TickEvent.Post e) {
-		// Without a movement packet (riding, for one) breaking still runs, but nothing that needs a rotation.
-		if (steppedTick != tick) step();
 		tick++;
 		if (finishCooldown > 0) finishCooldown--;
 	}
@@ -287,7 +297,6 @@ public final class BreakManager implements Breaking {
 	}
 
 	private void step() {
-		steppedTick = tick;
 		if (jobs.isEmpty() && !holding) return;
 		if (mc.player == null || mc.level == null || mc.gameMode == null) return;
 		if (serverDelayedPos != null && !mc.level.getBlockState(serverDelayedPos).is(serverDelayedBlock)) serverDelayedPos = null;
@@ -356,7 +365,7 @@ public final class BreakManager implements Breaking {
 			// Vanilla can't break more than one block a tick.
 			if (!j.packet() && vanillaUsed) continue;
 			// Starting anything straight after a finish is too fast for vanilla, and for Grim.
-			if (j.keepsGap() && finishCooldown > 0) continue;
+			if (j.keepsGap() && !gapOver()) continue;
 			// Any start restarts the server's clock for the block being mined, so only more urgent blocks cut in.
 			if (primary != null && primary.phase == Phase.MINING && j.priority <= primary.priority) continue;
 			if (!canAct(j) || !budget(instant.size() + 1)) continue;
@@ -380,6 +389,7 @@ public final class BreakManager implements Breaking {
 			rebreakStart = tick;
 			if (primary != null && primary.phase == Phase.MINING) {
 				primary.started = tick;
+				primary.startedMs = System.currentTimeMillis();
 				primary.progress = 0;
 				primary.maxRate = 0;
 			}
@@ -415,7 +425,7 @@ public final class BreakManager implements Breaking {
 				p.maxRate = Math.max(p.maxRate, Mining.delta(state, p.pos, Myriad.inventory().serverSlot()));
 				int needed = (int) Math.ceil(1 / p.maxRate - 1e-4);
 				p.progress = (float) (tick - p.started) / needed;
-				done = tick - p.started >= needed;
+				done = tick - p.started >= needed && msSince(p.startedMs) >= needed * 50L;
 			} else {
 				p.progress += rate;
 				done = p.progress >= 1;
@@ -444,7 +454,7 @@ public final class BreakManager implements Breaking {
 		}
 		if (primary == null && !mc.gameMode.isDestroying()) {
 			Job next = nextToStart(false);
-			if (next != null && (finishCooldown == 0 || !next.keepsGap() || next.grim() && gapCleared) && budget(next.grim() ? 2 : 1)) start(next);
+			if (next != null && (gapOver() || !next.keepsGap() || next.grim() && gapCleared) && budget(next.grim() ? 2 : 1)) start(next);
 		}
 	}
 
@@ -476,6 +486,7 @@ public final class BreakManager implements Breaking {
 		gapCleared = false;
 		j.phase = Phase.MINING;
 		j.started = tick;
+		j.startedMs = System.currentTimeMillis();
 		j.progress = 0;
 		j.maxRate = Mining.delta(state, j.pos, slot);
 		primary = j;
@@ -520,6 +531,7 @@ public final class BreakManager implements Breaking {
 		j.lastSent = tick;
 		if (action == Action.STOP_DESTROY_BLOCK) {
 			lastStop = tick;
+			lastStopMs = System.currentTimeMillis();
 			if (j.keepsGap()) finishCooldown = FINISH_GAP;
 			gapCleared = j.grim() && j.decoyed;
 		}
@@ -661,6 +673,15 @@ public final class BreakManager implements Breaking {
 	private void withTool(int slot, Runnable action) {
 		if (Myriad.inventory().serverSlot() == slot) action.run();
 		else Myriad.inventory().silentSwap(slot, action);
+	}
+
+	/** Vanilla's pause after a finish is over, in ticks and in real time. */
+	private boolean gapOver() {
+		return finishCooldown == 0 && msSince(lastStopMs) >= FINISH_GAP * 50L;
+	}
+
+	private static long msSince(long ms) {
+		return System.currentTimeMillis() - ms;
 	}
 
 	private static boolean budget(int packets) {

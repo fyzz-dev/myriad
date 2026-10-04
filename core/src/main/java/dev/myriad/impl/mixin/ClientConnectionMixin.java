@@ -6,6 +6,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.AttackEvent;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.impl.MyriadImpl;
+import dev.myriad.impl.network.ActionTiming;
 import dev.myriad.impl.network.PacketGate;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -16,7 +17,9 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.BundlePacket;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -30,6 +33,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ClientConnectionMixin {
 	@Unique
 	private static final ThreadLocal<Boolean> MYRIAD_RESENDING = ThreadLocal.withInitial(() -> false);
+
+	/**
+	 * The hotbar slot last sent to the server, or -1 once the server has set it itself. Grim (2b2t) cancels a slot
+	 * change to the slot it already has, which happens when vanilla re-sends a slot a module already sent directly
+	 * (a hold or silent swap), so those duplicates are dropped here for everyone.
+	 */
+	@Unique
+	private volatile int myriad$lastSlot = -1;
 
 	@Shadow
 	public abstract PacketFlow getReceiving();
@@ -45,7 +56,16 @@ public abstract class ClientConnectionMixin {
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"), cancellable = true)
 	private void myriad$onSend(Packet<?> packet, @Nullable ChannelFutureListener callbacks, boolean flush, CallbackInfo ci) {
-		if (MYRIAD_RESENDING.get() || PacketGate.isSilent() || !Myriad.isReady() || !myriad$isClientSide()) return;
+		if (packet instanceof ServerboundSetCarriedItemPacket slot && slot.getSlot() == myriad$lastSlot && myriad$isClientSide()) {
+			ci.cancel();
+			return;
+		}
+		// Held actions going out, rewritten packets being resent, and silent sends (Fake Lag times those itself) pass as they are.
+		if (ActionTiming.isFlushing() || MYRIAD_RESENDING.get() || PacketGate.isSilent() || !myriad$isClientSide()) return;
+		if (!Myriad.isReady()) {
+			if (ActionTiming.get().holdIfLate((Connection) (Object) this, packet, callbacks, flush)) ci.cancel();
+			return;
+		}
 		if (packet instanceof ServerboundAttackPacket attack && Myriad.events().hasListeners(AttackEvent.class)) {
 			Minecraft mc = Minecraft.getInstance();
 			Entity target = mc.level == null ? null : mc.level.getEntity(attack.entityId());
@@ -56,6 +76,9 @@ public abstract class ClientConnectionMixin {
 		}
 		PacketEvent.Send event = Myriad.events().post(new PacketEvent.Send(packet));
 		if (event.isCancelled()) {
+			ci.cancel();
+		} else if (ActionTiming.get().holdIfLate((Connection) (Object) this, event.packet(), callbacks, flush)) {
+			// Too late in the tick for an action: it goes out first thing next tick (see ActionTiming).
 			ci.cancel();
 		} else if (event.packet() != packet) {
 			ci.cancel();
@@ -71,12 +94,15 @@ public abstract class ClientConnectionMixin {
 	/** Counts what actually went out (after any rewrite or cancel) against the packet budget. */
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("TAIL"))
 	private void myriad$countSent(Packet<?> packet, @Nullable ChannelFutureListener callbacks, boolean flush, CallbackInfo ci) {
+		if (packet instanceof ServerboundSetCarriedItemPacket slot) myriad$lastSlot = slot.getSlot();
+		if (myriad$isClientSide()) ActionTiming.get().sent(packet);
 		if (myriad$isClientSide() && MyriadImpl.get() != null) MyriadImpl.get().packetLimiter().record(packet);
 	}
 
 	/** Wraps packet handling so receive handlers can drop or replace packets. */
 	@WrapMethod(method = "channelRead0(Lio/netty/channel/ChannelHandlerContext;Lnet/minecraft/network/protocol/Packet;)V")
 	private void myriad$onReceive(ChannelHandlerContext ctx, Packet<?> packet, Operation<Void> original) {
+		if (packet instanceof ClientboundSetHeldSlotPacket) myriad$lastSlot = -1;
 		if (!Myriad.isReady() || !myriad$isClientSide()) {
 			original.call(ctx, packet);
 			return;

@@ -211,9 +211,13 @@ public final class PlacementManager implements Placement {
 		Myriad.rotations().request(this, r[0], r[1], REFINED_PRIORITY, MOVE_FIX, null);
 	}
 
-	/** Clicks every queued placement the rotation just sent looks at, where the look lands. */
-	@Subscribe(priority = Priority.HIGH)
-	private void onRotationSent(MovementPacketsEvent.Post e) {
+	/**
+	 * Clicks every queued placement the rotation sent last tick looks at, where the look lands. At the start of the tick,
+	 * before this tick's movement: the server already faces that way and your eyes haven't moved since, and it's where
+	 * vanilla clicks (Grim flags clicks sent after a movement packet).
+	 */
+	@Subscribe(priority = RotationManager.ACT_PRIORITY - 10)
+	private void onClickTime(TickEvent.Pre e) {
 		if (queue.isEmpty() || mc.player == null) return;
 		float yaw = Myriad.rotations().serverYaw(), pitch = Myriad.rotations().serverPitch();
 		Iterator<Queued> it = queue.iterator();
