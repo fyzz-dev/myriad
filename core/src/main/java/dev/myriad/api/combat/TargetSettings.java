@@ -40,7 +40,9 @@ public final class TargetSettings {
 		animals = sg.bool("Animals").defaultValue(on.contains(Targets.Type.ANIMALS)).build();
 		villagers = sg.bool("Villagers").defaultValue(on.contains(Targets.Type.VILLAGERS)).build();
 		hostiles = sg.bool("Hostiles").defaultValue(on.contains(Targets.Type.HOSTILES)).build();
-		onlyAngry = sg.bool("Only Angry").description("Neutral mobs only once they're angry.").visible(hostiles::get).build();
+		// On by default: hitting a calm zombified piglin or enderman starts a fight you didn't ask for.
+		onlyAngry = sg.bool("Only Angry").description("Neutral mobs (endermen, zombified piglins, wolves, bees) only once they're angry.")
+			.defaultValue(true).visible(hostiles::get).build();
 		projectiles = sg.bool("Projectiles").description("Fireballs and shulker bullets.").defaultValue(on.contains(Targets.Type.PROJECTILES)).build();
 		ignoreInvisibles = sg.bool("Ignore Invisibles").build();
 		ignoreNamed = sg.bool("Ignore Named").description("Skip mobs with a name tag.").build();

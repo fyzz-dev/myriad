@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -78,5 +80,95 @@ class TaskSchedulerTest {
 		s.tick();
 		s.tick();
 		assertEquals(List.of("fine"), log);
+	}
+
+	@Test
+	void awaitWaitsForTheFutureThenContinues() {
+		TaskScheduler s = new TaskScheduler();
+		List<String> log = new ArrayList<>();
+		CompletableFuture<String> future = new CompletableFuture<>();
+		s.sequence(this).await(() -> {
+			log.add("started");
+			return future;
+		}, 10).run(() -> log.add("after")).start();
+		s.tick();
+		s.tick();
+		assertEquals(List.of("started"), log);
+		future.complete("ok");
+		s.tick();
+		assertEquals(List.of("started", "after"), log);
+	}
+
+	@Test
+	void aFailedFutureFailsTheSequenceWithItsCause() {
+		TaskScheduler s = new TaskScheduler();
+		List<Throwable> failures = new ArrayList<>();
+		List<String> log = new ArrayList<>();
+		s.sequence(this).await(() -> CompletableFuture.failedFuture(new IllegalStateException("no chest")), 10)
+			.run(() -> log.add("never")).onFail(failures::add).start();
+		s.tick();
+		assertTrue(log.isEmpty());
+		assertEquals(1, failures.size());
+		assertEquals("no chest", failures.getFirst().getMessage());
+		assertFalse(s.isBusy(this));
+	}
+
+	@Test
+	void awaitTimesOut() {
+		TaskScheduler s = new TaskScheduler();
+		List<Throwable> failures = new ArrayList<>();
+		CompletableFuture<Void> never = new CompletableFuture<>();
+		s.sequence(this).await(() -> never, 3).onFail(failures::add).start();
+		for (int i = 0; i < 5; i++) s.tick();
+		assertEquals(1, failures.size());
+		assertInstanceOf(TimeoutException.class, failures.getFirst());
+		assertTrue(never.isCancelled());
+	}
+
+	@Test
+	void requireStopsTheSequenceWithItsMessage() {
+		TaskScheduler s = new TaskScheduler();
+		List<String> log = new ArrayList<>();
+		s.sequence(this).run(() -> log.add("a")).require(() -> false, "No shulkers left").run(() -> log.add("b"))
+			.onFail(t -> log.add(t.getMessage())).onFinish(() -> log.add("finished")).start();
+		s.tick();
+		assertEquals(List.of("a", "No shulkers left"), log);
+	}
+
+	@Test
+	void retryStartsOverOnTheNextTickBeforeGivingUp() {
+		TaskScheduler s = new TaskScheduler();
+		List<String> log = new ArrayList<>();
+		int[] attempts = {0};
+		s.sequence(this).run(() -> {
+			attempts[0]++;
+			log.add("try " + attempts[0]);
+		}).require(() -> attempts[0] >= 3, "not yet").run(() -> log.add("done")).retry(5).start();
+		s.tick();
+		s.tick();
+		s.tick();
+		assertEquals(List.of("try 1", "try 2", "try 3", "done"), log);
+	}
+
+	@Test
+	void retryRunsOutAndReportsTheLastFailure() {
+		TaskScheduler s = new TaskScheduler();
+		List<String> log = new ArrayList<>();
+		s.sequence(this).run(() -> log.add("try")).run(() -> {
+			throw new IllegalArgumentException("broken");
+		}).retry(1).onFail(t -> log.add("failed: " + t.getMessage())).start();
+		for (int i = 0; i < 4; i++) s.tick();
+		assertEquals(List.of("try", "try", "failed: broken"), log);
+		assertFalse(s.isBusy(this));
+	}
+
+	@Test
+	void cancellingCancelsTheAwaitedFuture() {
+		TaskScheduler s = new TaskScheduler();
+		CompletableFuture<Void> pending = new CompletableFuture<>();
+		Tasks.Handle h = s.sequence(this).await(() -> pending, 20).start();
+		s.tick();
+		h.cancel();
+		assertTrue(pending.isCancelled());
 	}
 }

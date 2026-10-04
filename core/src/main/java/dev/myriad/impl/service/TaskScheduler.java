@@ -8,7 +8,12 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** Runs scheduled tasks at the end of every client tick. {@link #tick()} is separate from the event for tests. */
 public final class TaskScheduler implements Tasks {
@@ -117,7 +122,7 @@ public final class TaskScheduler implements Tasks {
 		}
 	}
 
-	private sealed interface Step permits Run, Wait, WaitUntil {
+	private sealed interface Step permits Run, Wait, WaitUntil, Await, Require {
 	}
 
 	private record Run(Runnable action) implements Step {
@@ -129,12 +134,23 @@ public final class TaskScheduler implements Tasks {
 	private record WaitUntil(BooleanSupplier condition, int timeout) implements Step {
 	}
 
+	private record Await(Supplier<? extends CompletableFuture<?>> start, int timeout) implements Step {
+	}
+
+	private record Require(BooleanSupplier condition, String message) implements Step {
+	}
+
 	private final class SequenceImpl extends Task implements Sequence {
 		private final List<Step> steps = new ArrayList<>();
 		private Runnable onTimeout, onFinish;
-		private int index;
+		private Consumer<Throwable> onFail;
+		private int index, retries;
 		/** Ticks left on the current wait; -1 when the current step hasn't started. */
 		private int remaining = -1;
+		/** The future the current {@link Await} step is waiting for. */
+		private CompletableFuture<?> awaiting;
+		/** Set when a failed attempt will start over: the next attempt begins on the next tick. */
+		private boolean restartNextTick;
 
 		SequenceImpl(Object owner) {
 			super(owner);
@@ -159,8 +175,32 @@ public final class TaskScheduler implements Tasks {
 		}
 
 		@Override
+		public Sequence await(Supplier<? extends CompletableFuture<?>> start, int timeoutTicks) {
+			steps.add(new Await(start, Math.max(1, timeoutTicks)));
+			return this;
+		}
+
+		@Override
+		public Sequence require(BooleanSupplier condition, String message) {
+			steps.add(new Require(condition, message));
+			return this;
+		}
+
+		@Override
+		public Sequence retry(int times) {
+			retries = Math.max(0, times);
+			return this;
+		}
+
+		@Override
 		public Sequence onTimeout(Runnable action) {
 			onTimeout = action;
+			return this;
+		}
+
+		@Override
+		public Sequence onFail(Consumer<Throwable> action) {
+			onFail = action;
 			return this;
 		}
 
@@ -175,9 +215,28 @@ public final class TaskScheduler implements Tasks {
 			return add(this);
 		}
 
+		@Override
+		public void cancel() {
+			super.cancel();
+			if (awaiting != null) awaiting.cancel(false);
+		}
+
 		/** Runs steps until one has to wait for a later tick. */
 		@Override
 		void step() {
+			if (restartNextTick) {
+				restartNextTick = false;
+				index = 0;
+				remaining = -1;
+			}
+			try {
+				runSteps();
+			} catch (Throwable t) {
+				fail(t);
+			}
+		}
+
+		private void runSteps() {
 			while (!done && index < steps.size()) {
 				Step step = steps.get(index);
 				switch (step) {
@@ -198,10 +257,40 @@ public final class TaskScheduler implements Tasks {
 						}
 						if (remaining == -1) remaining = u.timeout;
 						if (--remaining <= 0) {
-							done = true;
-							if (onTimeout != null) onTimeout.run();
+							if (onTimeout != null && retries == 0) onTimeout.run();
+							fail(new TimeoutException("Condition not met within " + u.timeout + " ticks"));
 						}
 						return;
+					}
+					case Await a -> {
+						if (awaiting == null) {
+							awaiting = a.start.get();
+							remaining = a.timeout;
+						}
+						if (awaiting.isDone()) {
+							CompletableFuture<?> f = awaiting;
+							awaiting = null;
+							Throwable error = f.handle((v, t) -> t).join();
+							if (error != null) {
+								fail(error instanceof CompletionException && error.getCause() != null ? error.getCause() : error);
+								return;
+							}
+							next();
+							continue;
+						}
+						if (--remaining <= 0) {
+							awaiting.cancel(false);
+							awaiting = null;
+							fail(new TimeoutException("Not done within " + a.timeout + " ticks"));
+						}
+						return;
+					}
+					case Require r -> {
+						if (!r.condition.getAsBoolean()) {
+							fail(new IllegalStateException(r.message));
+							return;
+						}
+						next();
 					}
 				}
 			}
@@ -209,6 +298,19 @@ public final class TaskScheduler implements Tasks {
 				done = true;
 				if (onFinish != null) onFinish.run();
 			}
+		}
+
+		private void fail(Throwable reason) {
+			if (done) return;
+			awaiting = null;
+			if (retries > 0) {
+				retries--;
+				restartNextTick = true;
+				return;
+			}
+			done = true;
+			if (onFail != null) onFail.accept(reason);
+			else if (!(reason instanceof TimeoutException) || onTimeout == null) LOG.warn("Task owned by {} failed: {}", owner, reason.toString());
 		}
 
 		private void next() {

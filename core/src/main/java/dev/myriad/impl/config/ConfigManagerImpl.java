@@ -97,18 +97,43 @@ public final class ConfigManagerImpl implements ConfigManager {
 		Path dir = profileDir(name);
 		rawModules = JsonFiles.read(dir.resolve("modules.json")).filter(JsonElement::isJsonObject).map(JsonElement::getAsJsonObject).orElse(new JsonObject());
 		for (Module m : myriad.modules()) {
-			JsonElement e = rawModules.get(m.id().toString());
+			JsonElement e = savedEntry(m);
 			if (e == null || !e.isJsonObject()) {
 				m.settings.resetAll();
 				m.setEnabledSilently(false);
 				continue;
 			}
 			JsonObject o = e.getAsJsonObject();
-			if (o.has("settings") && o.get("settings").isJsonObject()) m.settings.fromJson(o.getAsJsonObject("settings"));
+			if (o.has("settings") && o.get("settings").isJsonObject()) {
+				JsonObject settings = o.getAsJsonObject("settings");
+				int version = o.has("version") ? o.get("version").getAsInt() : 1;
+				if (version < m.settingsVersion()) {
+					try {
+						m.upgradeSavedSettings(settings, version);
+					} catch (RuntimeException ex) {
+						LOG.error("Could not update the saved settings of {} from version {}", m.id(), version, ex);
+					}
+				}
+				m.settings.fromJson(settings);
+			}
 			m.setEnabledSilently(o.has("enabled") && o.get("enabled").getAsBoolean());
 		}
 		JsonObject ui = JsonFiles.read(dir.resolve("ui.json")).filter(JsonElement::isJsonObject).map(JsonElement::getAsJsonObject).orElse(null);
 		myriad.windowManager().load(ui);
+	}
+
+	/** A module's saved entry, moving it over from an id it was saved under before if it was renamed. */
+	private JsonElement savedEntry(Module m) {
+		String key = m.id().toString();
+		if (rawModules.has(key)) return rawModules.get(key);
+		for (MyriadId former : m.formerIds()) {
+			JsonElement e = rawModules.remove(former.toString());
+			if (e != null) {
+				rawModules.add(key, e);
+				return e;
+			}
+		}
+		return null;
 	}
 
 	/** Builds the JSON on this (render) thread; writes on the IO thread if {@code async}. */
@@ -124,6 +149,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 		for (Module m : myriad.modules()) {
 			JsonObject o = new JsonObject();
 			o.addProperty("enabled", m.isEnabled());
+			if (m.settingsVersion() > 1) o.addProperty("version", m.settingsVersion());
 			o.add("settings", m.settings.toJson());
 			modules.add(m.id().toString(), o);
 		}

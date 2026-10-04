@@ -1,7 +1,9 @@
 package dev.myriad.impl.mixin;
 
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.ItemUseEvent;
+import dev.myriad.impl.MyriadImpl;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,5 +19,13 @@ public abstract class LivingEntityMixin {
 		LivingEntity self = (LivingEntity) (Object) this;
 		if (self != Minecraft.getInstance().player || !Myriad.isReady() || self.getUseItem().isEmpty()) return;
 		if (Myriad.events().hasListeners(ItemUseEvent.Finished.class)) Myriad.events().post(new ItemUseEvent.Finished(self.getUseItem().copy()));
+	}
+
+	/** Rotation move fix: a sprint jump pushes along the yaw being sent to the server. */
+	@ModifyExpressionValue(method = "jumpFromGround", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;getYRot()F"))
+	private float myriad$jumpYaw(float original) {
+		if ((Object) this != Minecraft.getInstance().player || MyriadImpl.get() == null) return original;
+		float yaw = MyriadImpl.get().rotationManager().movementYaw();
+		return Float.isNaN(yaw) ? original : yaw;
 	}
 }

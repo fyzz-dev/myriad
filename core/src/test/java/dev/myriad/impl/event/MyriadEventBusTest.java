@@ -136,4 +136,52 @@ class MyriadEventBusTest {
 		assertEquals(100, good[0]);
 		assertEquals(50, bad[0], "handler should be disabled after 50 failures");
 	}
+
+	static class Turner {
+		final MyriadEventBus bus;
+		final List<String> calls;
+
+		Turner(MyriadEventBus bus, List<String> calls) {
+			this.bus = bus;
+			this.calls = calls;
+		}
+	}
+
+	static class First extends Turner {
+		Object other;
+
+		First(MyriadEventBus bus, List<String> calls) {
+			super(bus, calls);
+		}
+
+		@Subscribe(priority = Priority.HIGH)
+		private void on(Base e) {
+			calls.add("first");
+			bus.unsubscribe(other);
+		}
+	}
+
+	static class Second extends Turner {
+		Second(MyriadEventBus bus, List<String> calls) {
+			super(bus, calls);
+		}
+
+		@Subscribe(priority = Priority.LOW)
+		private void on(Base e) {
+			calls.add("second");
+		}
+	}
+
+	@Test
+	void aListenerUnsubscribedDuringDispatchMissesTheRestOfIt() {
+		MyriadEventBus bus = new MyriadEventBus();
+		List<String> calls = new ArrayList<>();
+		First first = new First(bus, calls);
+		Second second = new Second(bus, calls);
+		first.other = second;
+		bus.subscribe(first);
+		bus.subscribe(second);
+		bus.post(new Base());
+		assertEquals(List.of("first"), calls);
+	}
 }

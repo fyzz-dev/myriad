@@ -1,7 +1,9 @@
 package dev.myriad.impl.mixin;
 
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.PlayerViewEvent;
+import dev.myriad.impl.MyriadImpl;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -23,5 +25,13 @@ public abstract class EntityMixin {
 	private void myriad$look(float tickDelta, CallbackInfoReturnable<Vec3> cir) {
 		if ((Object) this != Minecraft.getInstance().player || !Myriad.isReady() || !Myriad.events().hasListeners(PlayerViewEvent.Look.class)) return;
 		cir.setReturnValue(Myriad.events().post(new PlayerViewEvent.Look(cir.getReturnValue(), tickDelta)).value);
+	}
+
+	/** Rotation move fix: the local player walks, swims and flies with the yaw being sent to the server. */
+	@ModifyExpressionValue(method = "moveRelative", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;getYRot()F"))
+	private float myriad$movementYaw(float original) {
+		if ((Object) this != Minecraft.getInstance().player || MyriadImpl.get() == null) return original;
+		float yaw = MyriadImpl.get().rotationManager().movementYaw();
+		return Float.isNaN(yaw) ? original : yaw;
 	}
 }

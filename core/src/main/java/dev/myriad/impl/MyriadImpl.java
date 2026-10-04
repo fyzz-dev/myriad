@@ -9,13 +9,17 @@ import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.ModuleRegistry;
 import dev.myriad.api.registry.Registry;
+import dev.myriad.api.service.Breaking;
+import dev.myriad.api.service.Building;
 import dev.myriad.api.service.Containers;
 import dev.myriad.api.service.Friends;
 import dev.myriad.api.service.Inventory;
 import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.service.Notifications;
+import dev.myriad.api.service.PacketLimits;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.service.Tasks;
+import dev.myriad.api.service.TickSpeed;
 import dev.myriad.api.setting.Setting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.ui.BarWidget;
@@ -28,12 +32,17 @@ import dev.myriad.impl.command.CommandManager;
 import dev.myriad.impl.config.ConfigManagerImpl;
 import dev.myriad.impl.event.MyriadEventBus;
 import dev.myriad.impl.keybind.KeybindManager;
+import dev.myriad.impl.service.BreakManager;
+import dev.myriad.impl.service.BuildManager;
 import dev.myriad.impl.service.ContainerTracker;
 import dev.myriad.impl.service.FriendsManager;
 import dev.myriad.impl.service.InventoryManager;
+import dev.myriad.impl.network.BlockAckTracker;
 import dev.myriad.impl.service.NotificationManager;
+import dev.myriad.impl.service.PacketLimiter;
 import dev.myriad.impl.service.RotationManager;
 import dev.myriad.impl.service.TaskScheduler;
+import dev.myriad.impl.service.TickSpeedManager;
 import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.ui.panels.ConsoleLog;
 import org.slf4j.Logger;
@@ -64,7 +73,12 @@ public final class MyriadImpl implements MyriadApi {
 	private final NotificationManager notifications = new NotificationManager();
 	private final RotationManager rotations = new RotationManager();
 	private final InventoryManager inventory = new InventoryManager();
-	private final dev.myriad.impl.service.PlacementManager placement = new dev.myriad.impl.service.PlacementManager();
+	private final BlockAckTracker blockAcks = new BlockAckTracker();
+	private final PacketLimiter packetLimiter = new PacketLimiter();
+	private final TickSpeedManager tickSpeed = new TickSpeedManager();
+	private final dev.myriad.impl.service.PlacementManager placement = new dev.myriad.impl.service.PlacementManager(blockAcks);
+	private final BreakManager breaking = new BreakManager();
+	private final BuildManager building = new BuildManager();
 	private final FriendsManager friends = new FriendsManager(config.root());
 	private final dev.myriad.impl.service.ServerStatsTracker serverStats = new dev.myriad.impl.service.ServerStatsTracker();
 	private final ContainerTracker containers = new ContainerTracker();
@@ -104,6 +118,10 @@ public final class MyriadImpl implements MyriadApi {
 
 		events.subscribe(rotations);
 		events.subscribe(inventory);
+		events.subscribe(placement);
+		events.subscribe(breaking);
+		events.subscribe(building);
+		events.subscribe(blockAcks);
 		events.subscribe(serverStats);
 		events.subscribe(containers);
 		events.subscribe(tasks);
@@ -230,6 +248,42 @@ public final class MyriadImpl implements MyriadApi {
 	@Override
 	public Tasks tasks() {
 		return tasks;
+	}
+
+	@Override
+	public Breaking breaking() {
+		return breaking;
+	}
+
+	@Override
+	public Building building() {
+		return building;
+	}
+
+	@Override
+	public PacketLimits limits() {
+		return packetLimiter;
+	}
+
+	@Override
+	public TickSpeed tickSpeed() {
+		return tickSpeed;
+	}
+
+	public BlockAckTracker blockAcks() {
+		return blockAcks;
+	}
+
+	public PacketLimiter packetLimiter() {
+		return packetLimiter;
+	}
+
+	public RotationManager rotationManager() {
+		return rotations;
+	}
+
+	public TickSpeedManager tickSpeedManager() {
+		return tickSpeed;
 	}
 
 	public ContainerTracker containerTracker() {
