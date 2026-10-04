@@ -1,10 +1,12 @@
 package dev.myriad.api.module;
 
+import com.google.gson.JsonObject;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.ModuleToggleEvent;
 import dev.myriad.api.registry.Identified;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.KeybindSetting;
+import dev.myriad.api.setting.SavedSettings;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.setting.Settings;
 import dev.myriad.api.util.MyriadId;
@@ -50,6 +52,7 @@ public abstract class Module implements Identified {
 	private MyriadId id;
 	private boolean enabled;
 	private final List<Runnable[]> bindings = new ArrayList<>(0);
+	private List<String> formerNames = List.of();
 
 	public final Settings settings = new Settings();
 	protected final SettingGroup sgGeneral = settings.group("General");
@@ -131,6 +134,10 @@ public abstract class Module implements Identified {
 		} else {
 			Myriad.events().unsubscribe(this);
 			Myriad.tasks().cancel(this);
+			Myriad.tickSpeed().clear(this);
+			Myriad.breaking().cancel(this);
+			Myriad.building().stop(this);
+			Myriad.placement().cancel(this);
 			try {
 				onDisable();
 			} catch (Throwable t) {
@@ -177,6 +184,44 @@ public abstract class Module implements Identified {
 	}
 
 	protected void onDisable() {
+	}
+
+	/**
+	 * The version of this module's settings layout. Bump it when you rename, move or change the meaning of settings,
+	 * and update older saved settings in {@link #migrateSettings}. Settings that keep their group and name need
+	 * nothing: only the ones a user would otherwise lose do.
+	 */
+	public int settingsVersion() {
+		return 1;
+	}
+
+	/**
+	 * Updates saved settings from {@code fromVersion} to {@code fromVersion + 1}. Called once per version step, in
+	 * order, before saved settings written by an older {@link #settingsVersion} load.
+	 */
+	protected void migrateSettings(int fromVersion, SavedSettings saved) {
+	}
+
+	/**
+	 * Names (or full ids, {@code "other-addon:old_name"}) this module was saved under before, so a renamed or moved
+	 * module keeps its settings, keybind and on/off state. Call it from the constructor.
+	 */
+	protected final void formerNames(String... names) {
+		formerNames = List.of(names);
+	}
+
+	/** The ids this module was saved under before, from {@link #formerNames}. */
+	public List<MyriadId> formerIds() {
+		List<MyriadId> ids = new ArrayList<>(formerNames.size());
+		for (String n : formerNames) ids.add(n.indexOf(':') > 0 ? MyriadId.parse(n) : MyriadId.of(id().namespace(), MyriadId.toPath(n)));
+		return ids;
+	}
+
+	/** Brings settings saved at {@code savedVersion} up to {@link #settingsVersion}, step by step. */
+	@ApiStatus.Internal
+	public void upgradeSavedSettings(JsonObject saved, int savedVersion) {
+		SavedSettings view = new SavedSettings(saved);
+		for (int v = Math.max(1, savedVersion); v < settingsVersion(); v++) migrateSettings(v, view);
 	}
 
 	/** Extra text shown next to the module in the module list, e.g. the current mode. */

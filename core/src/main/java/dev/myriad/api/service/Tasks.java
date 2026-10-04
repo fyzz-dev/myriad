@@ -1,6 +1,9 @@
 package dev.myriad.api.service;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Work spread over game ticks: "do this in 5 ticks", "every 10 ticks", or a sequence of steps that wait for
@@ -9,14 +12,18 @@ import java.util.function.BooleanSupplier;
  *
  * <pre>{@code
  * Myriad.tasks().sequence(this)
- *     .run(() -> Myriad.containers().open(pos, 20))
- *     .waitUntil(() -> Myriad.containers().current().map(Containers.View::isLoaded).orElse(false), 40)
+ *     .await(() -> Myriad.containers().open(pos, 20), 40)   // waits for the future; a failure fails the sequence
+ *     .require(() -> Myriad.containers().current().isPresent(), "The chest closed")
  *     .run(this::moveItems)
  *     .wait(2)
  *     .run(Myriad.containers()::close)
- *     .onTimeout(() -> warn("Chest didn't open"))
+ *     .retry(2)                                             // start over up to twice if a step fails
+ *     .onFail(t -> warn("Couldn't restock: " + t.getMessage()))
  *     .start();
  * }</pre>
+ *
+ * A sequence fails when a step throws, a {@link Sequence#require} check is false, an {@link Sequence#await}ed
+ * future fails or a wait times out (with a {@link java.util.concurrent.TimeoutException}).
  */
 public interface Tasks {
 	/** Runs {@code action} after {@code ticks} ticks (0 = the next time tasks run, at the end of this tick or the next). */
@@ -54,8 +61,27 @@ public interface Tasks {
 		 */
 		Sequence waitUntil(BooleanSupplier condition, int timeoutTicks);
 
-		/** Runs if a {@link #waitUntil} times out. */
+		/**
+		 * Starts something asynchronous when this step is reached ({@code Myriad.containers().open(...)}, a placement's
+		 * {@code result()}) and waits for it. The sequence fails if the future fails or isn't done after
+		 * {@code timeoutTicks}.
+		 */
+		Sequence await(Supplier<? extends CompletableFuture<?>> start, int timeoutTicks);
+
+		/** Fails the sequence with {@code message} unless {@code condition} holds when this step is reached. */
+		Sequence require(BooleanSupplier condition, String message);
+
+		/**
+		 * When a step fails, starts over from the first step, up to {@code times} more times, before giving up. Each
+		 * attempt starts the next tick.
+		 */
+		Sequence retry(int times);
+
+		/** Runs if a {@link #waitUntil} times out (before {@link #onFail}). */
 		Sequence onTimeout(Runnable action);
+
+		/** Runs once the sequence has failed for good (after any {@link #retry}), with the reason. */
+		Sequence onFail(Consumer<Throwable> action);
 
 		/** Runs after the last step. */
 		Sequence onFinish(Runnable action);

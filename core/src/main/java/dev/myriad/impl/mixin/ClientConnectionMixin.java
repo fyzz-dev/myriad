@@ -5,8 +5,19 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.AttackEvent;
 import dev.myriad.api.event.events.PacketEvent;
+import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.network.PacketGate;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.BundlePacket;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -14,17 +25,6 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.ArrayList;
-import java.util.List;
-import net.minecraft.client.Minecraft;
-import net.minecraft.network.Connection;
-import io.netty.channel.ChannelFutureListener;
-import net.minecraft.network.protocol.BundlePacket;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.PacketFlow;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.world.entity.Entity;
 
 @Mixin(Connection.class)
 public abstract class ClientConnectionMixin {
@@ -66,6 +66,12 @@ public abstract class ClientConnectionMixin {
 				MYRIAD_RESENDING.set(false);
 			}
 		}
+	}
+
+	/** Counts what actually went out (after any rewrite or cancel) against the packet budget. */
+	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("TAIL"))
+	private void myriad$countSent(Packet<?> packet, @Nullable ChannelFutureListener callbacks, boolean flush, CallbackInfo ci) {
+		if (myriad$isClientSide() && MyriadImpl.get() != null) MyriadImpl.get().packetLimiter().record(packet);
 	}
 
 	/** Wraps packet handling so receive handlers can drop or replace packets. */

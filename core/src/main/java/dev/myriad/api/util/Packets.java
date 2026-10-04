@@ -1,9 +1,15 @@
 package dev.myriad.api.util;
 
+import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.network.PacketGate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.prediction.PredictiveAction;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.world.level.block.state.BlockState;
+
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 
 /** Sending packets to the server. All of these do nothing outside a world. */
 public final class Packets {
@@ -36,5 +42,23 @@ public final class Packets {
 	public static void sendSequenced(PredictiveAction creator) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.gameMode != null && mc.level != null) mc.gameMode.startPrediction(mc.level, creator);
+	}
+
+	/**
+	 * Like {@link #sendSequenced(PredictiveAction)}, and tells you what the server made of it: the future completes
+	 * with the server's block state at {@code pos} once it has answered (air after a break it accepted, the old block
+	 * if it refused). It fails with a {@link java.util.concurrent.TimeoutException} if the server never answers, and
+	 * with a {@link CancellationException} if you leave the world or aren't in one. Completes on the render thread.
+	 *
+	 * <pre>{@code
+	 * Packets.sendSequenced(pos, seq -> new ServerboundPlayerActionPacket(Action.STOP_DESTROY_BLOCK, pos, side, seq))
+	 *     .thenAccept(state -> { if (!state.isAir()) warn("The server kept the block"); });
+	 * }</pre>
+	 */
+	public static CompletableFuture<BlockState> sendSequenced(BlockPos pos, PredictiveAction creator) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.gameMode == null || mc.level == null || MyriadImpl.get() == null) return CompletableFuture.failedFuture(new CancellationException("Not in a world"));
+		sendSequenced(creator);
+		return MyriadImpl.get().blockAcks().track(MyriadImpl.get().blockAcks().currentSequence(), pos);
 	}
 }

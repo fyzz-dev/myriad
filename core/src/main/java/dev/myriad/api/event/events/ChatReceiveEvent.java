@@ -1,6 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
+import dev.myriad.api.util.ChatMessages;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -9,6 +10,7 @@ import net.minecraft.network.chat.Component;
  */
 public final class ChatReceiveEvent extends Cancellable {
 	private Component message;
+	private ChatMessages.Parsed parsed;
 
 	public ChatReceiveEvent(Component message) {
 		this.message = message;
@@ -20,5 +22,12 @@ public final class ChatReceiveEvent extends Cancellable {
 
 	public void setMessage(Component message) {
 		this.message = message;
+		this.parsed = null;
+	}
+
+	/** Who the line is from and whether it's a whisper (see {@link ChatMessages}); worked out on first use. */
+	public ChatMessages.Parsed parsed() {
+		if (parsed == null) parsed = ChatMessages.parse(message);
+		return parsed;
 	}
 }

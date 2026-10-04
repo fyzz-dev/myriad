@@ -13,8 +13,9 @@ public interface Inventory {
 	void select(int hotbarSlot);
 
 	/**
-	 * Silently switches the server-side slot to {@code hotbarSlot}, runs {@code action}, then switches back. The
-	 * client's visible slot does not change.
+	 * Silently switches the server-side slot to {@code hotbarSlot}, runs {@code action}, then switches back to what
+	 * the server held before (so a {@link #hold} survives it). The client's visible slot does not change. Sends
+	 * nothing when the server already holds that slot.
 	 */
 	void silentSwap(int hotbarSlot, Runnable action);
 
@@ -66,12 +67,34 @@ public interface Inventory {
 	 */
 	int ensureInHotbar(Predicate<ItemStack> predicate, int preferredSlot);
 
+	/**
+	 * Whether an inventory click now would pass anti-cheats that refuse clicks while you move: Grim (2b2t) cancels a
+	 * click sent with movement keys held, while sprinting or while sneaking. Moves that can wait (refills, tools,
+	 * building material) should wait for this; urgent ones (a totem) go anyway.
+	 */
+	boolean safeToClick();
+
+	/**
+	 * Brings the item at {@code inventoryIndex} (9-35) into the hotbar to be used, keeping out of the way of what you
+	 * use: into an empty slot, else over an item {@code replaceable} accepts (they swap places, so it lands where this
+	 * one was), else over ordinary building blocks. Never the selected slot or one a module holds. One click, and only
+	 * when {@link #safeToClick()}. Returns the hotbar slot it went to, or -1 (wait and try again later).
+	 */
+	int pullToHotbar(int inventoryIndex, Predicate<ItemStack> replaceable);
+
 	// The moves below click in your own inventory screen, which works without opening it (as vanilla's number keys
-	// do). They need no container to be open, and return false otherwise or for bad slots. Indexes are inventory
-	// indexes (see Slots): 0-8 hotbar, 9-35 main, 36-39 armour (feet..head), 40 off hand.
+	// do). They need no container to be open, and return false otherwise, for bad slots, or when the packet budget
+	// is spent (see PacketLimits; wrap must-happen moves in Myriad.limits().urgent). Indexes are inventory indexes
+	// (see Slots): 0-8 hotbar, 9-35 main, 36-39 armour (feet..head), 40 off hand.
 
 	/** Moves the stack at {@code from} to {@code to}, swapping with whatever is there (merging if they stack). */
 	boolean move(int from, int to);
+
+	/**
+	 * Tops up the stack at {@code to} from the stack at {@code from} when they stack together: as much as fits moves
+	 * over and the rest stays at {@code from}. Returns false (and does nothing) if they don't stack.
+	 */
+	boolean merge(int from, int to);
 
 	/** Swaps {@code inventoryIndex} with the off hand (like pressing F over it), e.g. to put a totem there. */
 	boolean swapWithOffhand(int inventoryIndex);

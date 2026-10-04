@@ -72,6 +72,8 @@ public final class MyriadEventBus implements EventBus {
 			List<Listener> ls = byOwner.remove(listener);
 			if (ls == null) return;
 			for (Listener l : ls) {
+				// An event being dispatched right now holds its own copy of the listeners: skip this one there too.
+				l.disabled = true;
 				List<Listener> list = byType.get(l.type);
 				if (list != null) list.remove(l);
 			}
@@ -102,6 +104,7 @@ public final class MyriadEventBus implements EventBus {
 		}
 		return () -> {
 			synchronized (lock) {
+				l.disabled = true;
 				List<Listener> list = byType.get(event);
 				if (list != null && list.remove(l)) invalidate();
 			}

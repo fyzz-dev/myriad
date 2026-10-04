@@ -7,6 +7,8 @@ import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.ModuleRegistry;
 import dev.myriad.api.registry.Registry;
+import dev.myriad.api.service.Breaking;
+import dev.myriad.api.service.Building;
 import dev.myriad.api.service.Containers;
 import dev.myriad.api.service.Friends;
 import dev.myriad.api.service.Inventory;
@@ -15,7 +17,9 @@ import dev.myriad.api.service.Notifications;
 import dev.myriad.api.service.Placement;
 import dev.myriad.api.service.Rotations;
 import dev.myriad.api.service.ServerStats;
+import dev.myriad.api.service.PacketLimits;
 import dev.myriad.api.service.Tasks;
+import dev.myriad.api.service.TickSpeed;
 import dev.myriad.api.ui.BarWidget;
 import dev.myriad.api.ui.Desktop;
 import dev.myriad.api.ui.PanelType;
@@ -118,6 +122,16 @@ public final class Myriad {
 		return api().placement();
 	}
 
+	/** Shared block breaking: queued by priority, instant breaks batched, tool and rotation handled, server-confirmed. */
+	public static Breaking breaking() {
+		return api().breaking();
+	}
+
+	/** Builds blueprints: describe the shape, and the planner breaks and places what's in reach in a working order. */
+	public static Building building() {
+		return api().building();
+	}
+
 	public static Friends friends() {
 		return api().friends();
 	}
@@ -135,6 +149,16 @@ public final class Myriad {
 	/** Work spread over ticks: delays, repeats and step-by-step sequences. */
 	public static Tasks tasks() {
 		return api().tasks();
+	}
+
+	/** The shared budget for packets servers count (block actions, interactions, inventory clicks). */
+	public static PacketLimits limits() {
+		return api().limits();
+	}
+
+	/** The speed the client runs game ticks at, combined from every feature that changes it. */
+	public static TickSpeed tickSpeed() {
+		return api().tickSpeed();
 	}
 
 	/** The window manager. */

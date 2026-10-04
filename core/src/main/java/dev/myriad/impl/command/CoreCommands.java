@@ -16,6 +16,7 @@ import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.setting.Setting;
 import dev.myriad.api.util.FakePlayers;
 import dev.myriad.api.util.Texts;
+import dev.myriad.impl.Diagnostics;
 import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.ui.ThemeManager;
 import dev.myriad.impl.ui.WindowManager;
@@ -164,6 +165,18 @@ public final class CoreCommands {
 						info(Component.literal(a.name() + " " + a.version()).withStyle(f)
 							.append(Component.literal("  " + Myriad.modules().ownedBy(a.id()).size() + " modules").withStyle(ChatFormatting.GRAY)));
 					}
+					return SINGLE_SUCCESS;
+				});
+			}
+		});
+
+		ctx.registerCommand(new Command("diagnostics", "Copies a report for bug reports: versions, addons, mods and enabled modules' changed settings.", "diag") {
+			@Override
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
+				b.executes(c -> {
+					String report = Diagnostics.build();
+					mc.keyboardHandler.setClipboard(report);
+					info("Copied diagnostics to the clipboard (" + report.lines().count() + " lines)");
 					return SINGLE_SUCCESS;
 				});
 			}

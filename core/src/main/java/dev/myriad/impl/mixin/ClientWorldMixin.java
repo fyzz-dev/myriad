@@ -3,17 +3,31 @@ package dev.myriad.impl.mixin;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.BlockUpdateEvent;
 import dev.myriad.api.event.events.EntityEvent;
+import dev.myriad.impl.MyriadImpl;
+import dev.myriad.impl.network.PredictionAccess;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.prediction.BlockStatePredictionHandler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ClientLevel.class)
-public abstract class ClientWorldMixin {
+public abstract class ClientWorldMixin implements PredictionAccess {
+	@Shadow
+	@Final
+	private BlockStatePredictionHandler blockStatePredictionHandler;
+
+	@Override
+	public int myriad$currentSequence() {
+		return blockStatePredictionHandler.currentSequence();
+	}
+
 	@Inject(method = "addEntity", at = @At("TAIL"))
 	private void myriad$entityAdded(Entity entity, CallbackInfo ci) {
 		if (Myriad.isReady() && Myriad.events().hasListeners(EntityEvent.Added.class)) Myriad.events().post(new EntityEvent.Added(entity));
@@ -32,5 +46,11 @@ public abstract class ClientWorldMixin {
 		if (!Myriad.isReady() || !Myriad.events().hasListeners(BlockUpdateEvent.class)) return;
 		BlockState old = ((ClientLevel) (Object) this).getBlockState(pos);
 		Myriad.events().post(new BlockUpdateEvent(pos.immutable(), old, state));
+	}
+
+	/** The server answered block actions up to {@code sequence}; the world now holds its verdict for them. */
+	@Inject(method = "handleBlockChangedAck", at = @At("TAIL"))
+	private void myriad$blockAck(int sequence, CallbackInfo ci) {
+		if (MyriadImpl.get() != null) MyriadImpl.get().blockAcks().onAck(sequence);
 	}
 }

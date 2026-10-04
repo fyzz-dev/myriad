@@ -1,14 +1,18 @@
 package dev.myriad.impl.service;
 
+import dev.myriad.api.Myriad;
+import dev.myriad.api.build.Target;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.service.Inventory;
+import dev.myriad.api.service.PacketLimits;
 import dev.myriad.api.util.Slots;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 
@@ -77,16 +81,28 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public void silentSwap(int hotbarSlot, Runnable action) {
 		if (mc.player == null || hotbarSlot < 0 || hotbarSlot > 8) return;
-		int previous = mc.player.getInventory().getSelectedSlot();
-		if (previous == hotbarSlot) {
+		int server = serverSlot, visible = mc.player.getInventory().getSelectedSlot();
+		// Already held at the server (perhaps by a hold): nothing to send.
+		if (server == hotbarSlot) {
 			action.run();
+			return;
+		}
+		if (hotbarSlot == visible) {
+			// A hold has the server on another slot; switch it back for the action, then return to the hold.
+			mc.getConnection().send(new ServerboundSetCarriedItemPacket(hotbarSlot));
+			try {
+				action.run();
+			} finally {
+				mc.getConnection().send(new ServerboundSetCarriedItemPacket(server));
+			}
 			return;
 		}
 		select(hotbarSlot);
 		try {
 			action.run();
 		} finally {
-			select(previous);
+			select(visible);
+			if (server != visible) mc.getConnection().send(new ServerboundSetCarriedItemPacket(server));
 		}
 	}
 
@@ -138,7 +154,7 @@ public final class InventoryManager implements Inventory {
 	public boolean moveToHotbar(int inventoryIndex, int hotbarSlot) {
 		if (mc.player == null || hotbarSlot < 0 || hotbarSlot > 8 || inventoryIndex < 0 || inventoryIndex >= 36) return false;
 		if (inventoryIndex == hotbarSlot) return true;
-		if (!canClick()) return false;
+		if (!canClick(1)) return false;
 		return clickSwap(inventoryIndex, hotbarSlot);
 	}
 
@@ -156,9 +172,36 @@ public final class InventoryManager implements Inventory {
 		return moveToHotbar(from, to) ? to : -1;
 	}
 
-	/** True if the player's own screen is the one open to clicks. */
-	private boolean canClick() {
-		return mc.player != null && mc.gameMode != null && mc.player.containerMenu == mc.player.inventoryMenu;
+	@Override
+	public boolean safeToClick() {
+		if (mc.player == null) return false;
+		Input keys = mc.player.input.keyPresses;
+		return !keys.forward() && !keys.backward() && !keys.left() && !keys.right() && !keys.shift() && !mc.player.isSprinting();
+	}
+
+	@Override
+	public int pullToHotbar(int inventoryIndex, Predicate<ItemStack> replaceable) {
+		if (mc.player == null || inventoryIndex < 9 || inventoryIndex >= 36 || !safeToClick()) return -1;
+		var inv = mc.player.getInventory();
+		int selected = inv.getSelectedSlot(), to = -1, blocks = -1;
+		for (int i = 0; i < 9; i++) {
+			if (i == selected || i == serverSlot) continue;
+			ItemStack s = inv.getItem(i);
+			if (s.isEmpty()) {
+				to = i;
+				break;
+			}
+			if (to < 0 && replaceable.test(s)) to = i;
+			if (blocks < 0 && Target.solid().preference(s) >= 0) blocks = i;
+		}
+		if (to < 0) to = blocks;
+		return to >= 0 && moveToHotbar(inventoryIndex, to) ? to : -1;
+	}
+
+	/** True if the player's own screen is the one open to clicks, and the packet budget has room for {@code clicks}. */
+	private boolean canClick(int clicks) {
+		return mc.player != null && mc.gameMode != null && mc.player.containerMenu == mc.player.inventoryMenu
+			&& Myriad.limits().canSend(PacketLimits.Kind.INVENTORY, clicks);
 	}
 
 	private static boolean valid(int index) {
@@ -171,11 +214,24 @@ public final class InventoryManager implements Inventory {
 
 	@Override
 	public boolean move(int from, int to) {
-		if (!canClick() || !valid(from) || !valid(to)) return false;
+		if (!canClick(3) || !valid(from) || !valid(to)) return false;
 		if (from == to) return true;
 		if (Slots.isHotbar(to)) return clickSwap(from, to);
 		if (Slots.isHotbar(from)) return clickSwap(to, from);
 		// Pick up, put down (swapping with what's there), then put back whatever ended up on the cursor.
+		click(from, 0, ContainerInput.PICKUP);
+		click(to, 0, ContainerInput.PICKUP);
+		if (!mc.player.containerMenu.getCarried().isEmpty()) click(from, 0, ContainerInput.PICKUP);
+		return true;
+	}
+
+	@Override
+	public boolean merge(int from, int to) {
+		if (!valid(from) || !valid(to) || from == to) return false;
+		var inv = mc.player == null ? null : mc.player.getInventory();
+		if (inv == null || !ItemStack.isSameItemSameComponents(inv.getItem(from), inv.getItem(to)) || inv.getItem(from).isEmpty()) return false;
+		if (!canClick(3)) return false;
+		// Pick the source up, drop it on the target (they combine), and put any remainder back.
 		click(from, 0, ContainerInput.PICKUP);
 		click(to, 0, ContainerInput.PICKUP);
 		if (!mc.player.containerMenu.getCarried().isEmpty()) click(from, 0, ContainerInput.PICKUP);
@@ -189,7 +245,7 @@ public final class InventoryManager implements Inventory {
 
 	@Override
 	public boolean swapWithOffhand(int inventoryIndex) {
-		if (!canClick() || !valid(inventoryIndex) || inventoryIndex == Slots.OFF_HAND) return false;
+		if (!canClick(1) || !valid(inventoryIndex) || inventoryIndex == Slots.OFF_HAND) return false;
 		// Button 40 is the off hand swap key.
 		click(inventoryIndex, 40, ContainerInput.SWAP);
 		return true;
@@ -197,14 +253,14 @@ public final class InventoryManager implements Inventory {
 
 	@Override
 	public boolean quickMove(int inventoryIndex) {
-		if (!canClick() || !valid(inventoryIndex)) return false;
+		if (!canClick(1) || !valid(inventoryIndex)) return false;
 		click(inventoryIndex, 0, ContainerInput.QUICK_MOVE);
 		return true;
 	}
 
 	@Override
 	public boolean drop(int inventoryIndex, boolean wholeStack) {
-		if (!canClick() || !valid(inventoryIndex)) return false;
+		if (!canClick(1) || !valid(inventoryIndex)) return false;
 		click(inventoryIndex, wholeStack ? 1 : 0, ContainerInput.THROW);
 		return true;
 	}
