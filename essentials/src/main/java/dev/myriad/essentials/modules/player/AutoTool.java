@@ -85,11 +85,15 @@ public class AutoTool extends Module {
 		int slot = Myriad.inventory().bestInHotbar(score);
 		int best = Myriad.inventory().bestInInventory(score);
 		if (best >= 9) {
-			// Better than anything in the hotbar: bring it in (a worse tool makes room); a tick later while you move.
-			int pulled = Myriad.inventory().pullToHotbar(best, s -> toolScore(s, state) > 0);
+			// Better than anything in the hotbar: borrow it (a worse tool makes room; a tick later while you move). It
+			// goes back to the inventory once you stop mining.
+			int pulled = Myriad.inventory().borrow(this, best, s -> toolScore(s, state) > 0);
 			if (pulled >= 0) slot = pulled;
 		}
-		if (slot >= 0) use(slot, 2);
+		if (slot >= 0) {
+			Myriad.inventory().borrow(this, slot, null);
+			use(slot, 2);
+		}
 	}
 
 	/** Puts {@code slot} in hand (on the server only when silent) for at least {@code ticks}. */

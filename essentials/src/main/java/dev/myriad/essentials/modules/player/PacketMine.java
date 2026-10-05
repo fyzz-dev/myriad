@@ -38,8 +38,8 @@ import java.util.List;
  * second block meanwhile.
  */
 public class PacketMine extends Module {
-	private final BoolSetting fast = sgGeneral.bool("Fast").description("Older Grim builds only: finish at 70% of the time and hide it with decoy start "
-		+ "packets (needs ViaVersion). Current Grim flags the decoys and cancels them, so blocks come back.").build();
+	private final BoolSetting fast = sgGeneral.bool("Fast").description("Always finish at 70% of the time, as 2b2t clients do: once Grim's allowance "
+		+ "for early finishes runs out, a decoy start far above hides the speed (needs ViaVersion, as 2b2t has). Each decoy is an AirLiquidBreak flag.").build();
 	private final BoolSetting doubleBreak = sgGeneral.bool("Double Break").description("Mine a second block while the server finishes the first.")
 		.defaultValue(true).visible(fast::get).build();
 	private final BoolSetting queue = sgGeneral.bool("Queue").description("A new click adds to the line, instead of replacing the blocks still waiting. "

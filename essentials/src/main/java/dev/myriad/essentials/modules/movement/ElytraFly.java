@@ -1,6 +1,7 @@
 package dev.myriad.essentials.modules.movement;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.PacketEvent;
@@ -10,15 +11,15 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
 import dev.myriad.api.service.Breaking;
 import dev.myriad.api.service.Rotations;
-import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.util.Baritone;
 import dev.myriad.api.util.Interactions;
 import dev.myriad.api.util.Packets;
+import dev.myriad.essentials.util.ChestSwap;
+import dev.myriad.essentials.util.GlideHold;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.common.ClientboundPingPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.tags.BlockTags;
@@ -35,8 +36,6 @@ import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Two ways to fly an elytra, by what you're doing:
@@ -46,9 +45,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * it on landing, so it's reopened (one packet) once you're back in the air, but your own physics never drop to walking
  * while that round trip happens. Jump is only pressed on the ticks you're on the ground and forward is never pressed
  * (strict anticheats check both against the glide); sprint stays on so every jump still adds its boost. The pitch dives
- * while you're rising and levels out as you fall, which turns each bounce into the most forward speed. Fake Lag holds
- * your packets back while you're at ground level, so the server takes the landing and the next hop together and never
- * sees you stop gliding. Something in the lane (an ender chest, a portal, a wall) stops the bounce, and Obstacles decides
+ * while you're rising and levels out as you fall, which turns each bounce into the most forward speed. The server
+ * stops the glide at each landing; the answers to Grim's pings from then on are held back until you're in the air again
+ * (see GlideHold), so Grim keeps expecting the glide the client keeps up, and the elytra is opened again (with a jump
+ * press, as vanilla does) right after they're sent. The server's glide restarts every hop, so the elytra doesn't wear
+ * either. Something in the lane (an ender chest, a portal, a wall) stops the bounce, and Obstacles decides
  * what happens next: stop, mine through it, or have Baritone walk you round it and carry on bouncing past it.</li>
  * <li><b>Altitude</b> crosses open country without fireworks, "pitch 40" style. It dives until you're fast, pulls up hard, then eases
  * back to level: pulling up gives back more height than the speed it costs, so the cycle holds the altitude you started
@@ -70,9 +71,6 @@ public class ElytraFly extends Module {
 		.description("Recast to bounce along a highway, Altitude to cross open country without fireworks.").build();
 	private final EnumSetting<Obstacles> obstacles = sgGeneral.enumSetting("Obstacles", Obstacles.MINE)
 		.description("What to do about blocks in the lane: stop, mine them, or walk round with Baritone (mines if Baritone isn't installed).")
-		.visible(() -> mode.get() == Mode.RECAST).build();
-	private final BoolSetting fakeLag = sgGeneral.bool("Fake Lag")
-		.description("Hold your packets back while you're at ground level, so the server never sees the elytra close between bounces.").defaultValue(true)
 		.visible(() -> mode.get() == Mode.RECAST).build();
 
 	private enum State {
@@ -103,10 +101,6 @@ public class ElytraFly extends Module {
 	private Phase phase = Phase.DIVE;
 	private float climbPitch;
 	private double cruiseY = Double.NaN;
-	/** Recast's Fake Lag gives up and sends what it's holding after this many ticks, so a stall on the ground can't time you out. */
-	private static final int MAX_LAG_TICKS = 5;
-	/** Fake Lag holds packets while you're less than this above the last ground you touched. */
-	private static final double LAG_HEIGHT = 0.163;
 
 	private boolean wantJump, spoofing;
 	/** Open the elytra this tick (see {@link #startGliding}); and whether jump was pressed last tick. */
@@ -116,10 +110,13 @@ public class ElytraFly extends Module {
 	private volatile boolean flagged;
 	private int pauseTicks;
 	private double groundY;
-	private final Queue<Packet<?>> heldPackets = new ConcurrentLinkedQueue<>();
-	private final Queue<ClientboundPingPacket> heldPings = new ConcurrentLinkedQueue<>();
-	private int lagTicks;
-	private boolean flushing;
+	/** Recast: ticks since you last touched the ground. */
+	private int airTicks;
+	/** Recast: swapping the elytra with a chestplate (No Durability) to end glides that run long. */
+	private boolean chestMode;
+	/** Recast: ticks the server has been gliding without a stop; and the most before the chestplate ends it. */
+	private int longGlide;
+	private static final int LONG_GLIDE = 12;
 	private float lane, spoofYaw, spoofPitch;
 	private BlockPos mining;
 	private int pathWait;
@@ -146,7 +143,8 @@ public class ElytraFly extends Module {
 		phase = Phase.DIVE;
 		cruiseY = groundY = Double.NaN;
 		wantJump = spoofing = holdGlide = flagged = false;
-		flushLag();
+		letGo();
+		putElytraBack();
 		pathWait = pauseTicks = 0;
 		stopMining();
 	}
@@ -187,9 +185,19 @@ public class ElytraFly extends Module {
 		return m != null && m.holdGlide;
 	}
 
-	/** Keep sprinting while gliding, so each jump off the ground adds the sprint boost without holding forward. */
+	/**
+	 * Keep sprinting while gliding, so each jump off the ground adds the sprint boost without holding forward: when you
+	 * could sprint at all (enough food, not blind), as Grim checks that.
+	 */
 	public static boolean holdsSprint() {
-		return holdsGlide();
+		var p = Minecraft.getInstance().player;
+		return holdsGlide() && p != null && p.getFoodData().hasEnoughFood() && !p.hasEffect(MobEffects.BLINDNESS);
+	}
+
+	/** Whether the bounce is swapping the elytra with a chestplate (Auto Armor leaves the chest slot alone meanwhile). */
+	public static boolean swapsChest() {
+		ElytraFly m = Modules.active(ElytraFly.class);
+		return m != null && m.chestMode && m.state == State.BOUNCING;
 	}
 
 	// ---- tick -----------------------------------------------------------------------------------------------------
@@ -206,53 +214,13 @@ public class ElytraFly extends Module {
 	@Subscribe
 	private void onPacket(PacketEvent.Receive e) {
 		if (e.packet() instanceof ClientboundPlayerPositionPacket) flagged = true;
-		// Grim and the like time your packets against their pings: hold those too, so the gap reads as lag.
-		if (e.packet() instanceof ClientboundPingPacket ping && lagging()) {
-			heldPings.add(ping);
-			e.cancel();
-		}
 	}
 
-	@Subscribe
-	private void onSend(PacketEvent.Send e) {
-		if (flushing) return;
-		if (!lagging()) {
-			// Whatever was held goes out first, so the server still sees everything in order.
-			if (!heldPackets.isEmpty()) flushLag();
-			return;
-		}
-		heldPackets.add(e.packet());
-		e.cancel();
-	}
-
-	/** Fake Lag: down at ground level while gliding, where the server would see you land and close the elytra. */
-	private boolean lagging() {
-		return fakeLag.get() && holdGlide && lagTicks < MAX_LAG_TICKS && mc.player != null && mc.player.getY() - groundY < LAG_HEIGHT;
-	}
-
-	private void tickLag() {
-		if (heldPackets.isEmpty() && heldPings.isEmpty()) {
-			lagTicks = 0;
-			return;
-		}
-		if (lagging() && ++lagTicks < MAX_LAG_TICKS) return;
-		flushLag();
-	}
-
-	/** Sends the held packets, then answers the held pings, in the order they came. */
-	private void flushLag() {
-		flushing = true;
-		try {
-			for (Packet<?> p; (p = heldPackets.poll()) != null; ) Packets.sendSilently(p);
-			var connection = mc.getConnection();
-			for (ClientboundPingPacket p; (p = heldPings.poll()) != null; ) if (connection != null) p.handle(connection);
-		} finally {
-			flushing = false;
-			lagTicks = 0;
-		}
-	}
-
-	@Subscribe
+	/**
+	 * Before any of this tick's actions (a redeploy sends held ping answers, which must come first: Grim's Post), and
+	 * before Elytra Tweaks, so the flight rotation is asked for before it fixes this tick's rotation.
+	 */
+	@Subscribe(priority = Priority.BEFORE_ACTIONS + 10)
 	private void onTick(TickEvent.Pre e) {
 		wantJump = wantOpen = false;
 		if (!inGame()) return;
@@ -310,11 +278,9 @@ public class ElytraFly extends Module {
 	// ---- Recast ---------------------------------------------------------------------------------------------------
 
 	private void tickBounce() {
-		tickLag();
 		if (flagged) {
 			flagged = false;
 			pauseTicks = FLAG_PAUSE;
-			flushLag();
 		}
 		if (state == State.PATHING) {
 			tickPathing();
@@ -338,21 +304,50 @@ public class ElytraFly extends Module {
 			// The server rejected a move: let its correction land before bouncing on from there.
 			pauseTicks--;
 			spoofing = holdGlide = false;
+			letGo();
 			return;
 		}
+		GlideHold.arm(this);
 		spoof(lane, mc.player.getDeltaMovement().y > DIVE_UNTIL_Y ? 90 : 4);
 		// Vanilla waits 10 ticks between held jumps; jump the tick you touch down.
 		Interactions.setJumpCooldown(0);
-		if (mc.player.onGround()) {
+		boolean ground = mc.player.onGround();
+		airTicks = ground ? 0 : airTicks + 1;
+		if (ground) {
 			groundY = mc.player.getY();
 			wantJump = true;
 		}
 
 		boolean gliding = elytraOpen();
 		if (gliding) holdGlide = true;
-		// The server closes the elytra on every landing; reopen it once you're back in the air. Take off the same way,
-		// after the first jump or off a ledge.
-		if (!gliding && !mc.player.onGround()) startGliding();
+		// With Elytra Tweaks' No Durability: the server wears the elytra once one of its glides lasts 20 ticks, which a
+		// hop never does unless the server misses the landing (packets bunched up) or you glide off an edge. A glide
+		// running that long gets the chestplate put on, so the server stops it first; it's opened again as usual.
+		chestMode = ElytraTweaks.noDurability() && ChestSwap.ready();
+		boolean cleared = GlideHold.cleared(this);
+		longGlide = cleared || !gliding || ground || !ChestSwap.elytraWorn() ? 0 : longGlide + 1;
+		if (cleared && !ground && airTicks >= 2) {
+			// The server stopped the glide (at the landing, or when the chestplate went on) and the client kept it up:
+			// start it again now you're back in the air, the held ping answers first (on the tick jump goes down) so
+			// Grim sees the stop, then the start.
+			if (!jumpedLastTick) {
+				GlideHold.release(this);
+				// The elytra is off (a long glide was stopped): it goes back on with the start, sent here.
+				if (!(chestMode && !ChestSwap.elytraWorn() && ChestSwap.startGlide())) {
+					// Not gliding for vanilla's check this tick, so its jump press opens the elytra (and sends the start).
+					holdGlide = false;
+					mc.player.stopFallFlying();
+				}
+			}
+			startGliding();
+		} else if (!gliding && !ground) {
+			// Take off the same way, after the first jump or off a ledge (the elytra on first, if it's off).
+			if (chestMode) ChestSwap.restoreElytra();
+			startGliding();
+		} else if (chestMode && longGlide >= LONG_GLIDE) {
+			ChestSwap.swap();
+			longGlide = 0;
+		}
 	}
 
 	private void handleObstacle(List<BlockPos> blocked) {
@@ -379,8 +374,25 @@ public class ElytraFly extends Module {
 	private void stopBouncing() {
 		spoofing = false;
 		holdGlide = false;
-		flushLag();
+		letGo();
+		putElytraBack();
 		if (state == State.BOUNCING || state == State.MINING) pauseFlight();
+	}
+
+	/**
+	 * Lets go of a held glide stop: Grim gets its answers and takes the glide as stopped, as the server already does, so
+	 * the client stops gliding there too.
+	 */
+	private void letGo() {
+		boolean cleared = GlideHold.cleared(this);
+		GlideHold.disarm(this);
+		if (cleared && mc.player != null && elytraOpen()) mc.player.stopFallFlying();
+	}
+
+	/** After bouncing with the chestplate on, the elytra goes back on. */
+	private void putElytraBack() {
+		if (chestMode && mc.player != null) ChestSwap.restoreElytra();
+		chestMode = false;
 	}
 
 	// ---- Baritone -------------------------------------------------------------------------------------------------
@@ -403,6 +415,7 @@ public class ElytraFly extends Module {
 	private void tickPathing() {
 		spoofing = false;
 		holdGlide = false;
+		letGo();
 		if (Baritone.isPathing()) {
 			pathWait = 0;
 			return;
@@ -456,7 +469,8 @@ public class ElytraFly extends Module {
 		if (p.getAbilities().flying || p.isPassenger() || p.isInWater() || p.hasEffect(MobEffects.LEVITATION)) return false;
 		if (p.getInBlockState().is(BlockTags.CLIMBABLE)) return false;
 		for (EquipmentSlot slot : EquipmentSlot.VALUES) if (LivingEntity.canGlideUsing(p.getItemBySlot(slot), slot)) return true;
-		return false;
+		// Bouncing with No Durability: a chestplate worn and the elytra at hand to swap on.
+		return activeMode == Mode.RECAST && ElytraTweaks.noDurability() && ChestSwap.hasGlider();
 	}
 
 	/** The way the lane runs. */

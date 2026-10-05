@@ -2,8 +2,10 @@ package dev.myriad.essentials.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import dev.myriad.essentials.modules.movement.Velocity;
+import dev.myriad.essentials.util.GlideHold;
 import dev.myriad.essentials.modules.player.WallInteract;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.HitResult;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,6 +19,15 @@ public abstract class ClientPlayerEntityMixin {
 	@Inject(method = "moveTowardsClosestSpace", at = @At("HEAD"), cancellable = true)
 	private void essentials$noBlockPush(double x, double z, CallbackInfo ci) {
 		if (Velocity.cancelsBlockPush()) ci.cancel();
+	}
+
+	/** Glide Hold: the server stopping the glide is undone on the client while it's held (see GlideHold). */
+	@Inject(method = "onSyncedDataUpdated", at = @At("TAIL"))
+	private void essentials$keepGliding(EntityDataAccessor<?> accessor, CallbackInfo ci) {
+		LocalPlayer self = (LocalPlayer) (Object) this;
+		// The raw gliding bit: Elytra Fly may report gliding through ground touches regardless.
+		if (!accessor.equals(EntityAccessor.essentials$sharedFlags()) || (self.getEntityData().get(EntityAccessor.essentials$sharedFlags()) & 0x80) != 0) return;
+		if (GlideHold.keepGliding()) self.startFallFlying();
 	}
 
 	/** Wall Interact: the crosshair target can be an entity or container behind a block. */

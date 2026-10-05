@@ -4,6 +4,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.InputEvent;
+import dev.myriad.api.event.events.InteractEvent;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
@@ -11,302 +12,325 @@ import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.util.MathUtil;
-import dev.myriad.api.util.Slots;
 import dev.myriad.essentials.mixin.FireworkRocketEntityAccessor;
+import dev.myriad.essentials.util.ChestSwap;
+import dev.myriad.essentials.util.GlideHold;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.List;
-import java.util.function.ToDoubleFunction;
 
 /**
  * Tweaks to elytra flight that work with Grim (2b2t).
  * <p>
- * <b>Rocket Boost.</b> Grim doesn't simulate a rocket's push; while one is attached to you it allows any movement in a
- * box around your look: on each axis up to 1.7 times the sum of that axis of your current look and the one before it
- * (as Grim tracks them), capped at 1.7 blocks a tick. Vanilla's push only ever approaches 1.7 blocks a tick along your
- * look, and takes a while to get there. With Rocket Boost, every tick a rocket is attached you move as far along your
- * look as that box allows (with a margin): full speed straight away, and since the cap is per axis, faster when you fly
- * diagonally (about 34 blocks a second along an axis, 46 on a diagonal). Looking level holds your height. Applied by
+ * <b>Rocket Boost.</b> Grim doesn't simulate a rocket's push. While one is attached to you it takes the plain glide it
+ * predicts from last tick's movement and widens it, on each axis, by up to 1.7 times your current look plus the one
+ * before it (with a little slack for skipped ticks), capped at 1.7 blocks a tick; anything inside passes. Vanilla's push
+ * only ever approaches 1.7 blocks a tick along your look, and takes a while to get there. With Rocket Boost, every
+ * tick a rocket is attached you move as far along your look as that window allows (a little inside it): full speed at
+ * once, and since the cap is per axis, faster when you fly diagonally. Looking level holds your height. Every
+ * movement packet carries your rotation meanwhile, so the look before is exactly the one sent last tick. Applied by
  * this addon's LivingEntityMixin.
  * <p>
- * <b>No Durability.</b> The server wears an elytra by one for every 20 ticks of gliding without a break. Every 10 ticks
- * (or half a second) the elytra is taken off for a moment, which makes the server stop the glide and start counting again, and put back
- * the moment the server says so, opening it again with a jump press as vanilla does, so the flight isn't interrupted
- * on your side. The keys are released for that moment, as Grim refuses inventory clicks while you move (gliding
- * doesn't use them anyway).
+ * <b>No Durability.</b> The server wears an elytra by one for every 20 ticks of gliding without a break. With a
+ * chestplate in your off hand or hotbar, the elytra is swapped for it (using it, as a right-click equips armour)
+ * while you glide, so the server stops the glide on its next tick; the client keeps gliding through that (see
+ * {@link GlideHold}), and Grim doesn't notice. Every 8 ticks the elytra goes back on just long enough to start the
+ * glide again (jump pressed, as vanilla starts one), and comes off again. The server never glides for more than a
+ * tick in one go, so it never wears the elytra. Rockets you use meanwhile go out in those moments, when the server
+ * takes them. Swaps only run with enough air below you, so the server never sees you land without the elytra.
  */
 public class ElytraTweaks extends Module {
 	private final BoolSetting rocketBoost = sgGeneral.bool("Rocket Boost")
 		.description("While a rocket is attached, fly as fast along your look as Grim allows: full speed at once, and faster on diagonals.")
 		.defaultValue(true).build();
 	private final BoolSetting noDurability = sgGeneral.bool("No Durability")
-		.description("Keep the elytra from wearing out: every few seconds of gliding it's taken off for a moment and put back (needs a free inventory slot).")
+		.description("Keep the elytra from wearing out while you glide, by swapping it with a chestplate held in your off hand or hotbar.")
 		.defaultValue(true).build();
 
-	/** Grim's cap on a rocket's movement, blocks a tick per axis. */
-	private static final double CAP = 1.7;
-	/**
-	 * Stay this far inside Grim's box: a little holding still, more while turning and for a while after (its box then
-	 * came out up to a few percent tighter than worked out here, on the test server, especially vertically).
-	 */
-	private static final double MARGIN = 0.95, TURNING_MARGIN = 0.85;
-	/** Ticks after a turn that still get the turning margin. */
-	private static final int TURN_TICKS = 10;
-	/** How long a look sent before the latest one may still be Grim's previous look, in ticks (covers lag). */
-	private static final int RECENT_TICKS = 20;
+	// ---- Rocket Boost -----------------------------------------------------------------------------------------------
+
+	/** Grim's per-axis allowance for a rocket, blocks a tick (both its scale and its cap), with a margin. */
+	private static final double AMOUNT = 1.68;
+	/** Grim's slack for a skipped tick, on each look's axes. */
+	private static final double TICK_SKIP = 0.05;
 	/** Ticks after a server teleport with vanilla's own flight, while Grim settles. */
 	private static final int TELEPORT_PAUSE = 5;
-	/** How far along the look to aim before clamping to the box (anything past the cap). */
+	/** How far along the look to aim before clamping to the window (anything past the cap). */
 	private static final double WANT = 10;
 
-	/**
-	 * The two rotations Grim builds the box from, as it tracks them: it only takes a new look from packets that carry
-	 * one, and vanilla only sends one when you turn, so while you hold still its "last look" is the one from before
-	 * your latest turn, however long ago.
-	 */
-	private float sentYaw, sentPitch, beforeYaw, beforePitch;
+	/** Where the glide started last tick, to measure the movement Grim starts its prediction from. */
+	private Vec3 lastGlidePos;
+	private volatile boolean teleported;
+	private int teleportPause;
 
-	// ---- No Durability ------------------------------------------------------------------------------------------
-	// The server wears an elytra by one every 20 ticks of gliding without a break. Taking it off for a moment makes the
-	// server stop the glide, which resets that count. The cycle, all of it what Grim expects:
-	// 1. release the movement keys and sprint for a tick (Grim cancels inventory clicks while you move);
-	// 2. shift-click the elytra out of the chest slot; the server stops the glide on its next tick;
-	// 3. keep gliding until the server says the glide stopped, the moment Grim stops expecting it too;
-	// 4. that tick, shift-click it back and press jump: vanilla opens it again before you move, so no glide is lost.
+	// ---- No Durability ----------------------------------------------------------------------------------------------
 
-	private enum Cycle {
-		/** Gliding, counting ticks. */
-		IDLE,
-		/** Keys released this tick, so the next tick's click is clean. */
-		PREPARE,
-		/** Elytra off; waiting for the server to stop the glide. */
-		OFF,
-		/** Elytra back on; jump pressed to open it. */
-		REOPEN
-	}
+	/** Ticks between glide restarts: well under vanilla's 80-tick floating kick and the 20 ticks that wear the elytra. */
+	private static final int INTERVAL = 8;
+	/** Give up if the server hasn't stopped the glide this long after a swap (it refused it). */
+	private static final int CLEAR_TIMEOUT = 40;
+	/** Ticks of gliding with room below before the first swap. */
+	private static final int ARM_TICKS = 10;
 
-	/**
-	 * Gliding before the next break, in ticks or real time, whichever comes first: well under the server's 20 ticks,
-	 * which it counts in real time, so a client that falls behind doesn't miss it.
-	 */
-	private static final int GLIDE_TICKS = 10;
-	private static final long GLIDE_MS = 500;
-	/** Give up waiting for the server after this long (it put the elytra back, so it's no worse than vanilla). */
-	private static final int OFF_TIMEOUT = 40;
-
-	private Cycle cycle = Cycle.IDLE;
-	private int glideTicks, cycleTicks;
-	/** When the current stretch of gliding started, in wall-clock ms. */
-	private long glideStartMs;
-	private boolean warnedNoSpace;
+	private boolean engaged, startNow, rocketWanted, firing, warned;
+	private InteractionHand rocketHand = InteractionHand.MAIN_HAND;
+	/** The hotbar slot a waiting rocket was used from (it may have been a silent swap, as Middle Click's are). */
+	private int rocketSlot = -1;
+	private int armTicks, sinceStart;
 
 	public ElytraTweaks() {
 		super(Categories.MOVEMENT, "Elytra Tweaks", "Faster rocket boosts and an elytra that doesn't wear out, Grim-safe.");
 	}
 
 	@Override
-	protected void onDisable() {
-		// Never leave the elytra in the inventory.
-		if (cycle == Cycle.OFF) putBack();
-		cycle = Cycle.IDLE;
+	protected void onEnable() {
+		lastGlidePos = null;
+		engaged = startNow = rocketWanted = false;
+		armTicks = 0;
 	}
 
-	@Subscribe
+	@Override
+	protected void onDisable() {
+		if (inGame()) finish();
+		engaged = false;
+		GlideHold.disarm(this);
+	}
+
+	/** Whether the elytra is being swapped (Auto Armor leaves the chest slot alone meanwhile). */
+	public static boolean holdsChest() {
+		ElytraTweaks m = Modules.active(ElytraTweaks.class);
+		return m != null && m.engaged || ElytraFly.swapsChest();
+	}
+
+	/** Whether No Durability is on, for Elytra Fly's bounce to swap with a chestplate as well. */
+	public static boolean noDurability() {
+		ElytraTweaks m = Modules.active(ElytraTweaks.class);
+		return m != null && m.noDurability.get();
+	}
+
+	/** Before any of this tick's actions: a restart sends held ping answers, which must come first (Grim's Post). */
+	@Subscribe(priority = Priority.BEFORE_ACTIONS)
 	private void onTickStart(TickEvent.Pre e) {
-		LocalPlayer p = mc.player;
+		startNow = false;
 		if (!inGame()) {
-			cycle = Cycle.IDLE;
+			engaged = false;
 			return;
 		}
-		cycleTicks++;
-		// Turned off mid-cycle: finish it (elytra back on and open), then stop.
-		if (!noDurability.get() && (cycle == Cycle.IDLE || cycle == Cycle.PREPARE)) {
-			cycle = Cycle.IDLE;
+		LocalPlayer p = mc.player;
+		if (teleportPause > 0) teleportPause--;
+		// Rocket Boost: every movement packet carries a rotation while a rocket pushes, so Grim's look before is known.
+		if (rocketBoost.get() && p.isFallFlying() && rocketAttached(p)) Myriad.rotations().sendRotationThisTick();
+		tickNoDurability();
+	}
+
+	// ---- No Durability ----------------------------------------------------------------------------------------------
+
+	private void tickNoDurability() {
+		LocalPlayer p = mc.player;
+		if (!noDurability.get()) {
+			finish();
 			return;
 		}
-		switch (cycle) {
-			case IDLE -> {
-				boolean gliding = p.isFallFlying() && elytraWorn();
-				if (gliding && glideTicks == 0) glideStartMs = System.currentTimeMillis();
-				glideTicks = gliding ? glideTicks + 1 : 0;
-				if (gliding && (glideTicks >= GLIDE_TICKS || System.currentTimeMillis() - glideStartMs >= GLIDE_MS)) {
-					if (freeSlot() < 0) {
-						if (!warnedNoSpace) warn("No Durability needs a free inventory slot.");
-						warnedNoSpace = true;
-						glideTicks = 0;
-						return;
-					}
-					warnedNoSpace = false;
-					p.setSprinting(false);
-					next(Cycle.PREPARE);
-				}
+		if (!engaged) {
+			// Elytra Fly's bounce does its own swapping.
+			boolean ready = p.isFallFlying() && ChestSwap.elytraWorn() && !p.onGround() && !p.isInWater() && !p.isPassenger() && !ElytraFly.holdsGlide() && roomBelow(true);
+			armTicks = ready ? armTicks + 1 : 0;
+			if (armTicks < ARM_TICKS) return;
+			if (ChestSwap.pair() == null) {
+				if (!ChestSwap.fetchChestplate()) warnOnce("No Durability needs a chestplate in your inventory.");
+				return;
 			}
-			case PREPARE -> {
-				if (!p.isFallFlying() || !elytraWorn()) {
-					next(Cycle.IDLE);
-				} else if (Myriad.inventory().safeToClick() && Myriad.inventory().quickMove(Slots.CHEST)) {
-					next(Cycle.OFF);
-				} else if (cycleTicks > 5) {
-					next(Cycle.IDLE);
-				}
+			if (!ChestSwap.ready()) {
+				warnOnce("No Durability can't swap armour with Curse of Binding.");
+				return;
 			}
-			case OFF -> {
-				// The server stopped the glide (or you landed, or it's taking too long): elytra back on, and open it.
-				if (!p.isFallFlying() || p.onGround() || cycleTicks > OFF_TIMEOUT) {
-					if (putBack()) next(p.onGround() ? Cycle.IDLE : Cycle.REOPEN);
-				}
-			}
-			case REOPEN -> {
-				if (p.isFallFlying() || p.onGround() || cycleTicks > 6) next(Cycle.IDLE);
-			}
+			if (!GlideHold.arm(this)) return;
+			ChestSwap.swap();
+			engaged = true;
+			sinceStart = 0;
+			return;
+		}
+		// Landing, water, or the ground close enough that the server could see you land without the elytra.
+		if (!p.isFallFlying() || p.onGround() || p.isInWater() || !roomBelow(false)) {
+			finish();
+			return;
+		}
+		sinceStart++;
+		boolean cleared = GlideHold.cleared(this);
+		boolean due = sinceStart >= INTERVAL || rocketWanted || GlideHold.exposed(this);
+		// Not two starts in a row (Grim's ElytraC).
+		if (cleared && due && sinceStart >= 2) {
+			restart(true);
+		} else if (!cleared && sinceStart > INTERVAL + CLEAR_TIMEOUT) {
+			finish();
 		}
 	}
 
 	/**
-	 * While cycling: no movement keys, sneak or sprint (the click needs them released the tick before), and jump only
-	 * as the press that reopens the elytra, after a tick with it released.
+	 * Starts the glide again: the held ping answers go first (Grim sees the stop), the elytra goes on, the start is
+	 * sent with jump pressed this tick and released the tick before (as vanilla starts one; Grim's ElytraB), a waiting
+	 * rocket is used while the server takes it, and with {@code swapBack} the chestplate goes straight back on.
 	 */
+	private void restart(boolean swapBack) {
+		GlideHold.release(this);
+		if (!ChestSwap.startGlide()) {
+			finish();
+			return;
+		}
+		if (rocketWanted) fireRocket();
+		startNow = true;
+		sinceStart = 0;
+		if (swapBack) ChestSwap.swap();
+	}
+
+	/** Stops swapping, with the elytra back on, gliding again if the server had stopped and you're still in the air. */
+	private void finish() {
+		if (!engaged) return;
+		engaged = false;
+		armTicks = 0;
+		LocalPlayer p = mc.player;
+		boolean cleared = GlideHold.cleared(this);
+		if (cleared && p.isFallFlying() && !p.onGround() && sinceStart >= 2) {
+			restart(false);
+		} else {
+			GlideHold.release(this);
+			ChestSwap.restoreElytra();
+			// The server had stopped the glide: so does the client, where you are.
+			if (cleared && p.isFallFlying()) p.stopFallFlying();
+		}
+		GlideHold.disarm(this);
+		rocketWanted = false;
+	}
+
+	/** While swapping: jump only as the press that starts the glide again (released the tick before). */
 	@Subscribe(priority = Priority.LOWEST)
 	private void onInput(InputEvent e) {
-		if (cycle == Cycle.IDLE) return;
-		e.forward = e.backward = e.left = e.right = e.sneak = e.sprint = false;
-		e.jump = cycle == Cycle.REOPEN && cycleTicks == 0;
+		if (engaged || startNow) e.jump = startNow;
 	}
 
-	/** Whether No Durability has the elytra off right now (Auto Armor leaves the chest slot alone meanwhile). */
-	public static boolean holdsChest() {
-		ElytraTweaks m = Modules.active(ElytraTweaks.class);
-		return m != null && m.cycle != Cycle.IDLE;
-	}
-
-	private void next(Cycle c) {
-		cycle = c;
-		cycleTicks = 0;
-		if (c == Cycle.IDLE) glideTicks = 0;
-	}
-
-	/** Shift-clicks the elytra back into the chest slot; false if it can't be found or clicked (tried again next tick). */
-	private boolean putBack() {
-		var inv = mc.player.getInventory();
-		if (elytraWorn()) return true;
-		for (int i = 0; i < Slots.MAIN_END; i++) {
-			if (inv.getItem(i).has(DataComponents.GLIDER)) return Myriad.inventory().quickMove(i);
-		}
-		return true;
-	}
-
-	private boolean elytraWorn() {
-		return mc.player.getItemBySlot(EquipmentSlot.CHEST).has(DataComponents.GLIDER);
-	}
-
-	private int freeSlot() {
-		var inv = mc.player.getInventory();
-		for (int i = 0; i < Slots.MAIN_END; i++) if (inv.getItem(i).isEmpty()) return i;
-		return -1;
-	}
-
-	@Override
-	protected void onEnable() {
-		cycle = Cycle.IDLE;
-		glideTicks = 0;
-		sentYaw = beforeYaw = Myriad.rotations().serverYaw();
-		sentPitch = beforePitch = Myriad.rotations().serverPitch();
-	}
-
-	/** A server teleport sets both of Grim's looks to the rotation you answer it with. */
-	private volatile boolean teleported;
-	private volatile int teleportPause;
-	private int sinceTurn = TURN_TICKS;
-
-	/** A look sent, and when (client ticks). */
-	private record Sent(Vec3 look, int tick) {
-	}
-
-	/** Looks sent in the last {@link #RECENT_TICKS} ticks. */
-	private final Deque<Sent> recent = new ArrayDeque<>();
-	private int ticks;
-
+	/** A rocket used meanwhile waits for the next start: the server only attaches rockets while it sees you gliding. */
 	@Subscribe
-	private void onTick(TickEvent.Post e) {
-		ticks++;
-		while (!recent.isEmpty() && ticks - recent.peekFirst().tick > RECENT_TICKS) recent.pollFirst();
+	private void onUse(InteractEvent.Item e) {
+		if (!engaged || firing || !mc.player.getItemInHand(e.hand()).is(Items.FIREWORK_ROCKET)) return;
+		e.cancel();
+		rocketWanted = true;
+		rocketHand = e.hand();
+		rocketSlot = e.hand() == InteractionHand.MAIN_HAND ? Myriad.inventory().serverSlot() : -1;
 	}
 
-	@Subscribe(priority = Priority.LOWEST)
-	private void onSend(PacketEvent.Send e) {
-		if (!(e.packet() instanceof ServerboundMovePlayerPacket p) || !p.hasRotation()) return;
-		recent.addLast(new Sent(MathUtil.direction(sentYaw, sentPitch), ticks));
-		beforeYaw = teleported ? p.getYRot(sentYaw) : sentYaw;
-		beforePitch = teleported ? p.getXRot(sentPitch) : sentPitch;
-		sentYaw = p.getYRot(sentYaw);
-		sentPitch = p.getXRot(sentPitch);
-		teleported = false;
+	/** Uses the waiting rocket, from the hand or hotbar slot it was used from (or any rockets in the hotbar). */
+	private void fireRocket() {
+		rocketWanted = false;
+		var inv = mc.player.getInventory();
+		int slot = rocketSlot;
+		if (rocketHand == InteractionHand.MAIN_HAND && (slot < 0 || !inv.getItem(slot).is(Items.FIREWORK_ROCKET))) slot = Myriad.inventory().findInHotbar(s -> s.is(Items.FIREWORK_ROCKET));
+		boolean offHand = rocketHand == InteractionHand.OFF_HAND && mc.player.getOffhandItem().is(Items.FIREWORK_ROCKET);
+		if (!offHand && slot < 0) return;
+		firing = true;
+		try {
+			if (offHand) mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
+			else Myriad.inventory().silentSwap(slot, () -> mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND));
+		} finally {
+			firing = false;
+		}
 	}
+
+	private void warnOnce(String message) {
+		if (!warned) warn(message);
+		warned = true;
+	}
+
+	/**
+	 * Whether there's enough air below that the server won't see you land while it isn't gliding you: a few blocks,
+	 * plus how far you fall (or rise) in a round trip.
+	 */
+	private boolean roomBelow(boolean arming) {
+		LocalPlayer p = mc.player;
+		double vy = p.getDeltaMovement().y;
+		int roundTrip = Mth.clamp(Myriad.server().ping() / 50 + 2, 2, 12);
+		double need = 6 + (vy < 0 ? -vy * (roundTrip + 4) : vy * (roundTrip / 2.0 + 2)) + (arming ? 2 : 0);
+		return mc.level.noBlockCollision(p, p.getBoundingBox().expandTowards(0, -need, 0));
+	}
+
+	// ---- Rocket Boost -----------------------------------------------------------------------------------------------
 
 	@Subscribe
 	private void onReceive(PacketEvent.Receive e) {
-		if (e.packet() instanceof ClientboundPlayerPositionPacket) {
-			teleported = true;
-			teleportPause = TELEPORT_PAUSE;
-		}
+		if (e.packet() instanceof ClientboundPlayerPositionPacket) teleported = true;
 	}
 
 	/**
 	 * The movement the local player's glide should make this tick, given vanilla's: unchanged unless Rocket Boost is on,
-	 * you're gliding with a rocket attached, and no module is turning you server-side (the box is built from the
+	 * you're gliding with a rocket attached, and no module is turning you server-side (the window is built from the
 	 * rotation the server gets, so it has to be yours).
 	 */
 	public static Vec3 glideMovement(Vec3 vanilla) {
 		ElytraTweaks m = Modules.active(ElytraTweaks.class);
 		if (m == null || !m.rocketBoost.get()) return vanilla;
 		LocalPlayer p = Minecraft.getInstance().player;
-		if (p == null || !p.isFallFlying() || Myriad.rotations().isRotating() || !rocketAttached(p)) return vanilla;
-		if (m.teleported || m.teleportPause > 0) {
-			m.teleportPause--;
+		if (p == null || !p.isFallFlying()) {
+			if (m != null) m.lastGlidePos = null;
 			return vanilla;
 		}
-		Vec3 now = MathUtil.direction(p.getYRot(), p.getXRot());
-		// This tick's packet carries a look only if you've turned since the last one; that look is Grim's current one.
-		// Its previous one is the look before your latest turn, or, on the test server (more so with lag), sometimes one
-		// sent shortly before that, or the current look again. Each axis is held inside the tightest of those; holding
-		// still, they're all the same.
-		boolean turning = p.getYRot() != m.sentYaw || p.getXRot() != m.sentPitch;
-		Vec3 current = turning ? now : MathUtil.direction(m.sentYaw, m.sentPitch);
-		List<Vec3> previous = new ArrayList<>(m.recent.size() + 3);
-		previous.add(current);
-		previous.add(MathUtil.direction(m.sentYaw, m.sentPitch));
-		previous.add(MathUtil.direction(m.beforeYaw, m.beforePitch));
-		for (Sent r : m.recent) if (m.ticks - r.tick <= RECENT_TICKS) previous.add(r.look);
-		m.sinceTurn = turning ? 0 : Math.min(TURN_TICKS, m.sinceTurn + 1);
-		double margin = m.sinceTurn < TURN_TICKS ? TURNING_MARGIN : MARGIN;
-		return new Vec3(axis(now.x, current.x, previous, Vec3::x, margin), axis(now.y, current.y, previous, Vec3::y, margin),
-			axis(now.z, current.z, previous, Vec3::z, margin));
+		Vec3 pos = p.position(), last = m.lastGlidePos;
+		m.lastGlidePos = pos;
+		if (m.teleported) {
+			m.teleported = false;
+			m.teleportPause = TELEPORT_PAUSE;
+		}
+		if (last == null || m.teleportPause > 0 || p.hurtTime > 0 || Myriad.rotations().isRotating() || !rocketAttached(p)) return vanilla;
+		// Grim starts from the movement it saw last tick.
+		Vec3 start = pos.subtract(last);
+		if (start.lengthSqr() > 40 * 40) return vanilla;
+		Vec3 look = MathUtil.direction(p.getYRot(), p.getXRot());
+		Vec3 before = MathUtil.direction(Myriad.rotations().serverYaw(), Myriad.rotations().serverPitch());
+		Vec3 predicted = glide(p, start, look, p.getXRot());
+		Vec3 boosted = new Vec3(
+			axis(look.x, before.x, start.x, predicted.x),
+			axis(look.y, before.y, start.y, predicted.y),
+			axis(look.z, before.z, start.z, predicted.z));
+		// Vanilla's push is always inside the window; only take over where this is faster along the look.
+		return boosted.dot(look) > vanilla.dot(look) ? boosted : vanilla;
 	}
 
 	/**
-	 * One axis: as far along your look as the box allows with your current look and the least favourable previous one.
-	 * Always inside the box: vanilla's movement here already includes the rocket's own push, which Grim doesn't
-	 * predict, so going past the box with it is flagged.
+	 * One axis: as far along your look as Grim's window allows. The window is the predicted glide, widened by however
+	 * far the rocket box (from the current and previous looks) reaches past last tick's movement.
 	 */
-	private static double axis(double look, double current, List<Vec3> previous, ToDoubleFunction<Vec3> component, double margin) {
-		double minPositive = Double.MAX_VALUE, maxNegative = -Double.MAX_VALUE;
-		for (Vec3 l : previous) {
-			minPositive = Math.min(minPositive, Math.max(0, component.applyAsDouble(l)));
-			maxNegative = Math.max(maxNegative, Math.min(0, component.applyAsDouble(l)));
+	private static double axis(double look, double before, double start, double predicted) {
+		double lo = Math.max(-AMOUNT, (Math.min(-TICK_SKIP, look) + Math.min(-TICK_SKIP, before)) * AMOUNT);
+		double hi = Math.min(AMOUNT, (Math.max(TICK_SKIP, look) + Math.max(TICK_SKIP, before)) * AMOUNT);
+		return Math.clamp(look * WANT, predicted + Math.min(0, lo - start), predicted + Math.max(0, hi - start));
+	}
+
+	/** Vanilla's (and Grim's) glide from {@code velocity} with {@code look}, before any rocket, friction included. */
+	private static Vec3 glide(LocalPlayer p, Vec3 velocity, Vec3 look, float pitchDegrees) {
+		double gravity = p.getAttributeValue(Attributes.GRAVITY);
+		if (velocity.y <= 0 && p.hasEffect(MobEffects.SLOW_FALLING)) gravity = Math.min(gravity, 0.01);
+		float pitch = pitchDegrees * Mth.DEG_TO_RAD;
+		double lookHorizontal = Math.sqrt(look.x * look.x + look.z * look.z);
+		double speed = velocity.horizontalDistance();
+		double lift = Math.cos(pitch);
+		lift = lift * lift * Math.min(1, look.length() / 0.4);
+		Vec3 v = velocity.add(0, gravity * (-1 + lift * 0.75), 0);
+		if (v.y < 0 && lookHorizontal > 0) {
+			double d = v.y * -0.1 * lift;
+			v = v.add(look.x * d / lookHorizontal, d, look.z * d / lookHorizontal);
 		}
-		double hi = Math.min(CAP, CAP * (Math.max(0, current) + minPositive)) * margin;
-		double lo = Math.max(-CAP, CAP * (Math.min(0, current) + maxNegative)) * margin;
-		return Math.clamp(look * WANT, lo, hi);
+		if (pitch < 0 && lookHorizontal > 0) {
+			double d = speed * -Mth.sin(pitch) * 0.04;
+			v = v.add(-look.x * d / lookHorizontal, d * 3.2, -look.z * d / lookHorizontal);
+		}
+		if (lookHorizontal > 0) v = v.add((look.x / lookHorizontal * speed - v.x) * 0.1, 0, (look.z / lookHorizontal * speed - v.z) * 0.1);
+		return v.multiply(0.99f, 0.98f, 0.99f);
 	}
 
 	/** Whether a rocket is boosting {@code p}, as the server told us (the same moment Grim learns it). */

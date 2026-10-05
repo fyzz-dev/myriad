@@ -130,10 +130,14 @@ public class KillAura extends Module {
 				int best = Myriad.inventory().bestInHotbar(this::weaponScore);
 				int anywhere = Myriad.inventory().bestInInventory(this::weaponScore);
 				if (anywhere >= 9) {
-					// A better weapon in the inventory: brought into the hotbar (over a worse one if it's full), with your
-					// keys released for a tick first if you're moving, as Grim requires for the click.
-					int pulled = Myriad.inventory().pullToHotbar(anywhere, s -> weaponScore(s) > 0);
+					// A better weapon in the inventory: borrowed into the hotbar (over a worse one if it's full), with your
+					// keys released for a tick first if you're moving, as Grim requires for the click. It goes back once
+					// the fight is over.
+					int pulled = Myriad.inventory().borrow(this, anywhere, s -> weaponScore(s) > 0);
 					if (pulled >= 0) best = pulled;
+				} else if (best >= 0) {
+					// Keep a borrowed weapon while fighting.
+					Myriad.inventory().borrow(this, best, null);
 				}
 				if (best >= 0 && best != mc.player.getInventory().getSelectedSlot()
 					&& weaponScore(mc.player.getInventory().getItem(best)) > weaponScore(mc.player.getMainHandItem())) {

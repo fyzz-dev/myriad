@@ -8,6 +8,7 @@ import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.service.Placement;
+import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.util.Reach;
 import net.minecraft.core.BlockPos;
@@ -26,11 +27,16 @@ import java.util.function.Predicate;
  * Places blocks under you as you walk, and a little ahead while you move so you never step off an edge. Jumping in
  * place builds a tower. When the block under you has nothing to be placed against (sprinting off a corner), a
  * neighbouring block is placed first to bridge to it. Blocks come from the hotbar, or are moved there from your
- * inventory, with your keys released for a tick first (Grim refuses inventory clicks while you move). Each placement faces its block first and clicks a face you can see, as Grim requires; while facing
- * backwards you walk along that yaw, so sprinting pauses for those ticks.
+ * inventory, with your keys released for a tick first (Grim refuses inventory clicks while you move). Placements
+ * click a face you can see. Without Rotate they're sent without turning, as 2b2t clients do (Bep Hax's default): 2b2t
+ * takes them, and you keep running smoothly. With Rotate each placement faces its block first, for Grim builds that
+ * check where you look (RotationPlace, as on the test server); the block you place against is behind you, so while
+ * facing it you walk along that yaw, and sprint drops for that tick.
  */
 public class Scaffold extends Module {
 	private final RegistryListSetting<Block> blocks = sgGeneral.blocks("Blocks").description("Only use these. Empty uses any ordinary building block.").build();
+	private final BoolSetting rotate = sgGeneral.bool("Rotate").description("Face each block before placing it, for servers that check where you look. "
+		+ "Breaks your sprint for a moment at each block; 2b2t doesn't need it.").build();
 
 	/** Most placements started per tick: the block under you, the one ahead, and a bridge. */
 	private static final int PER_TICK = 3;
@@ -41,9 +47,9 @@ public class Scaffold extends Module {
 		super(Categories.WORLD, "Scaffold", "Places blocks under you as you walk.");
 	}
 
-	/** Grim-safe: face each block before placing it (walking along that yaw meanwhile) and click only faces you can see. */
+	/** Clicks only faces you can see; with Rotate, faces each block first (walking along that yaw meanwhile). */
 	private Placement.Options options() {
-		return new Placement.Options(true, false, true, Reach.blockRange(), true);
+		return new Placement.Options(rotate.get(), false, true, Reach.blockRange(), true);
 	}
 
 	/** Which items it may place. */
