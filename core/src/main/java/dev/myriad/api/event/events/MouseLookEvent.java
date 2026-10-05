@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 
 /**
@@ -9,6 +10,7 @@ import dev.myriad.api.event.Cancellable;
 public final class MouseLookEvent extends Cancellable {
 	private double deltaX, deltaY;
 
+	@ApiStatus.Internal
 	public MouseLookEvent(double deltaX, double deltaY) {
 		this.deltaX = deltaX;
 		this.deltaY = deltaY;

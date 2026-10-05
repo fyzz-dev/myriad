@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -11,6 +12,7 @@ public final class BlockBrokenEvent {
 	private final BlockPos pos;
 	private final BlockState state;
 
+	@ApiStatus.Internal
 	public BlockBrokenEvent(BlockPos pos, BlockState state) {
 		this.pos = pos;
 		this.state = state;

@@ -76,6 +76,7 @@ public final class MyriadImpl implements MyriadApi {
 	private final BlockAckTracker blockAcks = new BlockAckTracker();
 	private final PacketLimiter packetLimiter = new PacketLimiter();
 	private final TickSpeedManager tickSpeed = new TickSpeedManager();
+	private final dev.myriad.impl.service.AntiCheatTracker antiCheat = new dev.myriad.impl.service.AntiCheatTracker();
 	private final dev.myriad.impl.service.PlacementManager placement = new dev.myriad.impl.service.PlacementManager(blockAcks);
 	private final BreakManager breaking = new BreakManager();
 	private final BuildManager building = new BuildManager();
@@ -124,6 +125,7 @@ public final class MyriadImpl implements MyriadApi {
 		events.subscribe(building);
 		events.subscribe(blockAcks);
 		events.subscribe(serverStats);
+		events.subscribe(antiCheat);
 		events.subscribe(containers);
 		events.subscribe(tasks);
 		events.subscribe(keybindManager);
@@ -269,6 +271,11 @@ public final class MyriadImpl implements MyriadApi {
 	@Override
 	public TickSpeed tickSpeed() {
 		return tickSpeed;
+	}
+
+	@Override
+	public dev.myriad.api.service.AntiCheat antiCheat() {
+		return antiCheat;
 	}
 
 	public BlockAckTracker blockAcks() {

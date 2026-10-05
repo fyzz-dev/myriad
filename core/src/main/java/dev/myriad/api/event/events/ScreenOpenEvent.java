@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import net.minecraft.client.gui.screens.Screen;
 import org.jetbrains.annotations.Nullable;
@@ -8,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 public final class ScreenOpenEvent extends Cancellable {
 	private @Nullable Screen screen;
 
+	@ApiStatus.Internal
 	public ScreenOpenEvent(@Nullable Screen screen) {
 		this.screen = screen;
 	}

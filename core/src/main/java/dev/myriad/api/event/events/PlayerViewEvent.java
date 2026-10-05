@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -21,6 +22,7 @@ public abstract class PlayerViewEvent {
 
 	/** The eye position the view ray starts from. */
 	public static final class Eyes extends PlayerViewEvent {
+		@ApiStatus.Internal
 		public Eyes(Vec3 value, float tickDelta) {
 			super(value, tickDelta);
 		}
@@ -28,6 +30,7 @@ public abstract class PlayerViewEvent {
 
 	/** The unit look direction. */
 	public static final class Look extends PlayerViewEvent {
+		@ApiStatus.Internal
 		public Look(Vec3 value, float tickDelta) {
 			super(value, tickDelta);
 		}

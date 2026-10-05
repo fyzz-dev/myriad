@@ -1,5 +1,6 @@
 package dev.myriad.api;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.addon.Addon;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.config.ConfigManager;
@@ -7,6 +8,7 @@ import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.ModuleRegistry;
 import dev.myriad.api.registry.Registry;
+import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.service.Breaking;
 import dev.myriad.api.service.Building;
 import dev.myriad.api.service.Containers;
@@ -29,6 +31,7 @@ import java.util.List;
 import net.minecraft.network.chat.Component;
 
 /** The services behind the {@link Myriad} facade. */
+@ApiStatus.NonExtendable
 public interface MyriadApi {
 	EventBus events();
 
@@ -75,6 +78,8 @@ public interface MyriadApi {
 	PacketLimits limits();
 
 	TickSpeed tickSpeed();
+
+	AntiCheat antiCheat();
 
 	Desktop ui();
 

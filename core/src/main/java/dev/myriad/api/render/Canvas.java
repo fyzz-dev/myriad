@@ -1,5 +1,6 @@
 package dev.myriad.api.render;
 
+import org.jetbrains.annotations.ApiStatus;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
@@ -13,6 +14,7 @@ import net.minecraft.world.item.ItemStack;
  * {@link #translate}/{@link #scale} stack on top of it. Colours are ARGB ints (see {@code ColorUtil}); angles are in
  * degrees, 0 = left-to-right, 90 = top-to-bottom.
  */
+@ApiStatus.NonExtendable
 public interface Canvas {
 	// ---- shapes ---------------------------------------------------------------------------------------------------
 

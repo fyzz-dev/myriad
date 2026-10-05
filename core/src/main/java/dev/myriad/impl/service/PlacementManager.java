@@ -48,7 +48,7 @@ public final class PlacementManager implements Placement {
 	 * Placement rotations snap, and walk along the sent yaw while they're held: Grim simulates movement with the yaw it
 	 * was sent, so without the fix walking while facing a placement is flagged.
 	 */
-	static final Rotations.Options MOVE_FIX = new Rotations.Options(0, true);
+	static final Rotations.Options MOVE_FIX = Rotations.Options.MOVE_FIX;
 
 	/** Just above the first request's, so the refined aim wins it. */
 	static final int REFINED_PRIORITY = Rotations.PRIORITY_HIGH + 1;

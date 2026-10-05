@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import net.minecraft.network.protocol.Packet;
 
@@ -20,12 +21,14 @@ public abstract class PacketEvent extends Cancellable {
 	}
 
 	public static final class Send extends PacketEvent {
+		@ApiStatus.Internal
 		public Send(Packet<?> packet) {
 			super(packet);
 		}
 	}
 
 	public static final class Receive extends PacketEvent {
+		@ApiStatus.Internal
 		public Receive(Packet<?> packet) {
 			super(packet);
 		}

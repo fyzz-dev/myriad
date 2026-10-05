@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
 
@@ -19,6 +20,7 @@ public abstract class ChunkEvent {
 	public static final class Loaded extends ChunkEvent {
 		private final LevelChunk chunk;
 
+		@ApiStatus.Internal
 		public Loaded(LevelChunk chunk) {
 			super(chunk.getPos());
 			this.chunk = chunk;
@@ -31,6 +33,7 @@ public abstract class ChunkEvent {
 
 	/** A chunk is being dropped from the client. */
 	public static final class Unloaded extends ChunkEvent {
+		@ApiStatus.Internal
 		public Unloaded(ChunkPos pos) {
 			super(pos);
 		}

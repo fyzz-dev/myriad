@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import net.minecraft.world.entity.Entity;
 
@@ -11,6 +12,7 @@ import net.minecraft.world.entity.Entity;
 public final class AttackEvent extends Cancellable {
 	private final Entity target;
 
+	@ApiStatus.Internal
 	public AttackEvent(Entity target) {
 		this.target = target;
 	}

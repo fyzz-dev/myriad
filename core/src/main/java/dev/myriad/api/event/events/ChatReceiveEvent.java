@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import dev.myriad.api.util.ChatMessages;
 import net.minecraft.network.chat.Component;
@@ -12,6 +13,7 @@ public final class ChatReceiveEvent extends Cancellable {
 	private Component message;
 	private ChatMessages.Parsed parsed;
 
+	@ApiStatus.Internal
 	public ChatReceiveEvent(Component message) {
 		this.message = message;
 	}

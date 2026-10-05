@@ -338,6 +338,8 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public boolean safeToClick() {
 		if (mc.player == null) return false;
+		// Only anti-cheats that simulate movement (Grim) refuse clicks while you move.
+		if (!dev.myriad.api.Myriad.antiCheat().isStrict()) return true;
 		Input sent = sentInput;
 		return !sent.forward() && !sent.backward() && !sent.left() && !sent.right() && !sent.jump() && !sent.shift() && !sentSprinting;
 	}

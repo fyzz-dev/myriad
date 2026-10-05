@@ -11,6 +11,8 @@ import dev.myriad.api.command.Command;
 import dev.myriad.api.command.arguments.Arguments;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.Module;
+import dev.myriad.api.command.arguments.EnumArgumentType;
+import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.setting.Setting;
@@ -35,6 +37,14 @@ import static dev.myriad.api.command.arguments.SettingValueArgumentType.value;
 /** System commands that operate on Myriad itself (not features), so they live in core. */
 public final class CoreCommands {
 	private CoreCommands() {
+	}
+
+	/** "Anti-cheat: Auto (Grim detected)" and the like. */
+	public static String antiCheatStatus() {
+		AntiCheat ac = Myriad.antiCheat();
+		String profile = ac.profile() == AntiCheat.Profile.GRIM ? "Grim" : "Vanilla";
+		return ac.mode() == AntiCheat.Mode.AUTO ? "Anti-cheat: Auto (" + profile + (ac.detected() == AntiCheat.Profile.GRIM ? " detected)" : ", none detected)")
+			: "Anti-cheat: " + profile;
 	}
 
 	public static void register(AddonContext ctx) {
@@ -216,6 +226,21 @@ public final class CoreCommands {
 				b.then(argument("prefix", StringArgumentType.word()).executes(c -> {
 					Myriad.config().setCommandPrefix(StringArgumentType.getString(c, "prefix"));
 					info("Prefix is now " + Myriad.config().commandPrefix());
+					return SINGLE_SUCCESS;
+				}));
+			}
+		});
+
+		ctx.registerCommand(new Command("anticheat", "Shows or sets what the server checks: auto, grim or vanilla.", "ac") {
+			@Override
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
+				b.executes(c -> {
+					info(antiCheatStatus());
+					return SINGLE_SUCCESS;
+				});
+				b.then(argument("mode", Arguments.enumValue(AntiCheat.Mode.class)).executes(c -> {
+					Myriad.antiCheat().setMode(EnumArgumentType.get(c, "mode", AntiCheat.Mode.class));
+					info(antiCheatStatus());
 					return SINGLE_SUCCESS;
 				}));
 			}
