@@ -46,7 +46,7 @@ The release that makes core something to build on. Everything here is in the REA
 ### Performance
 
 - The event bus dispatches packet events through a per-packet-class table, keeps `ListenerFlag`s for the hottest
-  hooks, and has a handler Profiler (Profiler panel, `.profile`) that shows milliseconds per module per second.
+  hooks, and has a handler Profiler (Profiler panel, `.profiler`) that shows milliseconds per module per second.
 - Packet counters are lock-free; attack charge, threats and friend lookups are cached; collision shapes cost one
   volatile read unless a module listens.
 

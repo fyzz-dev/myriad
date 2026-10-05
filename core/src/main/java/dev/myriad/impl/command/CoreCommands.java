@@ -268,14 +268,14 @@ public final class CoreCommands {
 			}
 		});
 
-		ctx.registerCommand(new Command("profile", "Times every event handler: .profile on|off, or .profile for the heaviest right now.") {
+		ctx.registerCommand(new Command("profiler", "Times every event handler: .profiler on|off, or .profiler for the heaviest right now.") {
 			@Override
 			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				MyriadEventBus bus = (MyriadEventBus) Myriad.events();
 				b.executes(c -> {
 					Profiler p = bus.profiler();
 					if (p == null) {
-						info("Not profiling: .profile on, or open the Profiler window");
+						info("Not profiling: .profiler on, or open the Profiler window");
 						return SINGLE_SUCCESS;
 					}
 					int n = 0;
@@ -288,7 +288,7 @@ public final class CoreCommands {
 				});
 				b.then(literal("on").executes(c -> {
 					if (bus.profiler() == null) bus.setProfiler(new Profiler());
-					info("Profiling every handler; .profile shows the heaviest, .profile off stops");
+					info("Profiling every handler; .profiler shows the heaviest, .profiler off stops");
 					return SINGLE_SUCCESS;
 				}));
 				b.then(literal("off").executes(c -> {
