@@ -45,7 +45,8 @@ import net.minecraft.world.phys.Vec3;
  * {@link GlideHold}), and Grim doesn't notice. Every 8 ticks the elytra goes back on just long enough to start the
  * glide again (jump pressed, as vanilla starts one), and comes off again. The server never glides for more than a
  * tick in one go, so it never wears the elytra. Rockets you use meanwhile go out in those moments, when the server
- * takes them. Swaps only run with enough air below you, so the server never sees you land without the elytra.
+ * takes them. Swaps only run with enough air below you, so the server never sees you land without the elytra. The
+ * server's equip sound for each swap is muted.
  */
 public class ElytraTweaks extends Module {
 	private final BoolSetting rocketBoost = sgGeneral.bool("Rocket Boost")

@@ -54,7 +54,8 @@ import java.util.List;
  * <li><b>Altitude</b> crosses open country without fireworks, "pitch 40" style. It dives until you're fast, pulls up hard, then eases
  * back to level: pulling up gives back more height than the speed it costs, so the cycle holds the altitude you started
  * gliding at (it dives harder when you're above it and climbs more when you're below). Start high, since the first dive
- * from a slow glide drops you 50 or so blocks. Steer with the camera.</li>
+ * from a slow glide drops you 50 or so blocks. Steer with the camera. Works with Elytra Tweaks' No Durability, which
+ * swaps the chestplate on and off meanwhile.</li>
  * </ul>
  * The flight rotation only goes to the server and the flight physics, so you can look around freely.
  */
@@ -469,8 +470,8 @@ public class ElytraFly extends Module {
 		if (p.getAbilities().flying || p.isPassenger() || p.isInWater() || p.hasEffect(MobEffects.LEVITATION)) return false;
 		if (p.getInBlockState().is(BlockTags.CLIMBABLE)) return false;
 		for (EquipmentSlot slot : EquipmentSlot.VALUES) if (LivingEntity.canGlideUsing(p.getItemBySlot(slot), slot)) return true;
-		// Bouncing with No Durability: a chestplate worn and the elytra at hand to swap on.
-		return activeMode == Mode.RECAST && ElytraTweaks.noDurability() && ChestSwap.hasGlider();
+		// With No Durability: a chestplate worn and the elytra at hand to swap on (the bounce's swap, or Elytra Tweaks').
+		return ElytraTweaks.noDurability() && ChestSwap.hasGlider();
 	}
 
 	/** The way the lane runs. */

@@ -1,11 +1,15 @@
 package dev.myriad.essentials.util;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.util.Packets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -14,6 +18,8 @@ import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.equipment.Equippable;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -21,8 +27,19 @@ import java.util.function.Predicate;
  * equips armour): how Elytra Tweaks' No Durability and Elytra Fly's bounce keep the server from gliding long enough to
  * wear the elytra. The server stops a glide on its next tick once the elytra is off; {@link GlideHold} keeps the client
  * (and Grim) gliding meanwhile, and {@link #startGlide()} starts it again with the elytra put back for a moment.
+ * <p>
+ * The server plays an equip sound for every swap, several times a second while gliding; those are muted here.
  */
 public final class ChestSwap {
+	/** How long after a swap its equip sound may still arrive. */
+	private static final long MUTE_MS = 2000;
+	/** How far from you the server may play it (it plays it where it has you, a round trip behind at glide speed). */
+	private static final double MUTE_RANGE = 24;
+
+	private static volatile Set<SoundEvent> muted = Set.of();
+	private static volatile long muteUntil;
+	private static boolean subscribed;
+
 	private ChestSwap() {
 	}
 
@@ -68,6 +85,7 @@ public final class ChestSwap {
 	public static boolean swap() {
 		Pair pair = pair();
 		if (pair == null) return false;
+		mute(item(pair), mc().player.getItemBySlot(EquipmentSlot.CHEST));
 		Runnable use = () -> Packets.sendSequenced(seq -> {
 			var p = mc().player;
 			InteractionHand hand = pair.hand();
@@ -109,6 +127,33 @@ public final class ChestSwap {
 
 	public static boolean elytraWorn() {
 		return isGlider(mc().player.getItemBySlot(EquipmentSlot.CHEST));
+	}
+
+	/** Mutes the equip sounds the server plays for this swap (whichever of the two goes on). */
+	private static void mute(ItemStack a, ItemStack b) {
+		if (!subscribed) {
+			Myriad.events().subscribe(new Object() {
+				@Subscribe
+				private void onReceive(PacketEvent.Receive e) {
+					if (e.packet() instanceof ClientboundSoundPacket sound && isSwapSound(sound)) e.cancel();
+				}
+			});
+			subscribed = true;
+		}
+		Set<SoundEvent> sounds = new HashSet<>();
+		for (ItemStack stack : new ItemStack[]{a, b}) {
+			Equippable equippable = stack.get(DataComponents.EQUIPPABLE);
+			if (equippable != null) sounds.add(equippable.equipSound().value());
+		}
+		muted = sounds;
+		muteUntil = System.currentTimeMillis() + MUTE_MS;
+	}
+
+	/** Network thread: an equip sound from a recent swap, played where the server has you. */
+	private static boolean isSwapSound(ClientboundSoundPacket sound) {
+		if (System.currentTimeMillis() > muteUntil || !muted.contains(sound.getSound().value())) return false;
+		var p = mc().player;
+		return p != null && p.distanceToSqr(sound.getX(), sound.getY(), sound.getZ()) < MUTE_RANGE * MUTE_RANGE;
 	}
 
 	private static ItemStack item(Pair pair) {
