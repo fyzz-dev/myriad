@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Times every event handler while it's installed on the bus: per owner (a module, a service, a listener object), the
  * time spent in tick handlers, render handlers and everything else over the last second. Costs two {@code nanoTime}
- * reads per handler call, so it's only on while the Profiler panel is open or {@code .profile} asked for it.
+ * reads per handler call, so it's only on while the Profiler panel is open or {@code .profiler} asked for it.
  */
 public final class Profiler {
 	private static final long WINDOW_NS = 1_000_000_000L;
@@ -35,8 +35,12 @@ public final class Profiler {
 		public String name() {
 			if (owner instanceof Module m) return m.name();
 			if (owner instanceof Class<?> c) return c.getSimpleName();
-			String n = owner.getClass().getSimpleName();
-			return n.isEmpty() || n.contains("$$Lambda") ? "listener in " + addon : n;
+			String n = owner.getClass().getName();
+			int lambda = n.indexOf("$$Lambda");
+			// A lambda from Myriad.events().listen(...): name it by the class that made it.
+			if (lambda > 0) n = n.substring(0, lambda);
+			n = n.substring(n.lastIndexOf('.') + 1).replace('$', '.');
+			return n.isEmpty() ? "listener in " + addon : n + " listener";
 		}
 
 		public String addon() {

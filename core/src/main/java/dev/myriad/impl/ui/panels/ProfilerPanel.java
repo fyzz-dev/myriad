@@ -14,7 +14,7 @@ import java.util.Locale;
 
 /**
  * Where the time goes: every module, service and listener with the milliseconds it spent in tick, render and other
- * handlers over the last second. Timing is only on while this window is open (or {@code .profile on}).
+ * handlers over the last second. Timing is only on while this window is open (or {@code .profiler on}).
  */
 public final class ProfilerPanel extends WidgetPanel {
 	private static final int ROWS = 25;

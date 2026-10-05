@@ -125,7 +125,7 @@ Prefix `.` (change with `.prefix`). Commands autocomplete in chat and in the con
 addons, mods and enabled modules' changed settings for a bug report), `.panic`, `.help`, `.menu`,
 `.modules` (click one to toggle it), `.binds`, `.say <message>` (sends text starting with the prefix as chat),
 `.reload` (re-read the profile from disk), `.anticheat [auto|grim|vanilla]` and `.anticheat known add|remove <host>` (what the
-server checks; see below), `.profile [on|off]` (where the time goes, by module), `.disconnect`, and `.fakeplayer add|remove|clear|list` (client-side
+server checks; see below), `.profiler [on|off]` (where the time goes, by module), `.disconnect`, and `.fakeplayer add|remove|clear|list` (client-side
 dummies for testing).
 
 Setting ids are scoped to their group. When two groups share a name, use `group.setting`, for example
@@ -454,7 +454,7 @@ costs. To keep an addon cheap:
   an event you only need now and then (`Myriad.events().listen` returns a `Subscription` to drop).
 - **Cache what the game recomputes.** `Threats.worst()`, `Inventory.attackCharge()` and friend lookups are already
   cached per tick; `Targets.query().list()` isn't, so hold its result in a `TickCached`.
-- **Measure.** Open the Profiler (or `.profile on`) with your module running: anything above a millisecond per second
+- **Measure.** Open the Profiler (or `.profiler on`) with your module running: anything above a millisecond per second
   in a tick handler, or a few in a render handler, is worth a look.
 
 ### Drawing in the world
