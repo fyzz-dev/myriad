@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Where the local player's view ray starts and points, as used for the crosshair target, block reach and placement.

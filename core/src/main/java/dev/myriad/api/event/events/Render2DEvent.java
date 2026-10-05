@@ -1,8 +1,8 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.render.Canvas;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Fired after the vanilla HUD renders, in scaled GUI coordinates. Draw with {@link #canvas()} (Myriad's renderer,

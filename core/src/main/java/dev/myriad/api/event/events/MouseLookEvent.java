@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Mouse movement is about to turn the player. Cancel to keep the player still (and use the deltas yourself), or

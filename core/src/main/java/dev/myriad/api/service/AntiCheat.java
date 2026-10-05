@@ -1,7 +1,7 @@
 package dev.myriad.api.service;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.Myriad;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * What the server checks, so a feature can be careful where it has to be and quick where it doesn't, without every

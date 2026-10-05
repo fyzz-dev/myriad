@@ -1,7 +1,7 @@
 package dev.myriad.api.ui;
 
-import org.jetbrains.annotations.ApiStatus;
 import com.google.gson.JsonObject;
+import org.jetbrains.annotations.ApiStatus;
 
 /** A window managed by the desktop. */
 @ApiStatus.NonExtendable

@@ -1,6 +1,5 @@
 package dev.myriad.api.addon;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
@@ -15,6 +14,7 @@ import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.layout.Layout;
 import dev.myriad.api.util.Keybind;
 import dev.myriad.api.util.MyriadId;
+import org.jetbrains.annotations.ApiStatus;
 import org.slf4j.Logger;
 
 import java.util.function.Supplier;

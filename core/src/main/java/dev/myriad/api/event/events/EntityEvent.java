@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.entity.Entity;
+import org.jetbrains.annotations.ApiStatus;
 
 /** Entities entering and leaving the client world, popping totems and dying. Posted on the render thread. */
 public abstract class EntityEvent {

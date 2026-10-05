@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
+import org.jetbrains.annotations.ApiStatus;
 
 /** A character was typed. Cancel to hide it from Minecraft. */
 public final class CharEvent extends Cancellable {

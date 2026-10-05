@@ -1,8 +1,8 @@
 package dev.myriad.api.ui;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.setting.Setting;
 import dev.myriad.api.ui.widget.Widget;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.function.Function;
 

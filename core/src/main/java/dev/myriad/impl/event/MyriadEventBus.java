@@ -244,7 +244,16 @@ public final class MyriadEventBus implements EventBus {
 		}
 	}
 
+	/** Told of every handler failure (dev tooling: the self-test attributes them to the module under test). */
+	private volatile java.util.function.BiConsumer<String, Throwable> failureHook;
+
+	public void setFailureHook(java.util.function.BiConsumer<String, Throwable> hook) {
+		failureHook = hook;
+	}
+
 	private void onFailure(Listener l, Object event, Throwable t) {
+		var hook = failureHook;
+		if (hook != null) hook.accept(l.owner + " handling " + event.getClass().getSimpleName(), t);
 		int n = ++l.failures;
 		if (n <= LOGGED_FAILURES) {
 			LOG.error("Handler from '{}' threw while handling {}", l.owner, event.getClass().getSimpleName(), t);

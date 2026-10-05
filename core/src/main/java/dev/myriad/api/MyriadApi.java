@@ -1,6 +1,5 @@
 package dev.myriad.api;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.addon.Addon;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.config.ConfigManager;
@@ -29,6 +28,7 @@ import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.layout.Layout;
 import java.util.List;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.ApiStatus;
 
 /** The services behind the {@link Myriad} facade. */
 @ApiStatus.NonExtendable

@@ -1,6 +1,7 @@
 package dev.myriad.api.config;
 
 import org.jetbrains.annotations.ApiStatus;
+
 import java.nio.file.Path;
 import java.util.List;
 

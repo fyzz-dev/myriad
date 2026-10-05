@@ -1,8 +1,8 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * The server changed a block: single updates and multi-block updates alike, including confirmations of blocks you

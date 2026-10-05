@@ -1,8 +1,8 @@
 package dev.myriad.api.ui;
 
-import org.jetbrains.annotations.ApiStatus;
 import com.google.gson.JsonObject;
 import dev.myriad.api.util.MyriadId;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 import java.util.Optional;

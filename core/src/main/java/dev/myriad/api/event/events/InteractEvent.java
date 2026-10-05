@@ -1,10 +1,10 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.BlockHitResult;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * The local player is about to right-click: a block, an item in the air, or an entity. Posted for clicks from the

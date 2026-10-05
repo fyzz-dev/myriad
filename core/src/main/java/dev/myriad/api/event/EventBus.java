@@ -1,6 +1,7 @@
 package dev.myriad.api.event;
 
 import org.jetbrains.annotations.ApiStatus;
+
 import java.util.function.Consumer;
 
 @ApiStatus.NonExtendable

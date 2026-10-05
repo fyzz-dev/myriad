@@ -1,7 +1,7 @@
 package dev.myriad.api.service;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Server-side rotation arbitration. Modules {@link #request} a rotation every tick they need one; each tick the

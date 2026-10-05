@@ -1,6 +1,7 @@
 package dev.myriad.api.service;
 
 import org.jetbrains.annotations.ApiStatus;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;

@@ -28,6 +28,8 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
+import java.util.List;
+
 import static dev.myriad.api.command.arguments.ModuleArgumentType.module;
 import static dev.myriad.api.command.arguments.PlayerArgumentType.player;
 import static dev.myriad.api.command.arguments.ProfileArgumentType.profile;
@@ -48,7 +50,7 @@ public final class CoreCommands {
 	}
 
 	public static void register(AddonContext ctx) {
-		ctx.registerCommand(new Command("toggle", "Toggles a module.", "t") {
+		ctx.registerCommand(new Command("toggle", "Toggles a module, or turns it on or off (.toggle sprint on).", "t") {
 			@Override
 			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("module", module()).executes(c -> {
@@ -56,7 +58,12 @@ public final class CoreCommands {
 					m.toggle();
 					if (!m.chatFeedback.get()) info(m.name() + (m.isEnabled() ? " enabled" : " disabled"));
 					return SINGLE_SUCCESS;
-				}));
+				}).then(argument("state", Arguments.choice(() -> List.of("on", "off"))).executes(c -> {
+					Module m = c.getArgument("module", Module.class);
+					m.setEnabled(StringArgumentType.getString(c, "state").equals("on"));
+					if (!m.chatFeedback.get()) info(m.name() + (m.isEnabled() ? " enabled" : " disabled"));
+					return SINGLE_SUCCESS;
+				})));
 			}
 		});
 
