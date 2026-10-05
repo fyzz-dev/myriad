@@ -14,16 +14,16 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Switches to the best tool when you start mining, and back afterwards. A better tool in your inventory is brought
- * into the hotbar first.
+ * Switches to the best tool when you start mining, and back afterwards. A better tool in your inventory is borrowed
+ * into the hotbar, and goes back to the inventory once you stop.
  *
  * <p>Shows:
  * <ul>
  *   <li>using a shared service ({@code Myriad.inventory()}) instead of poking the inventory directly, so slot changes
  *       stay in sync with other features;</li>
- *   <li>{@code pullToHotbar}, which moves an item in without disturbing what you use. Grim (2b2t) cancels inventory
- *       clicks sent while you move, so while you do it first releases your keys for a tick ({@code prepareClick}) and
- *       the item comes in on the next call;</li>
+ *   <li>{@code borrow}, which brings an item in without disturbing what you use and puts it back once you stop asking
+ *       for it. Grim (2b2t) cancels inventory clicks sent while you move, so while you do it first releases your keys
+ *       for a tick ({@code prepareClick}) and the item comes in on the next call;</li>
  *   <li>using core helpers ({@link Mining}) instead of re-deriving vanilla maths;</li>
  *   <li>soft integration with another addon by id, without compiling against it: if Myriad Essentials' Packet Mine is
  *       on, it mines (and picks tools) itself and this module stays out of its way.</li>
@@ -54,9 +54,9 @@ public final class AutoTool extends Module {
 		BlockState state = mc.level.getBlockState(e.pos());
 		int best = bestSlot(state);
 		if (best >= 9) {
-			// In the main inventory: bring it in, over a worse tool for this block if the hotbar is full. -1 means not
+			// In the main inventory: borrow it, over a worse tool for this block if the hotbar is full. -1 means not
 			// now (you're moving), and the best hotbar tool does meanwhile.
-			best = Myriad.inventory().pullToHotbar(best, s -> s.getDestroySpeed(state) > 1);
+			best = Myriad.inventory().borrow(this, best, s -> s.getDestroySpeed(state) > 1);
 			if (best == -1) best = bestSlot(state, 9);
 		}
 		int current = mc.player.getInventory().getSelectedSlot();
@@ -72,7 +72,10 @@ public final class AutoTool extends Module {
 	 */
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
-		if (previousSlot != -1 && inGame() && !mc.gameMode.isDestroying()) restore();
+		if (previousSlot == -1 || !inGame()) return;
+		// Still mining: keep the tool if it's borrowed. Once you stop, it goes back on its own.
+		if (mc.gameMode.isDestroying()) Myriad.inventory().borrow(this, mc.player.getInventory().getSelectedSlot(), null);
+		else restore();
 	}
 
 	private void restore() {

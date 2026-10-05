@@ -28,26 +28,26 @@ public interface Breaking {
 		 */
 		VANILLA,
 		/**
-		 * Mines with its own packets, your hand free: the tool is swapped in only to start and finish, swings are
-		 * sent only then, and instant breaks go as fast as the packet budget allows. It still takes vanilla's full time and
-		 * pause between blocks, which Grim (2b2t) insists on. A block put back where the last one was mined is broken
-		 * again with a single packet once enough time has passed for it (rebreak).
+		 * Mines with its own packets, your hand free: the tool is swapped in to start, and held at the server only for
+		 * the last few ticks (so its Efficiency counts; the server only credits it once it has ticked with the tool held),
+		 * with a swing sent with each packet. Finishes as soon as the vanilla server accepts it (70% of the time) and
+		 * Grim's allowance for early finishes lasts, and otherwise at Grim's full time; the next block starts at once
+		 * while its allowance for quick starts lasts. Nothing Grim (2b2t) flags. A block put back where the last one was
+		 * mined is broken again with a single packet once enough time has passed for it (rebreak).
 		 */
 		PACKET,
 		/**
-		 * Like {@link #PACKET}, but finishes the moment the vanilla server would accept it (70% of the time), with no
-		 * pause between blocks and optional {@link Options#doubleBreak}. For servers that don't check break times; Grim
-		 * refuses these finishes and the blocks come back.
+		 * Finishes the moment the vanilla server would accept it (70% of the time), with no pause between blocks and
+		 * optional {@link Options#doubleBreak}. For servers that don't check break times; Grim refuses these finishes
+		 * and the blocks come back.
 		 */
 		FAST,
 		/**
-		 * {@link #FAST} for Grim on servers running ViaVersion, such as 2b2t (the trick Lambda uses there). With each
-		 * start it also sends a start for the same spot far above the world: the server ignores it as out of reach,
-		 * but Grim takes it as the block being broken, and air breaks instantly, so the early finish passes its check.
-		 * Breaks take at least 7 ticks, and just before finishing a burst of those starts clears Grim's record of
-		 * starting too soon after the last finish, so the next block can begin at once. Only for older Grim builds:
-		 * current Grim (2.3.74, tested) flags each decoy as breaking air (AirLiquidBreak) and cancels it, so the finish
-		 * is refused.
+		 * {@link #PACKET} that never waits for Grim: once its allowance runs out, a start for the same spot far above
+		 * the world goes first (the server ignores it as out of reach, but Grim, on servers with ViaVersion such as 2b2t,
+		 * then times air, which breaks at once), and the finish follows the next tick. So every block finishes at 70% of
+		 * its time, and double break works too. This is how 2b2t clients mine there. Each
+		 * decoy is flagged as breaking air (AirLiquidBreak) and cancelled by current Grim builds.
 		 */
 		FAST_GRIM
 	}

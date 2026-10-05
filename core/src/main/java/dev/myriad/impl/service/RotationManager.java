@@ -10,7 +10,11 @@ import dev.myriad.api.service.Rotations;
 import dev.myriad.api.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.ProjectileItem;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -84,7 +88,7 @@ public final class RotationManager implements Rotations {
 		boolean fix = w != null ? w.options.moveFix() : returnSpeed > 0 && returnMoveFix;
 		if (!fix) return;
 		float real = mc.player.getYRot();
-		float sent = plan(true, real).value;
+		float sent = pinned != null ? pinned[0] : plan(true, real).value;
 		fixYaw = sent;
 		if (!e.isMoving() || Math.abs(Mth.wrapDegrees(sent - real)) < 1f) return;
 		int[] keys = fixKeys(real, sent, e.forward, e.backward, e.left, e.right);
@@ -133,7 +137,13 @@ public final class RotationManager implements Rotations {
 		e.yaw = e.yaw + Mth.wrapDegrees(yaw - e.yaw);
 		float realPitch = e.pitch;
 		e.pitch = pitch.value;
-		rotating = Math.abs(Mth.wrapDegrees(e.yaw - (mc.player != null ? mc.player.getYRot() : e.yaw))) > 0.01f || Math.abs(e.pitch - realPitch) > 0.01f;
+		if (pinned != null) {
+			// An action this tick already went out with a rotation: this packet carries exactly that one.
+			e.yaw = pinned[0];
+			e.pitch = pinned[1];
+		}
+		// (A 0.01° nudge to carry the rotation doesn't count.)
+		rotating = Math.abs(Mth.wrapDegrees(e.yaw - (mc.player != null ? mc.player.getYRot() : e.yaw))) > 0.01f || Math.abs(e.pitch - realPitch) > 0.02f;
 
 		// Ease back afterwards at the speed of whatever was turning; instant requests snap back as before.
 		Request turning = yawWinner != null ? yawWinner : pitch.winner;
@@ -143,6 +153,12 @@ public final class RotationManager implements Rotations {
 		} else if (!rotating) {
 			returnSpeed = 0;
 		}
+
+		// Asked to carry a rotation and nothing changed since the last one sent: nudge the pitch so one goes out (a
+		// pinned rotation already had it).
+		if (sendRotation && pinned == null) e.pitch = nudged(e.yaw, e.pitch);
+		sendRotation = false;
+		pinned = null;
 
 		sentCallbacks.clear();
 		for (Request r : requests) {
@@ -189,8 +205,60 @@ public final class RotationManager implements Rotations {
 
 	@Subscribe
 	private synchronized void onTick(TickEvent.Post e) {
-		// A tick without a movement packet (e.g. while riding) shouldn't leave the fix on.
+		// A tick without a movement packet (e.g. while riding) shouldn't leave the fix or a pin on.
 		fixYaw = Float.NaN;
+		pinned = null;
+	}
+
+	/** The pitch to send so the packet carries a rotation: nudged 0.01° if nothing changed since the last one sent. */
+	private float nudged(float yaw, float pitch) {
+		if (Mth.wrapDegrees(yaw - serverYaw) != 0 || pitch != serverPitch) return pitch;
+		return pitch >= 89.99f ? pitch - 0.01f : pitch + 0.01f;
+	}
+
+	/** The rotation this tick's movement packet carries, once an action has gone out with it; null until then. */
+	private float[] pinned;
+
+	@Override
+	public synchronized float[] rotationForAction() {
+		if (pinned == null) {
+			if (mc.player == null) return new float[]{serverYaw, serverPitch};
+			float real = mc.player.getYRot();
+			float yaw = Float.isNaN(fixYaw) ? plan(true, real).value : fixYaw;
+			// Exactly the value the movement packet will hold (its yaw is kept continuous with the real one).
+			yaw = real + Mth.wrapDegrees(yaw - real);
+			float pitch = plan(false, mc.player.getXRot()).value;
+			pinned = new float[]{yaw, sendRotation ? nudged(yaw, pitch) : pitch};
+		}
+		return pinned.clone();
+	}
+
+	/**
+	 * Item-use packets carry a rotation of their own, which the server turns you to before using the item, and Grim
+	 * (BadPacketsJ) wants it equal to the tick's. Thrown items (a pearl flies where the packet aims) keep their aim, and
+	 * this tick's movement packet carries it too; any other item use gets the rotation this tick sends anyway (see
+	 * {@link #rotationForAction()}), so a module turning you isn't interrupted. Later uses this tick get the same one.
+	 */
+	@Subscribe(priority = Priority.HIGH)
+	private void onSendAction(PacketEvent.Send e) {
+		if (!(e.packet() instanceof ServerboundUseItemPacket p) || mc.player == null) return;
+		ItemStack used = mc.player.getItemInHand(p.getHand());
+		boolean aimed = used.getItem() instanceof ProjectileItem && !used.is(Items.FIREWORK_ROCKET);
+		float[] r = aimed ? pinTo(p.getYRot(), p.getXRot()) : rotationForAction();
+		if (p.getYRot() != r[0] || p.getXRot() != r[1]) e.setPacket(new ServerboundUseItemPacket(p.getHand(), p.getSequence(), r[0], r[1]));
+	}
+
+	private synchronized float[] pinTo(float yaw, float pitch) {
+		if (pinned == null) pinned = new float[]{yaw, sendRotation ? nudged(yaw, pitch) : pitch};
+		return pinned.clone();
+	}
+
+	/** A rotation must go out in this tick's movement packet (see {@link Rotations#sendRotationThisTick()}). */
+	private volatile boolean sendRotation;
+
+	@Override
+	public void sendRotationThisTick() {
+		sendRotation = true;
 	}
 
 	@Override

@@ -4,6 +4,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.MovementPacketsEvent;
+import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.service.Breaking;
@@ -16,6 +17,7 @@ import dev.myriad.api.util.Reach;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket.Action;
 import net.minecraft.network.protocol.game.ServerboundSwingPacket;
@@ -26,6 +28,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -39,11 +42,15 @@ import java.util.concurrent.CompletableFuture;
  *   spot. Instant breaks are batched by tool, so a whole tick's worth needs one swap.</li>
  *   <li>Otherwise the server remembers when the break started and, on the finish packet, accepts it once
  *   {@code progress per tick * (ticks since start + 1)} reaches 0.7, using the tool held at that moment.</li>
+ *   <li>Efficiency counts through an attribute that follows the item held at the server's last tick, so a tool swapped
+ *   in for just the packet mines at its base speed. Breaks are timed with the Efficiency the server has had, and in
+ *   packet modes the tool is held at the server for the last stretch, so its Efficiency counts by the finish.</li>
  *   <li>Grim (2b2t) is stricter: it expects vanilla's full time, {@code ceil(1 / progress per tick)} ticks from the
  *   start, judged by the tool held at the start (or a better one seen on later swings), and about 300 ms between
- *   finishing one block and starting the next. Early finishes build up an allowance of about a second; past it, the
- *   finish is refused and the block comes back. So vanilla and packet modes start with the tool in hand, finish at
- *   full time and keep that gap; only {@link Mode#FAST} finishes at 0.7.</li>
+ *   finishing one block and starting the next. Early finishes and starts build up allowances of about a second; past
+ *   them, the packet is refused and the block comes back. Its timing is followed here ({@link GrimBreakTiming}), so
+ *   packet modes finish at 0.7 and start the next block at once while those allowances last, and otherwise wait;
+ *   only {@link Mode#FAST} ignores them.</li>
  *   <li>A finish sent too early isn't wasted on the server: it keeps mining that block by itself until it reaches 1.
  *   Fast mode's double break uses that to start a second block while the first finishes server-side.</li>
  *   <li>The server keeps the start of the last block it was told to start until another start arrives, so a finish
@@ -61,12 +68,10 @@ public final class BreakManager implements Breaking {
 	 * which Grim checks for (about 300 ms).
 	 */
 	private static final int FINISH_GAP = 6;
-	/** {@link Mode#FAST_GRIM}: how far above the block the decoy starts go (out of the world, so the server ignores them). */
+	/** {@link Mode#FAST_GRIM}: how far above the block the decoy starts go (out of reach, so the server ignores them). */
 	private static final int DECOY_HEIGHT = 955;
-	/** {@link Mode#FAST_GRIM}: decoy starts sent before finishing; each one shrinks Grim's start-too-soon record by 10%. */
-	private static final int DECOY_BURST = 22;
-	/** {@link Mode#FAST_GRIM}: a break lasts more than this many ticks, so the burst counts as well clear of the last finish. */
-	private static final int GRIM_MIN_TICKS = 6;
+	/** {@link Mode#FAST_GRIM}: at most this many decoys a second (each is a flag on builds that check for them). */
+	private static final int DECOYS_PER_SECOND = 40;
 	/** How long to wait for the server's word on a finished break, beyond when it's due. */
 	private static final int GRACE_TICKS = 40;
 	/** Breaker ids for the crack overlay, apart from real entities (and the player's own mining). */
@@ -99,10 +104,6 @@ public final class BreakManager implements Breaking {
 		/** When the start went out, in wall-clock ms: Grim times breaks in real time. */
 		long startedMs;
 		float progress;
-		/** The best progress per tick seen since the start: what Grim times the break by. */
-		float maxRate;
-		/** {@link Mode#FAST_GRIM}: the decoy burst for this break has been sent. */
-		boolean decoyed;
 		boolean acked, finishLater;
 
 		Job(Object owner, BlockPos pos, int priority, Options options, Block block) {
@@ -130,9 +131,14 @@ public final class BreakManager implements Breaking {
 			return options.mode() == Mode.FAST_GRIM;
 		}
 
-		/** Waits vanilla's gap after a finish before any start (everything but plain fast mode). */
+		/** Times its finishes and starts by Grim's own allowances (see {@link GrimBreakTiming}). */
+		boolean grimTimed() {
+			return options.mode() == Mode.PACKET || options.mode() == Mode.FAST_GRIM;
+		}
+
+		/** Waits vanilla's gap after a finish before any start: holding the attack button does. */
 		boolean keepsGap() {
-			return options.mode() != Mode.FAST;
+			return options.mode() == Mode.VANILLA;
 		}
 	}
 
@@ -148,8 +154,13 @@ public final class BreakManager implements Breaking {
 	private BlockPos rebreakPos;
 	private int rebreakStart;
 	private boolean rebreakReady, holding;
-	/** The last finish came after a decoy burst, so Grim lets the next break start without the gap. */
-	private boolean gapCleared;
+	/** Grim's view of break timing, followed from every dig packet sent. */
+	private final GrimBreakTiming grim = new GrimBreakTiming();
+	/** Efficiency of the item the server held, sampled each tick: {ms, level}, oldest first. */
+	private final ArrayDeque<long[]> heldEfficiency = new ArrayDeque<>();
+	/** When decoys went out (ms), for their budget; and the tick the last one did (a finish waits for the next). */
+	private final ArrayDeque<Long> decoyTimes = new ArrayDeque<>();
+	private int decoyTick = Integer.MIN_VALUE;
 	/**
 	 * The block the server is finishing by itself, if any. It has room for one: while it's taken, an early finish is
 	 * ignored, so double break waits for it to clear (the block there changes) before using it again.
@@ -157,7 +168,7 @@ public final class BreakManager implements Breaking {
 	private BlockPos serverDelayedPos;
 	private Block serverDelayedBlock;
 	private long counter;
-	private int tick, finishCooldown, lastStop = Integer.MIN_VALUE / 2, swungTick = -1;
+	private int tick, finishCooldown, swungTick = -1;
 	/**
 	 * When the last finish went out, in wall-clock ms. Grim measures breaks and the pause between them in real time, so
 	 * tick counts alone aren't enough: a client that falls behind runs several ticks back to back.
@@ -229,17 +240,16 @@ public final class BreakManager implements Breaking {
 
 	/**
 	 * Whether a finish alone breaks {@code pos} again. The server measures from the start it remembers, with the block
-	 * there now: it needs 70% of that block's time to have passed. Grim measures from the last finish and wants the
-	 * block's full time, unless {@code fast} (servers that don't check).
+	 * there now: it needs 70% of that block's time to have passed. Grim measures from the last finish (see
+	 * {@link GrimBreakTiming}), unless {@code fast} (servers that don't check).
 	 */
 	private boolean rebreakable(BlockPos pos, boolean fast) {
 		if (!rebreakReady || !pos.equals(rebreakPos) || mc.player == null || mc.level == null) return false;
 		BlockState state = mc.level.getBlockState(pos);
 		if (nothingThere(state)) return false;
-		float rate = Mining.delta(state, pos, toolSlot(Options.PACKET, state, pos));
+		float rate = rate(state, pos, toolSlot(Options.PACKET, state, pos));
 		if (rate <= 0 || rate * ((tick - rebreakStart) * tpsFactor() + 1) < PACKET_THRESHOLD) return false;
-		int needed = (int) Math.ceil(1 / rate - 1e-4);
-		return fast || tick - lastStop >= needed && msSince(lastStopMs) >= needed * 50L;
+		return fast || grim.finishOk(System.currentTimeMillis());
 	}
 
 	// ---- ticking ------------------------------------------------------------------------------------------------
@@ -299,11 +309,82 @@ public final class BreakManager implements Breaking {
 		primary = delayed = null;
 		rebreakReady = holding = false;
 		rebreakPos = serverDelayedPos = null;
+		grim.reset();
+		heldEfficiency.clear();
+		decoyTimes.clear();
+	}
+
+	/**
+	 * Follows Grim's timing from every dig packet that goes out, ours or anyone's (vanilla mining included): starts and
+	 * finishes, and the samples it takes on movement and swing packets. Lowest priority: what's really sent.
+	 */
+	@Subscribe(priority = Priority.LOWEST)
+	private void onSend(PacketEvent.Send e) {
+		if (e.isCancelled() || mc.player == null || mc.level == null) return;
+		long now = System.currentTimeMillis();
+		switch (e.packet()) {
+			case ServerboundPlayerActionPacket p when p.getAction() == Action.START_DESTROY_BLOCK -> grim.started(p.getPos(), grimDamage(p.getPos()), now);
+			case ServerboundPlayerActionPacket p when p.getAction() == Action.STOP_DESTROY_BLOCK -> grim.finished(now);
+			case ServerboundMovePlayerPacket m -> sampleGrim();
+			case ServerboundSwingPacket s -> sampleGrim();
+			default -> {
+			}
+		}
+	}
+
+	private void sampleGrim() {
+		BlockPos target = grim.target();
+		if (target != null) grim.sampled(grimDamage(target));
+	}
+
+	/** The progress per tick Grim credits for {@code pos} now: with what the server holds, at the Efficiency it has had. */
+	private double grimDamage(BlockPos pos) {
+		BlockState state = mc.level.getBlockState(pos);
+		if (state.isAir()) return Double.POSITIVE_INFINITY;
+		return rate(state, pos, Myriad.inventory().serverSlot());
+	}
+
+	/**
+	 * Progress per tick with {@code slot} held, as the server and Grim credit it: Efficiency counts only as far as
+	 * the items the server held lately had it (see {@link #creditedEfficiency(int)}).
+	 */
+	private float rate(BlockState state, BlockPos pos, int slot) {
+		return Mining.delta(state, pos, slot, creditedEfficiency(slot));
+	}
+
+	/**
+	 * The Efficiency the server and Grim count for {@code slot}: its own, but no more than any item the server held
+	 * in about the time the attribute takes to reach Grim (it follows the item held at a server tick, and Grim gets it
+	 * a round trip later): one and a half pings plus a margin. A tool swapped in just now mines at its base speed there.
+	 */
+	private int creditedEfficiency(int slot) {
+		int level = slot >= 0 ? Mining.efficiency(mc.player.getInventory().getItem(slot)) : 0;
+		if (level == 0) return 0;
+		level = Math.min(level, Mining.efficiency(mc.player.getInventory().getItem(Myriad.inventory().serverSlot())));
+		long since = System.currentTimeMillis() - efficiencyWindowMs();
+		for (long[] sample : heldEfficiency) if (sample[0] >= since) level = Math.min(level, (int) sample[1]);
+		return level;
+	}
+
+	private boolean hasEfficiency(int slot) {
+		return slot >= 0 && Mining.efficiency(mc.player.getInventory().getItem(slot)) > 0;
+	}
+
+	private static long efficiencyWindowMs() {
+		return Myriad.server().ping() * 3L / 2 + 200;
+	}
+
+	/** Notes the Efficiency of what the server holds this tick, keeping a few seconds of it. */
+	private void sampleEfficiency() {
+		long now = System.currentTimeMillis();
+		heldEfficiency.addLast(new long[]{now, Mining.efficiency(mc.player.getInventory().getItem(Myriad.inventory().serverSlot()))});
+		while (heldEfficiency.size() > 1 && now - heldEfficiency.peekFirst()[0] > 5000) heldEfficiency.pollFirst();
 	}
 
 	private void step() {
-		if (jobs.isEmpty() && !holding) return;
 		if (mc.player == null || mc.level == null || mc.gameMode == null) return;
+		sampleEfficiency();
+		if (jobs.isEmpty() && !holding) return;
 		if (serverDelayedPos != null && !mc.level.getBlockState(serverDelayedPos).is(serverDelayedBlock)) serverDelayedPos = null;
 		validate();
 		fetchTool();
@@ -335,7 +416,7 @@ public final class BreakManager implements Breaking {
 					if (!j.acked) continue;
 					if (gone) finish(j, true);
 					else if (tick > j.deadline) finish(j, false);
-					else if (j.fast() && j.pos.equals(rebreakPos) && rebreakReady && !j.pos.equals(serverDelayedPos) && tick - j.lastSent >= 2 && budget(1)) {
+					else if (j.fast() && j.pos.equals(rebreakPos) && rebreakReady && !j.pos.equals(serverDelayedPos) && tick - j.lastSent >= 2 && budget(1) && grimLets(j)) {
 						// The finish arrived early while the server was already finishing another block by itself, so
 						// it was ignored; the server still remembers this start, so finishing again soon works.
 						j.lastSent = tick;
@@ -352,7 +433,9 @@ public final class BreakManager implements Breaking {
 	private void rebreak() {
 		if (!rebreakReady) return;
 		Job j = find(rebreakPos);
-		if (j == null || j.phase != Phase.QUEUED || !j.packet() || !rebreakable(j.pos, j.fast()) || !canAct(j) || !budget(1)) return;
+		if (j == null || j.phase != Phase.QUEUED || !j.packet() || !canAct(j) || !budget(1)) return;
+		// Fast Grim: past Grim's allowance, a decoy first and the finish next tick.
+		if (!rebreakable(j.pos, j.options.mode() == Mode.FAST) && !(j.grim() && rebreakable(j.pos, true) && grimLets(j))) return;
 		BlockState state = mc.level.getBlockState(j.pos);
 		withTool(toolSlot(j.options, state, j.pos), () -> finishWith(j, Action.STOP_DESTROY_BLOCK, true, false));
 	}
@@ -366,11 +449,11 @@ public final class BreakManager implements Breaking {
 			if (j.phase != Phase.QUEUED) continue;
 			BlockState state = mc.level.getBlockState(j.pos);
 			int slot = toolSlot(j.options, state, j.pos);
-			if (Mining.delta(state, j.pos, slot) < 1) continue;
+			if (rate(state, j.pos, slot) < 1) continue;
 			// Vanilla can't break more than one block a tick.
 			if (!j.packet() && vanillaUsed) continue;
 			// Starting anything straight after a finish is too fast for vanilla, and for Grim.
-			if (j.keepsGap() && !gapOver()) continue;
+			if (!startAllowed(j)) continue;
 			// Any start restarts the server's clock for the block being mined, so only more urgent blocks cut in.
 			if (primary != null && primary.phase == Phase.MINING && j.priority <= primary.priority) continue;
 			if (!canAct(j) || !budget(instant.size() + 1)) continue;
@@ -396,7 +479,6 @@ public final class BreakManager implements Breaking {
 				primary.started = tick;
 				primary.startedMs = System.currentTimeMillis();
 				primary.progress = 0;
-				primary.maxRate = 0;
 			}
 		}
 	}
@@ -407,30 +489,16 @@ public final class BreakManager implements Breaking {
 			Job p = primary;
 			BlockState state = mc.level.getBlockState(p.pos);
 			int slot = toolSlot(p.options, state, p.pos);
-			float rate = Mining.delta(state, p.pos, slot);
+			// What the server credits the tool with at the finish: Efficiency only once it has held it a while.
+			float rate = rate(state, p.pos, slot);
 			boolean done;
-			if (p.fast()) {
+			if (p.packet()) {
+				// The server takes a finish once 70% of the time has passed (ticks it has run since the start). Plain
+				// fast mode stops there; the others also wait for Grim's timing to allow it (finishing early only
+				// while its allowance lasts), and Fast Grim spends a decoy start when it doesn't.
 				float elapsed = (tick - p.started) * tpsFactor();
 				p.progress = rate * (elapsed + 1) / PACKET_THRESHOLD;
-				done = rate * (elapsed + 1) >= PACKET_THRESHOLD;
-				if (p.grim()) {
-					int ticks = tick - p.started;
-					// Past the minimum, clear Grim's start-too-soon record before finishing, then finish.
-					if (ticks > GRIM_MIN_TICKS && !p.decoyed && budget(DECOY_BURST)) {
-						for (int i = 0; i < DECOY_BURST; i++) decoyStart(p);
-						swing(p);
-						p.decoyed = true;
-					}
-					done &= ticks > GRIM_MIN_TICKS;
-				}
-			} else if (p.packet()) {
-				// Vanilla's full time, as Grim times it: from the start, at the best speed seen since with what the
-				// server sees held between packets (the tool is only swapped in to start and finish). Wall-clock
-				// ticks (Grim uses real time); if the server lags, it finishes the block by itself.
-				p.maxRate = Math.max(p.maxRate, Mining.delta(state, p.pos, Myriad.inventory().serverSlot()));
-				int needed = (int) Math.ceil(1 / p.maxRate - 1e-4);
-				p.progress = (float) (tick - p.started) / needed;
-				done = tick - p.started >= needed && msSince(p.startedMs) >= needed * 50L;
+				done = rate * (elapsed + 1) >= PACKET_THRESHOLD && (p.options.mode() == Mode.FAST || budget(1) && grimLets(p));
 			} else {
 				p.progress += rate;
 				done = p.progress >= 1;
@@ -441,8 +509,11 @@ public final class BreakManager implements Breaking {
 			if (done && budget(1) && canAct(p)) {
 				withTool(slot, () -> finishWith(p, Action.STOP_DESTROY_BLOCK, true, p.packet()));
 				if (p.packet()) rebreakReady = true;
-			} else if (!done && p.fast() && p.options.doubleBreak() && serverDelayedPos == null && (!p.grim() || p.decoyed)) {
+			} else if (!done && p.fast() && p.options.doubleBreak() && serverDelayedPos == null) {
 				Job next = nextToStart(true);
+				// Grim: the early finish has to pass its timing (a decoy first if not), and the next start, straight
+				// after it, its start-too-soon allowance.
+				if (next != null && p.grim() && (!grim.startOkRightAfterFinish() || !grimLets(p))) next = null;
 				if (next != null && budget(2)) {
 					// Finish early: the server keeps mining this one by itself, and the next one starts now.
 					primary = null;
@@ -459,8 +530,32 @@ public final class BreakManager implements Breaking {
 		}
 		if (primary == null && !mc.gameMode.isDestroying()) {
 			Job next = nextToStart(false);
-			if (next != null && (gapOver() || !next.keepsGap() || next.grim() && gapCleared) && budget(next.grim() ? 2 : 1)) start(next);
+			if (next != null && startAllowed(next) && budget(1)) start(next);
 		}
+	}
+
+	/**
+	 * Whether {@code j} may start now, after the last finish: vanilla mode waits vanilla's own gap, Grim-timed modes as
+	 * long as Grim's start-too-soon allowance lasts, and plain fast mode doesn't wait.
+	 */
+	private boolean startAllowed(Job j) {
+		if (j.keepsGap()) return gapOver();
+		return !j.grimTimed() || grim.startOk(System.currentTimeMillis());
+	}
+
+	/**
+	 * Whether a finish for {@code j} may go out now as far as Grim's timing goes (always, outside Grim-timed modes).
+	 * Past its allowance, Fast Grim sends a decoy start, when one may go, so the finish passes next tick; packet mode
+	 * waits for the allowance to come back. Nothing finishes in the tick a decoy went out (one break packet a tick, as
+	 * Grim's MultiBreak expects).
+	 */
+	private boolean grimLets(Job j) {
+		if (!j.grimTimed()) return true;
+		if (decoyTick == tick) return false;
+		long now = System.currentTimeMillis();
+		if (grim.finishOk(now)) return true;
+		if (j.grim() && grim.startOk(now) && decoyBudget() && budget(1)) decoyStart(j);
+		return false;
 	}
 
 	/** The first waiting block that takes more than one hit and can be started now; double break wants packet mode. */
@@ -469,7 +564,7 @@ public final class BreakManager implements Breaking {
 			if (j.phase != Phase.QUEUED) continue;
 			if (forDoubleBreak && (!j.fast() || !j.options.doubleBreak())) continue;
 			BlockState state = mc.level.getBlockState(j.pos);
-			float rate = Mining.delta(state, j.pos, toolSlot(j.options, state, j.pos));
+			float rate = rate(state, j.pos, toolSlot(j.options, state, j.pos));
 			if (rate >= 1 || rate <= 0) continue;
 			if (j != toolComing && canAct(j)) return j;
 		}
@@ -480,20 +575,15 @@ public final class BreakManager implements Breaking {
 		aim(j);
 		BlockState state = mc.level.getBlockState(j.pos);
 		int slot = toolSlot(j.options, state, j.pos);
-		// Start with the tool in hand: the server and Grim judge the break's speed by what you hold as it starts.
+		// Start with the tool in hand: Grim times the break from what you hold as it starts (and the best it sees after).
 		withTool(slot, () -> {
 			Packets.sendSequenced(j.pos, seq -> new ServerboundPlayerActionPacket(Action.START_DESTROY_BLOCK, j.pos, j.face, seq));
-			// Grim now times the break as the decoy's: air, which breaks at once.
-			if (j.grim()) decoyStart(j);
 			swing(j);
 		});
-		j.decoyed = false;
-		gapCleared = false;
 		j.phase = Phase.MINING;
 		j.started = tick;
 		j.startedMs = System.currentTimeMillis();
 		j.progress = 0;
-		j.maxRate = Mining.delta(state, j.pos, slot);
 		primary = j;
 		rebreakPos = j.pos;
 		rebreakStart = tick;
@@ -501,12 +591,23 @@ public final class BreakManager implements Breaking {
 	}
 
 	/**
-	 * A start for the spot {@link #DECOY_HEIGHT} blocks above {@code j}'s block, out of the world: the server ignores
-	 * it as out of reach, while Grim (on servers with ViaVersion) takes it as the block now being broken.
+	 * A start for the spot {@link #DECOY_HEIGHT} blocks above {@code j}'s block, out of reach: the server ignores it,
+	 * while Grim (on servers with ViaVersion) times air from then on, which breaks at once, so the next finish passes
+	 * whatever block it's for. Face down, as you'd see a block that far above.
 	 */
 	private void decoyStart(Job j) {
 		BlockPos decoy = j.pos.above(DECOY_HEIGHT);
-		Packets.sendSequenced(seq -> new ServerboundPlayerActionPacket(Action.START_DESTROY_BLOCK, decoy, j.face, seq));
+		decoyTick = tick;
+		decoyTimes.addLast(System.currentTimeMillis());
+		Packets.sendSequenced(seq -> new ServerboundPlayerActionPacket(Action.START_DESTROY_BLOCK, decoy, Direction.DOWN, seq));
+		swing(j);
+	}
+
+	/** Whether another decoy fits in {@link #DECOYS_PER_SECOND}. */
+	private boolean decoyBudget() {
+		long now = System.currentTimeMillis();
+		while (!decoyTimes.isEmpty() && now - decoyTimes.peekFirst() > 1000) decoyTimes.pollFirst();
+		return decoyTimes.size() < DECOYS_PER_SECOND;
 	}
 
 	/** {@code j} was finished early: the server now finishes it by itself once its progress reaches 1. */
@@ -535,10 +636,8 @@ public final class BreakManager implements Breaking {
 		j.deadline = Integer.MAX_VALUE;
 		j.lastSent = tick;
 		if (action == Action.STOP_DESTROY_BLOCK) {
-			lastStop = tick;
 			lastStopMs = System.currentTimeMillis();
 			if (j.keepsGap()) finishCooldown = FINISH_GAP;
-			gapCleared = j.grim() && j.decoyed;
 		}
 		CompletableFuture<BlockState> ack = Packets.sendSequenced(j.pos, seq -> {
 			if (predict) mc.gameMode.destroyBlock(j.pos);
@@ -554,7 +653,7 @@ public final class BreakManager implements Breaking {
 			} else if (finishLater && serverDelayedPos == null && delayed == null) {
 				// Finished a little early (the server lagged): it keeps mining this one by itself.
 				BlockState now = mc.level.getBlockState(j.pos);
-				becomeDelayed(j, Mining.delta(now, j.pos, toolSlot(j.options, now, j.pos)));
+				becomeDelayed(j, rate(now, j.pos, toolSlot(j.options, now, j.pos)));
 			} else if (finishLater) {
 				// Early while the server was already finishing another: ignored, so it's finished again shortly.
 				j.acked = true;
@@ -583,18 +682,36 @@ public final class BreakManager implements Breaking {
 	}
 
 	/**
-	 * Holds the tool a break needs at the server between packets: the vanilla-mode block being mined, or the
-	 * double-broken block around when the server finishes it (it checks the held tool every tick).
+	 * Holds the tool a break needs at the server between packets: the vanilla-mode block being mined, the
+	 * double-broken block around when the server finishes it (it checks the held tool every tick), and a packet-mode
+	 * block for the last stretch before it's done, so the tool's Efficiency counts by the finish (it only does once
+	 * the server has ticked with the tool held, and Grim has had it back). Not while you use an item in your main hand.
 	 */
 	private void updateHold() {
 		int slot = -1;
-		if (delayed != null && tick >= delayed.due - 1) {
+		int lead = (int) Math.ceil(efficiencyWindowMs() / 50.0) + 2;
+		if (delayed != null && tick >= delayed.due - lead) {
 			BlockState state = mc.level.getBlockState(delayed.pos);
 			slot = toolSlot(delayed.options, state, delayed.pos);
-		} else if (primary != null && primary.phase == Phase.MINING && !primary.packet()) {
-			BlockState state = mc.level.getBlockState(primary.pos);
-			slot = toolSlot(primary.options, state, primary.pos);
+		} else if (primary != null && primary.phase == Phase.MINING) {
+			Job p = primary;
+			BlockState state = mc.level.getBlockState(p.pos);
+			int tool = toolSlot(p.options, state, p.pos);
+			// With the tool's Efficiency, the block would be done within the time it takes to count: hold it from now.
+			float full = Mining.delta(state, p.pos, tool);
+			if (!p.packet() || hasEfficiency(tool) && full * (tick - p.started + 1 + lead) >= PACKET_THRESHOLD) slot = tool;
+		} else if (primary == null) {
+			// Between blocks: keep (or bring) the next block's tool, if its Efficiency would make a difference, so it
+			// counts by the time that block starts.
+			for (Job j : jobs) {
+				if (j.phase != Phase.QUEUED || !j.packet()) continue;
+				BlockState state = mc.level.getBlockState(j.pos);
+				int tool = toolSlot(j.options, state, j.pos);
+				if (hasEfficiency(tool)) slot = tool;
+				break;
+			}
 		}
+		if (mc.player.isUsingItem() && mc.player.getUsedItemHand() == InteractionHand.MAIN_HAND) slot = -1;
 		if (slot >= 0 && slot != mc.player.getInventory().getSelectedSlot()) {
 			holding = Myriad.inventory().hold(this, slot, 3);
 		} else if (holding) {
@@ -650,11 +767,18 @@ public final class BreakManager implements Breaking {
 
 	/**
 	 * Auto tool from the inventory: when the best tool for the block being mined, or the next one, is outside the
-	 * hotbar, it's moved in (see {@link dev.myriad.api.service.Inventory#pullToHotbar}, which waits while you move,
-	 * since Grim cancels clicks then); until then the best hotbar tool does. A packet-mode break already started is
-	 * timed by the tool it started with, so then it's fetched for the next block instead.
+	 * hotbar, it's borrowed in (see {@link dev.myriad.api.service.Inventory#borrow}, which waits while you move, since
+	 * Grim cancels clicks then, and puts it back once no break needs it); until then the best hotbar tool does. A
+	 * packet-mode break already started is timed by the tool it started with, so then it's fetched for the next block
+	 * instead.
 	 */
 	private void fetchTool() {
+		// Borrowed tools stay while any break still needs them.
+		for (Job q : jobs) {
+			if (!q.options.autoTool()) continue;
+			BlockState state = mc.level.getBlockState(q.pos);
+			Myriad.inventory().borrow(this, toolSlot(q.options, state, q.pos), null);
+		}
 		Job j = primary != null && primary.phase == Phase.MINING && (!primary.packet() || primary.fast()) ? primary : null;
 		if (j == null) for (Job q : jobs) if (q.phase == Phase.QUEUED) {
 			j = q;
@@ -668,7 +792,7 @@ public final class BreakManager implements Breaking {
 		// A tool that's worse for this block makes room for it. While you move it takes a tick longer (your keys are
 		// released first); a break that hasn't started waits for it rather than start with a worse tool, as packet
 		// breaks are timed by the tool they start with.
-		if (Myriad.inventory().pullToHotbar(from, s -> s.getDestroySpeed(state) > 1) < 0 && j.phase == Phase.QUEUED) {
+		if (Myriad.inventory().borrow(this, from, s -> s.getDestroySpeed(state) > 1) < 0 && j.phase == Phase.QUEUED) {
 			toolWait = j == toolWaitJob ? toolWait + 1 : 0;
 			toolWaitJob = j;
 			if (toolWait < TOOL_WAIT_TICKS) toolComing = j;

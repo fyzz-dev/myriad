@@ -77,6 +77,23 @@ public interface Rotations {
 		request(owner, r[0], r[1], priority, options, null);
 	}
 
+	/**
+	 * Makes this tick's movement packet carry a rotation even if you haven't turned, by nudging the sent pitch 0.01°.
+	 * Vanilla only sends a rotation when you turn, and Grim only updates the look it remembers ("last look") from
+	 * packets that carry one; asked for every tick, its last look is always exactly the rotation sent the tick before
+	 * (what {@link #serverYaw()} and {@link #serverPitch()} say until this tick's packet goes out). Call it each tick
+	 * it's needed, before the movement packet.
+	 */
+	void sendRotationThisTick();
+
+	/**
+	 * The rotation this tick's movement packet will carry, {yaw, pitch}, fixed from now on: requests made later this
+	 * tick no longer change it. For packets that carry a rotation of their own (using an item), which Grim
+	 * (BadPacketsJ) wants equal to the tick's. Item-use packets are given it automatically, except thrown items (a
+	 * pearl): those keep their own aim, and fix the tick's rotation to it.
+	 */
+	float[] rotationForAction();
+
 	/** Whether a rotation other than your real one was sent last tick (including while easing back). */
 	boolean isRotating();
 

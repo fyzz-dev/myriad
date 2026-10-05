@@ -6,7 +6,7 @@
   ./client --timeout 120 ...       wait longer for long scripts (default 60 s)
 
 Steps: .myriad command | /server command | hold <keys> <ticks> | release | look <yaw> <pitch> | select <1-9>
-| attack | use | wait <ticks> | status | echo <text>. Keys: forward, back, left, right, jump, sneak, sprint.
+| attack | use | middle | wait <ticks> | status | echo <text>. Keys: forward, back, left, right, jump, sneak, sprint.
 """
 import os, sys, time, uuid
 
