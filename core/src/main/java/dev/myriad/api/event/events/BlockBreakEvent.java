@@ -1,9 +1,9 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import org.jetbrains.annotations.ApiStatus;
 
 /** The local player's block breaking. */
 public abstract class BlockBreakEvent extends Cancellable {

@@ -1,8 +1,8 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
+import org.jetbrains.annotations.ApiStatus;
 
 /** Chunks arriving from and leaving the client world. Posted on the render thread. */
 public abstract class ChunkEvent {

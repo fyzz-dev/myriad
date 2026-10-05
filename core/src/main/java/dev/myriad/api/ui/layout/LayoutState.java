@@ -1,8 +1,8 @@
 package dev.myriad.api.ui.layout;
 
-import org.jetbrains.annotations.ApiStatus;
 import com.google.gson.JsonObject;
 import dev.myriad.api.ui.Rect;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 import java.util.function.BiConsumer;

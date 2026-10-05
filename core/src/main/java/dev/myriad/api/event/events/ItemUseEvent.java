@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 
 /** The local player stopped using an item: food eaten, potion drunk, bow released. */
 public abstract class ItemUseEvent {

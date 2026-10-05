@@ -1,9 +1,9 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import dev.myriad.api.util.ChatMessages;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * A line is about to be added to the chat: from the server, another player, or the client itself. Cancel to hide

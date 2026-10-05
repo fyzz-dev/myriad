@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.service.Containers;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * A container (chest, shulker, furnace, villager trade, …) opening, receiving its contents, and closing. Use

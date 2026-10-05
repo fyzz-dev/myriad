@@ -33,7 +33,7 @@ numbered steps.
 | `modules/Waypoints.java` | setting groups, theme-role colours, `Render3DEvent` boxes and lines, `Render2DEvent` world labels, reacting to vanilla with `ScreenOpenEvent` |
 | `modules/AutoTool.java` | the `Myriad.inventory()` service (`select`, `pullToHotbar`), `Mining` helpers, soft integration with another addon by id |
 | `modules/BlockSearch.java` | finding blocks cheaply: `ChunkCache` (once per chunk, again on changes), `BlockScan` palette skipping, cached meshes instead of a render handler |
-| `modules/Tunnel.java` | the planner: a `Blueprint` of `Target.air()` handed to `Myriad.building()`, drawing `Build.steps()`, one purposeful "Strict" option |
+| `modules/Tunnel.java` | the planner: a `Blueprint` of `Target.air()` handed to `Myriad.building()`, drawing `Build.steps()`, `Building.Options.forServer()` instead of a "Strict" option |
 | `modules/ChatTimestamps.java` + `mixin/ChatHudMixin.java` | the standard mixin-driven module: a static hook using `Modules.active(...)` |
 | `modules/SettingsShowcase.java` | every setting type, `visible`, `onChanged`, `sliderRange`, keybinds, action buttons |
 | `settings/RangeSetting.java` | a custom setting type (its widget is registered in `ExampleAddon`) |

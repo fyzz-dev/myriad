@@ -42,6 +42,9 @@ import java.util.Set;
  * attack | use                 a left or right click on what the crosshair is on
  * middle                       a middle click (press and release), as modules see it
  * wait 20                      pause the script for that many ticks
+ * respawn                      respawn if dead (the death screen is closed)
+ * selftest [ticks] [-module]   every module on for that many ticks (20) and off again, reporting failures; the
+ *                              script waits for it. -module skips one (e.g. -auto_disconnect)
  * status                       log position, motion, rotation and state
  * echo text                    log the text (scripts use it to know they're done)
  * </pre>
@@ -60,6 +63,7 @@ public final class DevConsole {
 	private final Set<Key> held = EnumSet.noneOf(Key.class);
 	private long read;
 	private int waitTicks, holdTicks;
+	private SelfTest selfTest;
 
 	public DevConsole(Path inbox, CommandManager commands) {
 		this.inbox = inbox;
@@ -82,11 +86,15 @@ public final class DevConsole {
 	private void onTick(TickEvent.Pre e) {
 		poll();
 		if (holdTicks > 0 && --holdTicks == 0) held.clear();
+		if (selfTest != null) {
+			if (selfTest.tick()) return;
+			selfTest = null;
+		}
 		if (waitTicks > 0) {
 			waitTicks--;
 			return;
 		}
-		while (!pending.isEmpty() && waitTicks == 0) run(pending.poll());
+		while (!pending.isEmpty() && waitTicks == 0 && selfTest == null) run(pending.poll());
 	}
 
 	@Subscribe(priority = Priority.HIGHEST)
@@ -154,6 +162,22 @@ public final class DevConsole {
 					Myriad.events().post(new MouseButtonEvent(GLFW.GLFW_MOUSE_BUTTON_MIDDLE, GLFW.GLFW_RELEASE, 0, false));
 				}
 				case "wait" -> waitTicks = Integer.parseInt(a[1]);
+				case "respawn" -> {
+					if (mc.player != null && mc.player.isDeadOrDying()) {
+						mc.player.respawn();
+						mc.gui.setScreen(null);
+					}
+				}
+				case "selftest" -> {
+					int ticks = 20;
+					Set<String> skip = new java.util.HashSet<>();
+					for (int i = 1; i < a.length; i++) {
+						if (a[i].startsWith("-")) skip.add(a[i].substring(1));
+						else ticks = Integer.parseInt(a[i]);
+					}
+					selfTest = new SelfTest(ticks, skip);
+					selfTest.start();
+				}
 				case "status" -> status();
 				case "echo" -> LOG.info("[dev] echo {}", line.substring(4).strip());
 				default -> LOG.warn("[dev] unknown: {}", line);

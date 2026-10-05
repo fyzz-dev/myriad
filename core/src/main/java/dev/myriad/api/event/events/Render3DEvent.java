@@ -1,11 +1,11 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import dev.myriad.api.render.Renderer3D;
 import dev.myriad.api.render.ShapeBuilder;
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Fired every frame while the world's geometry is collected for drawing. Draw with {@link #shapes()} in world

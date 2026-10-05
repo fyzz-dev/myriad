@@ -1,7 +1,7 @@
 package dev.myriad.api.service;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.core.BlockPos;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.concurrent.CompletableFuture;
 

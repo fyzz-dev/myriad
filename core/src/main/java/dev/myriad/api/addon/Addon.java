@@ -1,9 +1,9 @@
 package dev.myriad.api.addon;
 
-import org.jetbrains.annotations.ApiStatus;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.metadata.ModMetadata;
 import net.fabricmc.loader.api.metadata.Person;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 import java.util.Optional;

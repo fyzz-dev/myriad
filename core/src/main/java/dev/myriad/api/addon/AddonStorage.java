@@ -1,7 +1,7 @@
 package dev.myriad.api.addon;
 
-import org.jetbrains.annotations.ApiStatus;
 import com.google.gson.JsonElement;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
 import java.util.Optional;

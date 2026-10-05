@@ -38,9 +38,12 @@ public final class Threats {
 		return player().getHealth() + player().getAbsorptionAmount();
 	}
 
-	/** The worst of every danger around you, with the usual ranges (crystals 12, beds and anchors 8, creepers 8, players 5). */
+	/**
+	 * The worst of every danger around you, with the usual ranges (crystals 12, beds and anchors 8, creepers 8, players
+	 * 5). Crystals are added up, since several can go off at once.
+	 */
 	public static float worst() {
-		return Math.max(Math.max(Math.max(crystals(12, false), beds(8)), Math.max(anchors(8), creepers(8))), Math.max(players(5), fall()));
+		return Math.max(Math.max(Math.max(crystals(12, true), beds(8)), Math.max(anchors(8), creepers(8))), Math.max(players(5), fall()));
 	}
 
 	/** Whether {@link #worst()} plus {@code margin} could take all your health (including absorption). */

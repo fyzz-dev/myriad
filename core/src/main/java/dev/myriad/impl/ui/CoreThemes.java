@@ -3,7 +3,6 @@ package dev.myriad.impl.ui;
 import dev.myriad.api.addon.AddonContext;
 import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.ThemePalette;
-import dev.myriad.api.util.MyriadId;
 
 
 /** Myriad's built-in theme presets. Addons can register more (see Theme and ThemePalette). */

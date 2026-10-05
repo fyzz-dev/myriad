@@ -1,7 +1,7 @@
 package dev.myriad.api.event.events;
 
-import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
+import org.jetbrains.annotations.ApiStatus;
 
 public final class MouseScrollEvent extends Cancellable {
 	private final double horizontal, vertical;

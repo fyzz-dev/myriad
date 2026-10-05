@@ -1,10 +1,10 @@
 package dev.myriad.api.service;
 
-import org.jetbrains.annotations.ApiStatus;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.BlockHitResult;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Shared block placement for modules like Scaffold, Surround or Auto Trap: finds a solid neighbour face to click,

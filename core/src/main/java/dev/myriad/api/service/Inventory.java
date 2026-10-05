@@ -1,9 +1,9 @@
 package dev.myriad.api.service;
 
-import org.jetbrains.annotations.ApiStatus;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 
 /** Hotbar helpers that track the slot the server thinks is selected. */
 @ApiStatus.NonExtendable

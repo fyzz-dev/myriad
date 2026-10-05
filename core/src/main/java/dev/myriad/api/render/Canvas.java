@@ -1,10 +1,10 @@
 package dev.myriad.api.render;
 
-import org.jetbrains.annotations.ApiStatus;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Myriad's 2D drawing surface: anti-aliased SDF shapes, gradient borders, drop shadows, frosted-glass backdrops and
