@@ -71,7 +71,7 @@ public final class ContainerTracker implements Containers {
 
 	// ---- tracking ---------------------------------------------------------------------------------------------------
 
-	@Subscribe
+	@Subscribe(packets = ServerboundUseItemOnPacket.class)
 	private void onSend(PacketEvent.Send e) {
 		if (e.packet() instanceof ServerboundUseItemOnPacket p) {
 			lastClicked = p.getHitResult().getBlockPos().immutable();

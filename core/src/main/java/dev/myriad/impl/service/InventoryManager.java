@@ -67,7 +67,7 @@ public final class InventoryManager implements Inventory {
 	private ItemStack chargedItem = ItemStack.EMPTY;
 
 	/** Lowest priority: what actually goes out, after other handlers have changed it. */
-	@Subscribe(priority = Priority.LOWEST)
+	@Subscribe(priority = Priority.LOWEST, packets = {ServerboundSetCarriedItemPacket.class, ServerboundAttackPacket.class, ServerboundPlayerInputPacket.class, ServerboundPlayerCommandPacket.class})
 	private void onSend(PacketEvent.Send e) {
 		if (e.isCancelled()) return;
 		switch (e.packet()) {
@@ -82,7 +82,7 @@ public final class InventoryManager implements Inventory {
 	}
 
 	/** The server can set the slot itself (on join, or by a plugin); a respawn starts with no keys and no sprint. */
-	@Subscribe
+	@Subscribe(packets = {ClientboundSetHeldSlotPacket.class, ClientboundRespawnPacket.class, ClientboundLoginPacket.class})
 	private void onReceive(PacketEvent.Receive e) {
 		if (e.packet() instanceof ClientboundSetHeldSlotPacket p) serverSlot = p.slot();
 		if (e.packet() instanceof ClientboundRespawnPacket || e.packet() instanceof ClientboundLoginPacket) {

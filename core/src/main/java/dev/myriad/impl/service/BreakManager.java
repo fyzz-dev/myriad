@@ -318,7 +318,7 @@ public final class BreakManager implements Breaking {
 	 * Follows Grim's timing from every dig packet that goes out, ours or anyone's (vanilla mining included): starts and
 	 * finishes, and the samples it takes on movement and swing packets. Lowest priority: what's really sent.
 	 */
-	@Subscribe(priority = Priority.LOWEST)
+	@Subscribe(priority = Priority.LOWEST, packets = {ServerboundPlayerActionPacket.class, ServerboundMovePlayerPacket.class, ServerboundSwingPacket.class})
 	private void onSend(PacketEvent.Send e) {
 		if (e.isCancelled() || mc.player == null || mc.level == null) return;
 		long now = System.currentTimeMillis();

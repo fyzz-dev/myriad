@@ -52,9 +52,9 @@ public final class AntiCheatTracker implements AntiCheat {
 		if (Myriad.isReady()) Myriad.config().markDirty();
 	}
 
-	@Subscribe
+	@Subscribe(packets = ClientboundPingPacket.class)
 	private void onReceive(PacketEvent.Receive e) {
-		if (e.packet() instanceof ClientboundPingPacket && pings < PINGS) pings++;
+		if (pings < PINGS) pings++;
 	}
 
 	@Subscribe
