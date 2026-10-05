@@ -69,16 +69,17 @@ public interface Inventory {
 
 	/**
 	 * Whether an inventory click now would pass anti-cheats that refuse clicks while you move: Grim (2b2t) cancels a
-	 * click sent with movement keys held, while sprinting or while sneaking. Moves that can wait (refills, tools,
-	 * building material) should wait for this; urgent ones (a totem) go anyway.
+	 * click when the last movement keys the server heard had a direction or jump down, or sneak, or while you sprint.
+	 * Moves that can wait (refills, tools, building material) should wait for this; urgent ones (a totem) go anyway.
 	 */
 	boolean safeToClick();
 
 	/**
 	 * For a click that shouldn't wait for you to stop moving: true if one is safe now ({@link #safeToClick()});
-	 * otherwise your movement keys, sneak and sprint are released for the next tick (sprint comes back after) and it
-	 * returns false, so asking again next tick gets a safe click. Costs a moment of slowing down, so moves that can
-	 * wait (refills) should use {@link #safeToClick()} instead.
+	 * otherwise your movement keys, jump, sneak and sprint are released for the next tick (sprint comes back after) and
+	 * it returns false, so asking again next tick gets a safe click. While sneaking at an edge it waits instead (letting
+	 * go would walk you off). Costs a moment of slowing down, so moves that can wait (refills) should use
+	 * {@link #safeToClick()} instead.
 	 */
 	boolean prepareClick();
 
@@ -90,6 +91,29 @@ public interface Inventory {
 	 * (ask again next tick).
 	 */
 	int pullToHotbar(int inventoryIndex, Predicate<ItemStack> replaceable);
+
+	/**
+	 * Borrows the item at {@code inventoryIndex} for {@code owner}: like {@link #pullToHotbar}, but the item goes back
+	 * to that inventory slot (and whatever it made room for back to the hotbar) once you're done with it, so using a tool
+	 * or weapon from the inventory leaves the hotbar as it was. Meanwhile the hotbar slot keeps showing what was there.
+	 * <p>
+	 * Ask again every tick you still want it: pass the hotbar slot it went to (any index 0-8 is fine; one that isn't
+	 * borrowed is just returned) and it stays. It also stays while the server holds that slot (a hold or a silent
+	 * swap). Once nothing has wanted it for half a second, it's put back with one more click, waiting for a moment
+	 * you're not moving if one comes soon, otherwise releasing your keys for a tick as {@link #prepareClick()} does. If
+	 * you selected it meanwhile, the slot you had selected is selected again. If the items have moved since, it's left
+	 * where it is. Returns the hotbar slot, or -1 (ask again next tick).
+	 */
+	int borrow(Object owner, int inventoryIndex, Predicate<ItemStack> replaceable);
+
+	/** Puts back what {@code owner} borrowed as soon as a click can go, instead of waiting. */
+	void giveBack(Object owner);
+
+	/**
+	 * What hotbar slot {@code hotbarSlot} should show: what was there before an item was borrowed into it (while it's not
+	 * selected), otherwise its item.
+	 */
+	ItemStack shownInHotbar(int hotbarSlot);
 
 	// The moves below click in your own inventory screen, which works without opening it (as vanilla's number keys
 	// do). They need no container to be open, and return false otherwise, for bad slots, or when the packet budget

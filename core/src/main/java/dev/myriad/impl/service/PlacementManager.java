@@ -17,6 +17,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
@@ -54,6 +55,8 @@ public final class PlacementManager implements Placement {
 
 	/** How long a rotated placement may wait for its rotation before it's given up. */
 	private static final int QUEUE_TICKS = 6;
+	/** How far in from the edges of a face an air placement clicks. */
+	private static final double AIR_INSET = 0.3;
 
 	private record Queued(Object owner, BlockPos pos, BlockHitResult target, int slot, Options options, CompletableFuture<Boolean> result, int expires) {
 	}
@@ -80,10 +83,10 @@ public final class PlacementManager implements Placement {
 		return target(pos, o) != null ? Check.OK : supportCheck(pos, o);
 	}
 
-	/** Why no face qualified: nothing to click, or only faces you can't see. */
+	/** Why no face qualified: nothing to click (and no air face you can see, for air placements), or only faces you can't see. */
 	private Check supportCheck(BlockPos pos, Options o) {
-		if (o.airPlace()) return Check.OK;
-		return clickTargets(pos).isEmpty() ? Check.NO_SUPPORT : Check.NOT_VISIBLE;
+		if (!clickTargets(pos).isEmpty()) return Check.NOT_VISIBLE;
+		return o.airPlace() ? Check.NOT_VISIBLE : Check.NO_SUPPORT;
 	}
 
 	/** Everything but support: replaceable, in range, not pending, no entity in the way, budget left. */
@@ -104,8 +107,34 @@ public final class PlacementManager implements Placement {
 	private BlockHitResult target(BlockPos pos, Options o) {
 		List<BlockHitResult> targets = clickTargets(pos);
 		if (!targets.isEmpty() && (!o.visibleFaces() || visible(targets.getFirst()))) return targets.getFirst();
-		if (targets.isEmpty() && o.airPlace()) return new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false);
+		if (targets.isEmpty() && o.airPlace()) return airHit(pos, o.range());
 		return null;
+	}
+
+	/**
+	 * An air placement's click: where the look the server has enters the empty space, if it does (as a vanilla click
+	 * would be); otherwise on the face nearest your eyes that faces them, a little in from its edges, where you'd be
+	 * looking to aim at it. A face turned away from you (or a point out of reach) is refused by servers that check
+	 * clicks, so null if none qualifies.
+	 */
+	private BlockHitResult airHit(BlockPos pos, double range) {
+		BlockHitResult look = Reach.rayHit(Myriad.rotations().serverYaw(), Myriad.rotations().serverPitch(), pos, range);
+		if (look != null && Reach.faceExposed(pos, look.getDirection())) return new BlockHitResult(look.getLocation(), look.getDirection(), pos, false);
+		Vec3 eyes = mc.player.getEyePosition();
+		BlockHitResult best = null;
+		double bestDistance = range * range;
+		for (Direction face : Direction.values()) {
+			if (!Reach.faceExposed(pos, face)) continue;
+			Vec3 point = new Vec3(
+				face.getAxis() == Direction.Axis.X ? pos.getX() + (face == Direction.EAST ? 1 : 0) : Math.clamp(eyes.x, pos.getX() + AIR_INSET, pos.getX() + 1 - AIR_INSET),
+				face.getAxis() == Direction.Axis.Y ? pos.getY() + (face == Direction.UP ? 1 : 0) : Math.clamp(eyes.y, pos.getY() + AIR_INSET, pos.getY() + 1 - AIR_INSET),
+				face.getAxis() == Direction.Axis.Z ? pos.getZ() + (face == Direction.SOUTH ? 1 : 0) : Math.clamp(eyes.z, pos.getZ() + AIR_INSET, pos.getZ() + 1 - AIR_INSET));
+			double d = eyes.distanceToSqr(point);
+			if (d > bestDistance) continue;
+			bestDistance = d;
+			best = new BlockHitResult(point, face, pos, false);
+		}
+		return best;
 	}
 
 	@Override
@@ -155,15 +184,16 @@ public final class PlacementManager implements Placement {
 		boolean air = target.getBlockPos().equals(pos);
 		Myriad.inventory().silentSwap(slot, () -> {
 			if (air) {
-				// Grim refuses blocks placed against air from the main hand, but not from the off hand: swap the block
-				// over, place it with the off hand, and swap back (how 2b2t clients air place).
+				// Swap the block to the off hand, place it from there, swing that hand, and swap back: how 2b2t clients
+				// (Bep Hax's "Grim" air place) place against air there, past its Grim.
 				swapHands();
 				mc.gameMode.useItemOn(mc.player, InteractionHand.OFF_HAND, target);
+				swing(InteractionHand.OFF_HAND, o.swing());
 				swapHands();
 			} else {
 				mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, target);
+				if (o.swing()) mc.player.swing(InteractionHand.MAIN_HAND);
 			}
-			if (o.swing()) mc.player.swing(InteractionHand.MAIN_HAND);
 		});
 		int sequence = acks.currentSequence();
 		// useItemOn gives up before sending anything outside the world border.
@@ -181,6 +211,12 @@ public final class PlacementManager implements Placement {
 	static float[] anglesFromNextPosition(Vec3 point) {
 		Minecraft mc = Minecraft.getInstance();
 		return MathUtil.anglesTo(mc.player.getEyePosition().add(mc.player.getDeltaMovement()), point);
+	}
+
+	/** Swings {@code hand}: shown if {@code visible}, otherwise only sent (a placement without a swing is noticed). */
+	private void swing(InteractionHand hand, boolean visible) {
+		if (visible) mc.player.swing(hand);
+		else mc.getConnection().send(new ServerboundSwingPacket(hand));
 	}
 
 	/** Swaps the main and off hand, on the client and the server, as the swap key does. */

@@ -19,11 +19,14 @@ import net.minecraft.world.phys.BlockHitResult;
 public interface Placement {
 	/**
 	 * @param rotate       face the clicked face server-side first (needed on servers that check placements). The block
-	 *                     is placed once the rotation has gone out in the movement packet, usually the same tick;
-	 *                     placements that a single rotation can't cover wait their turn, one rotation per tick. While
-	 *                     facing it, movement follows the sent yaw (rotation move fix), as Grim expects.
-	 * @param airPlace     allow placing with no solid neighbour. Air placements go through the off hand (swap, place,
-	 *                     swap back), which Grim accepts where a main-hand air placement is refused
+	 *                     is placed at the start of the tick after the rotation went out in the movement packet,
+	 *                     before that tick's movement, as vanilla clicks; placements that a single rotation can't
+	 *                     cover wait their turn, one rotation per tick. While facing it, movement follows the sent yaw
+	 *                     (rotation move fix), as Grim expects.
+	 * @param airPlace     allow placing with no solid neighbour, through the off hand (swap, place, swing, swap back),
+	 *                     clicking the face of the empty space that faces you. Any module or addon can ask for it; the
+	 *                     Air Place module is just one user. This is how 2b2t clients air place there; current Grim
+	 *                     builds (2.3.74 on the test server) refuse any placement against air (AirLiquidPlace)
 	 * @param swing        swing the hand
 	 * @param range        maximum distance from the eyes to the block centre
 	 * @param visibleFaces only click faces that point towards you with nothing in the way; strict anti-cheats reject

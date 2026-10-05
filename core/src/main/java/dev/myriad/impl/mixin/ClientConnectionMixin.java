@@ -56,14 +56,15 @@ public abstract class ClientConnectionMixin {
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"), cancellable = true)
 	private void myriad$onSend(Packet<?> packet, @Nullable ChannelFutureListener callbacks, boolean flush, CallbackInfo ci) {
-		if (packet instanceof ServerboundSetCarriedItemPacket slot && slot.getSlot() == myriad$lastSlot && myriad$isClientSide()) {
+		// (Held slot changes going out now were already counted when they were held.)
+		if (packet instanceof ServerboundSetCarriedItemPacket slot && slot.getSlot() == myriad$lastSlot && !ActionTiming.isFlushing() && myriad$isClientSide()) {
 			ci.cancel();
 			return;
 		}
-		// Held actions going out, rewritten packets being resent, and silent sends (Fake Lag times those itself) pass as they are.
+		// Held actions going out, rewritten packets being resent, and silent sends pass as they are.
 		if (ActionTiming.isFlushing() || MYRIAD_RESENDING.get() || PacketGate.isSilent() || !myriad$isClientSide()) return;
 		if (!Myriad.isReady()) {
-			if (ActionTiming.get().holdIfLate((Connection) (Object) this, packet, callbacks, flush)) ci.cancel();
+			if (ActionTiming.get().holdIfLate((Connection) (Object) this, packet, callbacks, flush)) myriad$held(packet, ci);
 			return;
 		}
 		if (packet instanceof ServerboundAttackPacket attack && Myriad.events().hasListeners(AttackEvent.class)) {
@@ -79,7 +80,7 @@ public abstract class ClientConnectionMixin {
 			ci.cancel();
 		} else if (ActionTiming.get().holdIfLate((Connection) (Object) this, event.packet(), callbacks, flush)) {
 			// Too late in the tick for an action: it goes out first thing next tick (see ActionTiming).
-			ci.cancel();
+			myriad$held(event.packet(), ci);
 		} else if (event.packet() != packet) {
 			ci.cancel();
 			MYRIAD_RESENDING.set(true);
@@ -89,6 +90,16 @@ public abstract class ClientConnectionMixin {
 				MYRIAD_RESENDING.set(false);
 			}
 		}
+	}
+
+	/**
+	 * A packet held for the next tick still goes out, in order: a slot change held counts as the last slot sent, or the
+	 * next one (switching back) would be taken for a duplicate and dropped, leaving the server on the wrong slot.
+	 */
+	@Unique
+	private void myriad$held(Packet<?> packet, CallbackInfo ci) {
+		if (packet instanceof ServerboundSetCarriedItemPacket slot) myriad$lastSlot = slot.getSlot();
+		ci.cancel();
 	}
 
 	/** Counts what actually went out (after any rewrite or cancel) against the packet budget. */

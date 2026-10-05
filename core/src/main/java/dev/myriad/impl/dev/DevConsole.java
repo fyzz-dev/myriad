@@ -4,6 +4,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.InputEvent;
+import dev.myriad.api.event.events.MouseButtonEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.impl.command.CommandManager;
 import net.minecraft.client.Minecraft;
@@ -11,6 +12,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +39,7 @@ import java.util.Set;
  * look 90 30                   set yaw and pitch
  * select 3                     hotbar slot (1-9)
  * attack | use                 a left or right click on what the crosshair is on
+ * middle                       a middle click (press and release), as modules see it
  * wait 20                      pause the script for that many ticks
  * status                       log position, motion, rotation and state
  * echo text                    log the text (scripts use it to know they're done)
@@ -70,7 +73,11 @@ public final class DevConsole {
 		LOG.info("[dev] console reading {}", inbox.toAbsolutePath());
 	}
 
-	@Subscribe(priority = Priority.HIGHEST)
+	/**
+	 * First thing in the tick, before every module and core service, as real input arrives between ticks: a module
+	 * toggled here doesn't run half of this tick.
+	 */
+	@Subscribe(priority = Priority.BEFORE_ACTIONS + 1000)
 	private void onTick(TickEvent.Pre e) {
 		poll();
 		if (holdTicks > 0 && --holdTicks == 0) held.clear();
@@ -140,6 +147,10 @@ public final class DevConsole {
 				case "select" -> Myriad.inventory().select(Integer.parseInt(a[1]) - 1);
 				case "attack" -> attack();
 				case "use" -> use();
+				case "middle" -> {
+					Myriad.events().post(new MouseButtonEvent(GLFW.GLFW_MOUSE_BUTTON_MIDDLE, GLFW.GLFW_PRESS, 0, false));
+					Myriad.events().post(new MouseButtonEvent(GLFW.GLFW_MOUSE_BUTTON_MIDDLE, GLFW.GLFW_RELEASE, 0, false));
+				}
 				case "wait" -> waitTicks = Integer.parseInt(a[1]);
 				case "status" -> status();
 				case "echo" -> LOG.info("[dev] echo {}", line.substring(4).strip());
@@ -179,9 +190,9 @@ public final class DevConsole {
 			case EntityHitResult en -> "entity " + en.getEntity().getName().getString();
 			case null, default -> "none";
 		};
-		LOG.info("[dev] status: pos {} {} {} motion {} {} {} ({} b/s) rot {} {} ground={} gliding={} health={} slot={} item={} mode={} target={}",
+		LOG.info("[dev] status: pos {} {} {} motion {} {} {} ({} b/s) rot {} {} ground={} gliding={} sprinting={} sneaking={} health={} slot={} serverSlot={} item={} mode={} target={}",
 			fmt(p.getX()), fmt(p.getY()), fmt(p.getZ()), fmt(v.x), fmt(v.y), fmt(v.z), fmt(v.length() * 20), fmt(p.getYRot()), fmt(p.getXRot()),
-			p.onGround(), p.isFallFlying(), fmt(p.getHealth()), p.getInventory().getSelectedSlot() + 1, p.getMainHandItem().getItem(),
+			p.onGround(), p.isFallFlying(), p.isSprinting(), p.isShiftKeyDown(), fmt(p.getHealth()), p.getInventory().getSelectedSlot() + 1, Myriad.inventory().serverSlot() + 1, p.getMainHandItem().getItem(),
 			mc.gameMode == null ? "?" : mc.gameMode.getPlayerMode().getName(), target);
 	}
 

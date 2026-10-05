@@ -7,17 +7,26 @@ import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
+import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.service.Inventory;
 import dev.myriad.api.service.PacketLimits;
 import dev.myriad.api.util.Slots;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ClientboundLoginPacket;
+import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
 
 public final class InventoryManager implements Inventory {
 	private final Minecraft mc = Minecraft.getInstance();
@@ -25,15 +34,35 @@ public final class InventoryManager implements Inventory {
 	private Object holder;
 	private int holdTicks;
 
-	@Subscribe
+	/**
+	 * What the server last heard of your movement: the keys of the last input packet (vanilla only sends one when they
+	 * change) and whether you're sprinting. Grim judges a click by these, not by what you press now.
+	 */
+	private volatile Input sentInput = Input.EMPTY;
+	private volatile boolean sentSprinting;
+
+	/** Lowest priority: what actually goes out, after other handlers have changed it. */
+	@Subscribe(priority = Priority.LOWEST)
 	private void onSend(PacketEvent.Send e) {
-		if (e.packet() instanceof ServerboundSetCarriedItemPacket p) serverSlot = p.getSlot();
+		if (e.isCancelled()) return;
+		switch (e.packet()) {
+			case ServerboundSetCarriedItemPacket p -> serverSlot = p.getSlot();
+			case ServerboundPlayerInputPacket p -> sentInput = p.input();
+			case ServerboundPlayerCommandPacket p when p.getAction() == ServerboundPlayerCommandPacket.Action.START_SPRINTING -> sentSprinting = true;
+			case ServerboundPlayerCommandPacket p when p.getAction() == ServerboundPlayerCommandPacket.Action.STOP_SPRINTING -> sentSprinting = false;
+			default -> {
+			}
+		}
 	}
 
-	/** The server can set the slot itself (on join, or by a plugin). */
+	/** The server can set the slot itself (on join, or by a plugin); a respawn starts with no keys and no sprint. */
 	@Subscribe
 	private void onReceive(PacketEvent.Receive e) {
 		if (e.packet() instanceof ClientboundSetHeldSlotPacket p) serverSlot = p.slot();
+		if (e.packet() instanceof ClientboundRespawnPacket || e.packet() instanceof ClientboundLoginPacket) {
+			sentInput = Input.EMPTY;
+			sentSprinting = false;
+		}
 	}
 
 	/** Expires holds at the start of the tick, so the slot change back goes out before movement, like vanilla's. */
@@ -182,14 +211,19 @@ public final class InventoryManager implements Inventory {
 		return moveToHotbar(from, to) ? to : -1;
 	}
 
+	/**
+	 * Grim (MultiActionsC) cancels a click while the last input packet had a movement key or jump down, or sneak, or
+	 * while you're sprinting. A click at the start of a tick goes out before that tick's input packet, so the one
+	 * that counts is the last one sent.
+	 */
 	@Override
 	public boolean safeToClick() {
 		if (mc.player == null) return false;
-		Input keys = mc.player.input.keyPresses;
-		return !keys.forward() && !keys.backward() && !keys.left() && !keys.right() && !keys.shift() && !mc.player.isSprinting();
+		Input sent = sentInput;
+		return !sent.forward() && !sent.backward() && !sent.left() && !sent.right() && !sent.jump() && !sent.shift() && !sentSprinting;
 	}
 
-	/** A still tick is wanted: the next input releases movement, sneak and sprint. */
+	/** A still tick is wanted: the next input releases movement, jump, sneak and sprint. */
 	private boolean stillRequested;
 	/** Sprinting was stopped for a still tick; it's pressed again once you move forward. */
 	private boolean resumeSprint;
@@ -197,8 +231,19 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public boolean prepareClick() {
 		if (safeToClick()) return true;
+		// Letting go of sneak on an edge, with what's left of your speed, would walk you off it: wait for it to settle.
+		if (mc.player != null && mc.player.isShiftKeyDown() && mc.player.onGround() && wouldStepOffEdge()) return false;
 		stillRequested = true;
 		return false;
+	}
+
+	/** Whether this tick's motion, without sneak's edge guard, would take you off the block you stand on. */
+	private boolean wouldStepOffEdge() {
+		var p = mc.player;
+		var v = p.getDeltaMovement();
+		var box = p.getBoundingBox();
+		return p.level().noCollision(p, new AABB(box.minX + 1e-7 + v.x, box.minY - p.maxUpStep() - 1e-7, box.minZ + 1e-7 + v.z,
+			box.maxX - 1e-7 + v.x, box.minY, box.maxZ - 1e-7 + v.z));
 	}
 
 	/** Last, so it has the final say over what's sent: Grim takes these keys as what you were doing at the click. */
@@ -207,7 +252,7 @@ public final class InventoryManager implements Inventory {
 		if (mc.player == null) return;
 		if (stillRequested) {
 			stillRequested = false;
-			e.forward = e.backward = e.left = e.right = e.sneak = e.sprint = false;
+			e.forward = e.backward = e.left = e.right = e.jump = e.sneak = e.sprint = false;
 			if (mc.player.isSprinting()) {
 				mc.player.setSprinting(false);
 				resumeSprint = true;
@@ -221,20 +266,143 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public int pullToHotbar(int inventoryIndex, Predicate<ItemStack> replaceable) {
 		if (mc.player == null || inventoryIndex < 9 || inventoryIndex >= 36 || !prepareClick()) return -1;
+		int to = roomFor(replaceable);
+		return to >= 0 && moveToHotbar(inventoryIndex, to) ? to : -1;
+	}
+
+	/**
+	 * The hotbar slot to bring an item into: an empty one, else one {@code replaceable} accepts, else building blocks.
+	 * Never the selected slot, the one the server holds, or one with something borrowed in it. -1 if none.
+	 */
+	private int roomFor(Predicate<ItemStack> replaceable) {
 		var inv = mc.player.getInventory();
 		int selected = inv.getSelectedSlot(), to = -1, blocks = -1;
 		for (int i = 0; i < 9; i++) {
-			if (i == selected || i == serverSlot) continue;
+			if (i == selected || i == serverSlot || borrowAt(i) != null) continue;
 			ItemStack s = inv.getItem(i);
-			if (s.isEmpty()) {
-				to = i;
-				break;
-			}
+			if (s.isEmpty()) return i;
 			if (to < 0 && replaceable.test(s)) to = i;
 			if (blocks < 0 && Target.solid().preference(s) >= 0) blocks = i;
 		}
-		if (to < 0) to = blocks;
-		return to >= 0 && moveToHotbar(inventoryIndex, to) ? to : -1;
+		return to >= 0 ? to : blocks;
+	}
+
+	// ---- borrowing ----------------------------------------------------------------------------------------------
+
+	/** An item borrowed from {@code home} (9-35) into hotbar slot {@code slot}, to go back once it's no longer wanted. */
+	private static final class Borrow {
+		final Object owner;
+		final int home, slot, selectedBefore;
+		/** What was borrowed, and what it made room for (now at home; null if the hotbar slot was empty). */
+		final Item item, displaced;
+		int lastWanted, waited, outOfPlace;
+		boolean giveBack;
+
+		Borrow(Object owner, int home, int slot, int selectedBefore, Item item, Item displaced, int now) {
+			this.owner = owner;
+			this.home = home;
+			this.slot = slot;
+			this.selectedBefore = selectedBefore;
+			this.item = item;
+			this.displaced = displaced;
+			this.lastWanted = now;
+		}
+	}
+
+	/** A borrowed item goes back once nothing has wanted it for this long. */
+	private static final int KEEP_TICKS = 10;
+	/** Ticks a return waits for a moment you aren't moving before releasing your keys for one. */
+	private static final int WAIT_FOR_STILL = 40;
+	/**
+	 * Ticks the items may look out of place before a borrow is forgotten: an inventory update the server sent before it
+	 * had the borrowing click can arrive after it, showing the old places until the next one.
+	 */
+	private static final int OUT_OF_PLACE_TICKS = 20;
+
+	private final List<Borrow> borrows = new ArrayList<>();
+	private int ticks;
+
+	@Override
+	public int borrow(Object owner, int inventoryIndex, Predicate<ItemStack> replaceable) {
+		if (mc.player == null || inventoryIndex < 0 || inventoryIndex >= 36) return -1;
+		if (inventoryIndex < 9) {
+			Borrow b = borrowAt(inventoryIndex);
+			if (b != null) {
+				b.lastWanted = ticks;
+				b.giveBack = false;
+			}
+			return inventoryIndex;
+		}
+		if (!prepareClick()) return -1;
+		int to = roomFor(replaceable == null ? s -> false : replaceable);
+		if (to < 0) return -1;
+		var inv = mc.player.getInventory();
+		Item item = inv.getItem(inventoryIndex).getItem();
+		ItemStack displaced = inv.getItem(to);
+		Item displacedItem = displaced.isEmpty() ? null : displaced.getItem();
+		if (!moveToHotbar(inventoryIndex, to)) return -1;
+		borrows.add(new Borrow(owner, inventoryIndex, to, inv.getSelectedSlot(), item, displacedItem, ticks));
+		return to;
+	}
+
+	@Override
+	public void giveBack(Object owner) {
+		for (Borrow b : borrows) if (b.owner == owner) b.giveBack = true;
+	}
+
+	@Override
+	public ItemStack shownInHotbar(int hotbarSlot) {
+		if (mc.player == null) return ItemStack.EMPTY;
+		var inv = mc.player.getInventory();
+		Borrow b = borrowAt(hotbarSlot);
+		if (b == null || inv.getSelectedSlot() == hotbarSlot || !intact(b)) return inv.getItem(hotbarSlot);
+		return inv.getItem(b.home);
+	}
+
+	private Borrow borrowAt(int hotbarSlot) {
+		for (Borrow b : borrows) if (b.slot == hotbarSlot) return b;
+		return null;
+	}
+
+	/** The borrowed item (or nothing, if it was used up) is still in its slot, and what it displaced at home. */
+	private boolean intact(Borrow b) {
+		var inv = mc.player.getInventory();
+		ItemStack here = inv.getItem(b.slot), home = inv.getItem(b.home);
+		return (here.isEmpty() || here.is(b.item)) && (b.displaced == null ? home.isEmpty() : home.is(b.displaced));
+	}
+
+	/**
+	 * Puts back borrowed items nothing wants any more, one click a tick. A borrow stays while the server holds its slot
+	 * (a hold, or a silent swap) or you're using it; one whose items have moved is forgotten where it is.
+	 */
+	@Subscribe(priority = 940)
+	private void tickBorrows(TickEvent.Pre e) {
+		ticks++;
+		if (borrows.isEmpty() || mc.player == null) return;
+		var inv = mc.player.getInventory();
+		int selected = inv.getSelectedSlot();
+		for (Borrow b : new ArrayList<>(borrows)) {
+			if (!intact(b)) {
+				if (++b.outOfPlace > OUT_OF_PLACE_TICKS) borrows.remove(b);
+				continue;
+			}
+			b.outOfPlace = 0;
+			boolean held = serverSlot == b.slot && (holder != null || serverSlot != selected);
+			if (held || selected == b.slot && mc.player.isUsingItem()) b.lastWanted = ticks;
+			if (held || !b.giveBack && ticks - b.lastWanted < KEEP_TICKS) continue;
+			// A moment you aren't moving if one comes soon; otherwise your keys are released for a tick.
+			if (!safeToClick() && !(++b.waited > WAIT_FOR_STILL && prepareClick())) continue;
+			if (!canClick(1)) continue;
+			if (selected == b.slot && b.selectedBefore != b.slot) select(b.selectedBefore);
+			clickSwap(b.home, b.slot);
+			borrows.remove(b);
+			return;
+		}
+	}
+
+	@Subscribe
+	private void onLeave(WorldEvent.Leave e) {
+		borrows.clear();
 	}
 
 	/** True if the player's own screen is the one open to clicks, and the packet budget has room for {@code clicks}. */
