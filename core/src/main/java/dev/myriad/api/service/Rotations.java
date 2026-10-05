@@ -1,6 +1,7 @@
 package dev.myriad.api.service;
 
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Server-side rotation arbitration. Modules {@link #request} a rotation every tick they need one; each tick the
@@ -17,34 +18,86 @@ import net.minecraft.world.phys.Vec3;
  * <pre>{@code
  * // Request in TickEvent.Pre so move fix applies to this tick's movement.
  * Myriad.rotations().lookAt(this, target.getEyePosition(), Rotations.PRIORITY_HIGH,
- *     new Rotations.Options(turnSpeed.get(), strict.get()));
+ *     Rotations.Options.forServer().withTurnSpeed(turnSpeed.get()));
  * }</pre>
  */
+@ApiStatus.NonExtendable
 public interface Rotations {
 	int PRIORITY_LOW = 0;
 	int PRIORITY_NORMAL = 50;
 	int PRIORITY_HIGH = 100;
 
 	/**
-	 * How a rotation is applied.
+	 * How a rotation is applied. Start from a preset and change what you need, so new options added in later versions
+	 * keep their defaults in your code:
 	 *
-	 * @param turnSpeed the most each axis turns per tick, in degrees, from the rotation the server last saw towards
-	 *                  the target; 0 snaps there at once. Strict anti-cheats flag big instant turns, so modules that
-	 *                  aim at moving targets usually let the user pick a speed.
-	 * @param moveFix   makes your movement match the sent yaw, as anti-cheats that simulate movement (Grim) expect:
-	 *                  the movement keys are re-pressed relative to the sent yaw to go the way you're steering as
-	 *                  closely as 8 directions allow, and walking, jumping and sprinting use the sent yaw. Needs the
-	 *                  request made before the player moves, e.g. in {@code TickEvent.Pre}.
+	 * <pre>{@code
+	 * Rotations.Options o = Rotations.Options.forServer().withTurnSpeed(turnSpeed.get());
+	 * }</pre>
 	 */
-	record Options(float turnSpeed, boolean moveFix) {
+	final class Options {
+		/** Snaps to the rotation at once, movement unchanged. */
 		public static final Options INSTANT = new Options(0, false);
+		/** Snaps to the rotation at once, with {@link #moveFix()}: what Grim expects. */
+		public static final Options MOVE_FIX = new Options(0, true);
 
-		public Options {
-			turnSpeed = Math.max(0, turnSpeed);
+		private final float turnSpeed;
+		private final boolean moveFix;
+
+		private Options(float turnSpeed, boolean moveFix) {
+			this.turnSpeed = Math.max(0, turnSpeed);
+			this.moveFix = moveFix;
+		}
+
+		/** {@link #MOVE_FIX} where the server checks movement against rotations ({@link AntiCheat#isStrict()}), else {@link #INSTANT}. */
+		public static Options forServer() {
+			return AntiCheat.strict() ? MOVE_FIX : INSTANT;
+		}
+
+		/**
+		 * The most each axis turns per tick, in degrees, from the rotation the server last saw towards the target; 0
+		 * snaps there at once. Strict anti-cheats flag big instant turns, so modules that aim at moving targets usually
+		 * let the user pick a speed.
+		 */
+		public float turnSpeed() {
+			return turnSpeed;
+		}
+
+		/**
+		 * Makes your movement match the sent yaw, as anti-cheats that simulate movement (Grim) expect: the movement keys
+		 * are re-pressed relative to the sent yaw to go the way you're steering as closely as 8 directions allow, and
+		 * walking, jumping and sprinting use the sent yaw. Needs the request made before the player moves, e.g. in
+		 * {@code TickEvent.Pre}.
+		 */
+		public boolean moveFix() {
+			return moveFix;
 		}
 
 		public boolean isInstant() {
 			return turnSpeed <= 0;
+		}
+
+		public Options withTurnSpeed(float turnSpeed) {
+			return new Options(turnSpeed, moveFix);
+		}
+
+		public Options withMoveFix(boolean moveFix) {
+			return new Options(turnSpeed, moveFix);
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof Options other && other.turnSpeed == turnSpeed && other.moveFix == moveFix;
+		}
+
+		@Override
+		public int hashCode() {
+			return Float.hashCode(turnSpeed) * 31 + Boolean.hashCode(moveFix);
+		}
+
+		@Override
+		public String toString() {
+			return "Rotations.Options[turnSpeed=" + turnSpeed + ", moveFix=" + moveFix + "]";
 		}
 	}
 

@@ -3,6 +3,7 @@ package dev.myriad.api.event.events;
 import dev.myriad.api.event.Cancellable;
 import dev.myriad.api.util.ChatMessages;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * A line is about to be added to the chat: from the server, another player, or the client itself. Cancel to hide
@@ -12,6 +13,7 @@ public final class ChatReceiveEvent extends Cancellable {
 	private Component message;
 	private ChatMessages.Parsed parsed;
 
+	@ApiStatus.Internal
 	public ChatReceiveEvent(Component message) {
 		this.message = message;
 	}

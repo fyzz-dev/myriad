@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.BlockHitResult;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Shared block placement for modules like Scaffold, Surround or Auto Trap: finds a solid neighbour face to click,
@@ -11,32 +12,116 @@ import net.minecraft.world.phys.BlockHitResult;
  * server has answered, so modules don't place twice while it catches up and learn whether the block stayed.
  *
  * <pre>{@code
- * Placement.Attempt a = Myriad.placement().place(pos, slot, strict.get() ? Placement.Options.STRICT : Placement.Options.DEFAULT);
+ * Placement.Attempt a = Myriad.placement().place(this, pos, slot, Placement.Options.forServer());
  * if (!a.sent()) return; // a.check() says why: OUT_OF_RANGE, ENTITY_IN_WAY, PENDING, ...
  * a.result().thenAccept(placed -> { if (!placed) warn("The server refused the block at " + pos.toShortString()); });
  * }</pre>
  */
+@ApiStatus.NonExtendable
 public interface Placement {
 	/**
-	 * @param rotate       face the clicked face server-side first (needed on servers that check placements). The block
-	 *                     is placed at the start of the tick after the rotation went out in the movement packet,
-	 *                     before that tick's movement, as vanilla clicks; placements that a single rotation can't
-	 *                     cover wait their turn, one rotation per tick. While facing it, movement follows the sent yaw
-	 *                     (rotation move fix), as Grim expects.
-	 * @param airPlace     allow placing with no solid neighbour, through the off hand (swap, place, swing, swap back),
-	 *                     clicking the face of the empty space that faces you. Any module or addon can ask for it; the
-	 *                     Air Place module is just one user. This is how 2b2t clients air place there; current Grim
-	 *                     builds (2.3.74 on the test server) refuse any placement against air (AirLiquidPlace)
-	 * @param swing        swing the hand
-	 * @param range        maximum distance from the eyes to the block centre
-	 * @param visibleFaces only click faces that point towards you with nothing in the way; strict anti-cheats reject
-	 *                     the rest. Visible faces are always preferred; this makes them required.
+	 * How blocks are placed. Start from a preset ({@link #forServer()}, {@link #DEFAULT}, {@link #STRICT}) and change
+	 * what you need with the {@code with} methods, so options added in later versions keep their defaults in your code:
+	 *
+	 * <pre>{@code
+	 * Placement.Options o = Placement.Options.forServer().withRange(range.get());
+	 * }</pre>
 	 */
-	record Options(boolean rotate, boolean airPlace, boolean swing, double range, boolean visibleFaces) {
+	final class Options {
 		/** Lenient servers: no rotation, any face. */
 		public static final Options DEFAULT = new Options(false, false, true, 4.5, false);
 		/** Servers that check placements (Grim, NCP, 2b2t): rotate first and click only visible faces. */
 		public static final Options STRICT = new Options(true, false, true, 4.5, true);
+
+		private final boolean rotate, airPlace, swing, visibleFaces;
+		private final double range;
+
+		private Options(boolean rotate, boolean airPlace, boolean swing, double range, boolean visibleFaces) {
+			this.rotate = rotate;
+			this.airPlace = airPlace;
+			this.swing = swing;
+			this.range = range;
+			this.visibleFaces = visibleFaces;
+		}
+
+		/** {@link #STRICT} on servers that check placements ({@link AntiCheat#isStrict()}), otherwise {@link #DEFAULT}. */
+		public static Options forServer() {
+			return AntiCheat.strict() ? STRICT : DEFAULT;
+		}
+
+		/**
+		 * Face the clicked face server-side first (needed on servers that check placements). The block is placed at
+		 * the start of the tick after the rotation went out in the movement packet, before that tick's movement, as
+		 * vanilla clicks; placements that a single rotation can't cover wait their turn, one rotation per tick. While
+		 * facing it, movement follows the sent yaw (rotation move fix), as Grim expects.
+		 */
+		public boolean rotate() {
+			return rotate;
+		}
+
+		/**
+		 * Allow placing with no solid neighbour, through the off hand (swap, place, swing, swap back), clicking the
+		 * face of the empty space that faces you. This is how 2b2t clients air place there; current Grim builds (2.3.74
+		 * on the test server) refuse any placement against air (AirLiquidPlace).
+		 */
+		public boolean airPlace() {
+			return airPlace;
+		}
+
+		/** Swing the hand. */
+		public boolean swing() {
+			return swing;
+		}
+
+		/** Maximum distance from the eyes to the block centre. */
+		public double range() {
+			return range;
+		}
+
+		/**
+		 * Only click faces that point towards you with nothing in the way; strict anti-cheats reject the rest. Visible
+		 * faces are always preferred; this makes them required.
+		 */
+		public boolean visibleFaces() {
+			return visibleFaces;
+		}
+
+		public Options withRotate(boolean rotate) {
+			return new Options(rotate, airPlace, swing, range, visibleFaces);
+		}
+
+		public Options withAirPlace(boolean airPlace) {
+			return new Options(rotate, airPlace, swing, range, visibleFaces);
+		}
+
+		public Options withSwing(boolean swing) {
+			return new Options(rotate, airPlace, swing, range, visibleFaces);
+		}
+
+		public Options withRange(double range) {
+			return new Options(rotate, airPlace, swing, range, visibleFaces);
+		}
+
+		public Options withVisibleFaces(boolean visibleFaces) {
+			return new Options(rotate, airPlace, swing, range, visibleFaces);
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof Options x && x.rotate == rotate && x.airPlace == airPlace && x.swing == swing && x.range == range
+				&& x.visibleFaces == visibleFaces;
+		}
+
+		@Override
+		public int hashCode() {
+			return java.util.Objects.hash(rotate, airPlace, swing, range, visibleFaces);
+		}
+
+		@Override
+		public String toString() {
+			return "Placement.Options[rotate=" + rotate + ", airPlace=" + airPlace + ", swing=" + swing + ", range=" + range
+				+ ", visibleFaces=" + visibleFaces + "]";
+		}
 	}
 
 	/** Whether a block could go somewhere now, and if not, why not. */

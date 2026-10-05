@@ -1,6 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Mouse movement is about to turn the player. Cancel to keep the player still (and use the deltas yourself), or
@@ -9,6 +10,7 @@ import dev.myriad.api.event.Cancellable;
 public final class MouseLookEvent extends Cancellable {
 	private double deltaX, deltaY;
 
+	@ApiStatus.Internal
 	public MouseLookEvent(double deltaX, double deltaY) {
 		this.deltaX = deltaX;
 		this.deltaY = deltaY;

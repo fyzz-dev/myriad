@@ -2,6 +2,7 @@ package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
 import net.minecraft.network.protocol.Packet;
+import org.jetbrains.annotations.ApiStatus;
 
 /** Packet traffic. Bundles are split, so handlers see each inner packet. Receive is fired on the network thread. */
 public abstract class PacketEvent extends Cancellable {
@@ -20,12 +21,14 @@ public abstract class PacketEvent extends Cancellable {
 	}
 
 	public static final class Send extends PacketEvent {
+		@ApiStatus.Internal
 		public Send(Packet<?> packet) {
 			super(packet);
 		}
 	}
 
 	public static final class Receive extends PacketEvent {
+		@ApiStatus.Internal
 		public Receive(Packet<?> packet) {
 			super(packet);
 		}

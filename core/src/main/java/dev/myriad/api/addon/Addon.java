@@ -3,6 +3,7 @@ package dev.myriad.api.addon;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.metadata.ModMetadata;
 import net.fabricmc.loader.api.metadata.Person;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,6 +15,7 @@ public final class Addon {
 	private AddonState state = AddonState.LOADING;
 	private Throwable failure;
 
+	@ApiStatus.Internal
 	public Addon(ModContainer container, MyriadAddon entrypoint) {
 		this.container = container;
 		this.entrypoint = entrypoint;
@@ -78,10 +80,12 @@ public final class Addon {
 		return failure;
 	}
 
+	@ApiStatus.Internal
 	public void markLoaded() {
 		if (state == AddonState.LOADING) state = AddonState.LOADED;
 	}
 
+	@ApiStatus.Internal
 	public void markFailed(Throwable t) {
 		state = AddonState.FAILED;
 		failure = t;

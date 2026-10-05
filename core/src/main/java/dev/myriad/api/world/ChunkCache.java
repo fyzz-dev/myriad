@@ -26,7 +26,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import dev.myriad.api.util.Async;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
@@ -34,7 +37,7 @@ import java.util.function.IntSupplier;
 /**
  * Something worked out once per chunk and kept until that chunk changes: the storage blocks in it, its safe holes, the
  * ores of a search. Instead of rescanning everything around you every few ticks, a chunk is computed when it loads or
- * comes into range, and again only when a block in it changes. With a {@link #mesh mesher} each chunk also keeps a
+ * comes into range, and again only when a block in it changes. With a {@link Builder#mesh mesher} each chunk also keeps a
  * {@link WorldMesh}, so what you found is drawn every frame without a render handler.
  *
  * <pre>{@code
@@ -87,11 +90,17 @@ public final class ChunkCache<T> {
 	private final @Nullable Mesher<T> mesher;
 	private final IntSupplier range;
 	private final boolean neighbours;
+	private final boolean async;
 	private final long budgetNanos;
 
 	private final Long2ObjectOpenHashMap<Entry<T>> entries = new Long2ObjectOpenHashMap<>();
 	/** Chunks with work pending (compute or remesh). */
 	private final LongLinkedOpenHashSet queue = new LongLinkedOpenHashSet();
+	/** The queue sorted nearest first, kept until the queue or the centre changes. */
+	private long @Nullable [] sortedQueue;
+	/** Results of chunks computed on the worker pool, applied on the render thread. */
+	private final Queue<Object[]> computed = new ConcurrentLinkedQueue<>();
+	private int inFlight;
 	private final List<Subscription> subscriptions = new ArrayList<>();
 	private boolean running;
 	private @Nullable ClientLevel level;
@@ -104,6 +113,8 @@ public final class ChunkCache<T> {
 		@Nullable T value;
 		@Nullable WorldMesh mesh;
 		boolean compute = true, remesh;
+		/** Async: a computation is running for this chunk; a change meanwhile sets {@link #compute} again. */
+		boolean computing;
 	}
 
 	private ChunkCache(Builder<T> b) {
@@ -112,6 +123,7 @@ public final class ChunkCache<T> {
 		this.mesher = b.mesher;
 		this.range = b.range;
 		this.neighbours = b.neighbours;
+		this.async = b.async;
 		this.budgetNanos = (long) (b.budgetMillis * 1_000_000);
 	}
 
@@ -148,9 +160,9 @@ public final class ChunkCache<T> {
 		return valueCount;
 	}
 
-	/** Chunks still waiting to be computed or meshed. 0 once the cache has caught up. */
+	/** Chunks still waiting to be computed or meshed (async: those being computed included). 0 once the cache has caught up. */
 	public int pending() {
-		return queue.size();
+		return queue.size() + inFlight;
 	}
 
 	public boolean isRunning() {
@@ -174,6 +186,7 @@ public final class ChunkCache<T> {
 		for (Long2ObjectMap.Entry<Entry<T>> en : entries.long2ObjectEntrySet()) {
 			en.getValue().compute = true;
 			queue.add(en.getLongKey());
+			sortedQueue = null;
 		}
 	}
 
@@ -183,6 +196,7 @@ public final class ChunkCache<T> {
 		for (Long2ObjectMap.Entry<Entry<T>> en : entries.long2ObjectEntrySet()) {
 			en.getValue().remesh = true;
 			queue.add(en.getLongKey());
+			sortedQueue = null;
 		}
 	}
 
@@ -191,6 +205,7 @@ public final class ChunkCache<T> {
 		if (e == null) return;
 		e.compute = true;
 		queue.add(key);
+		sortedQueue = null;
 	}
 
 	// ---- lifecycle -------------------------------------------------------------------------------------------------
@@ -221,6 +236,9 @@ public final class ChunkCache<T> {
 		for (Entry<T> e : entries.values()) if (e.mesh != null) e.mesh.close();
 		entries.clear();
 		queue.clear();
+		sortedQueue = null;
+		computed.clear();
+		inFlight = 0;
 		valueCount = 0;
 		level = null;
 		lastRange = -1;
@@ -266,6 +284,7 @@ public final class ChunkCache<T> {
 			if (inRange(ChunkPos.getX(key), ChunkPos.getZ(key))) continue;
 			free(en.getValue());
 			queue.remove(key);
+			sortedQueue = null;
 			it.remove();
 		}
 		for (int x = cx - r; x <= cx + r; x++) {
@@ -274,6 +293,8 @@ public final class ChunkCache<T> {
 				if (!entries.containsKey(key) && level.getChunkSource().getChunk(x, z, ChunkStatus.FULL, false) != null) {
 					entries.put(key, new Entry<>());
 					queue.add(key);
+					sortedQueue = null;
+		sortedQueue = null;
 				}
 			}
 		}
@@ -286,6 +307,7 @@ public final class ChunkCache<T> {
 		if (inRange(x, z)) {
 			entries.computeIfAbsent(key, k -> new Entry<>()).compute = true;
 			queue.add(key);
+		sortedQueue = null;
 		}
 		if (neighbours) {
 			markCompute(ChunkPos.pack(x - 1, z));
@@ -311,6 +333,7 @@ public final class ChunkCache<T> {
 	private void drop(long key) {
 		Entry<T> e = entries.remove(key);
 		queue.remove(key);
+		sortedQueue = null;
 		if (e != null) free(e);
 	}
 
@@ -325,19 +348,56 @@ public final class ChunkCache<T> {
 
 	/** Works through the queue, nearest chunks first, until the tick's time budget runs out. */
 	private void process() {
+		applyComputed();
 		if (queue.isEmpty()) return;
 		long deadline = System.nanoTime() + budgetNanos;
-		long[] keys = queue.toLongArray();
-		if (keys.length > 1) {
-			int cx = centerX, cz = centerZ;
-			LongArrays.quickSort(keys, (a, b) -> Integer.compare(distSq(a, cx, cz), distSq(b, cx, cz)));
+		long[] keys = sortedQueue;
+		if (keys == null) {
+			keys = queue.toLongArray();
+			if (keys.length > 1) {
+				int cx = centerX, cz = centerZ;
+				LongArrays.quickSort(keys, (a, b) -> Integer.compare(distSq(a, cx, cz), distSq(b, cx, cz)));
+			}
+			sortedQueue = keys;
 		}
 		for (long key : keys) {
-			queue.remove(key);
+			if (!queue.remove(key)) continue;
 			Entry<T> e = entries.get(key);
 			if (e != null) work(key, e);
 			if (System.nanoTime() > deadline) break;
 		}
+		// What's left stays sorted; what was done is skipped next time by the queue check.
+		if (queue.isEmpty()) sortedQueue = null;
+	}
+
+	/** Async: takes the values the workers finished, and meshes them within this tick's budget. */
+	private void applyComputed() {
+		Object[] done;
+		while ((done = computed.poll()) != null) {
+			long key = (Long) done[0];
+			Entry<T> e = entries.get(key);
+			inFlight--;
+			if (e == null) continue;
+			e.computing = false;
+			if (e.compute) {
+				// It changed while being computed: again, with the new contents.
+				queue.add(key);
+				sortedQueue = null;
+				continue;
+			}
+			@SuppressWarnings("unchecked") T value = (T) done[1];
+			setValue(e, value);
+			if (e.remesh) {
+				queue.add(key);
+				sortedQueue = null;
+			}
+		}
+	}
+
+	private void setValue(Entry<T> e, @Nullable T value) {
+		if ((e.value == null) != (value == null)) valueCount += value == null ? -1 : 1;
+		e.value = value;
+		e.remesh = mesher != null;
 	}
 
 	private static int distSq(long key, int cx, int cz) {
@@ -354,6 +414,22 @@ public final class ChunkCache<T> {
 				drop(key);
 				return;
 			}
+			if (async) {
+				if (e.computing) return;
+				e.computing = true;
+				inFlight++;
+				Async.run(() -> {
+					T value;
+					try {
+						value = compute.compute(chunk);
+					} catch (Throwable t) {
+						failed("compute", t);
+						value = null;
+					}
+					computed.add(new Object[]{key, value});
+				});
+				return;
+			}
 			T value;
 			try {
 				value = compute.compute(chunk);
@@ -361,9 +437,7 @@ public final class ChunkCache<T> {
 				failed("compute", t);
 				value = null;
 			}
-			if ((e.value == null) != (value == null)) valueCount += value == null ? -1 : 1;
-			e.value = value;
-			e.remesh = mesher != null;
+			setValue(e, value);
 		}
 		if (e.remesh) {
 			e.remesh = false;
@@ -398,6 +472,7 @@ public final class ChunkCache<T> {
 		private @Nullable Mesher<T> mesher;
 		private IntSupplier range = () -> Minecraft.getInstance().options.getEffectiveRenderDistance();
 		private boolean neighbours;
+		private boolean async;
 		private double budgetMillis = 2;
 
 		private Builder(@Nullable Module owner, Compute<T> compute) {
@@ -428,6 +503,17 @@ public final class ChunkCache<T> {
 		}
 
 		/** Milliseconds of work per tick (default 2). At least one chunk is processed each tick regardless. */
+		/**
+		 * Runs the compute function on Myriad's worker pool instead of within the tick budget, for scans that take
+		 * long (many block types over many chunks): a chunk's blocks are read while the game may be changing them, so
+		 * the function must only read the chunk (never the level or entities) and must cope with a block changing under
+		 * it; a chunk that changes meanwhile is computed again. Meshing stays on the render thread.
+		 */
+		public Builder<T> async() {
+			this.async = true;
+			return this;
+		}
+
 		public Builder<T> budget(double millis) {
 			this.budgetMillis = millis;
 			return this;

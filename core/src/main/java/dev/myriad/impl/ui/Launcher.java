@@ -17,7 +17,6 @@ import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import net.minecraft.client.Minecraft;
 
 /**

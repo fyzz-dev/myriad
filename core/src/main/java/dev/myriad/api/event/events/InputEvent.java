@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 /**
  * The player's movement input for this tick, right after the keyboard was read. Change the flags to press or release
  * keys for this tick only (Scaffold holds sneak at edges, Elytra Bounce holds forward and jump), without touching
@@ -8,6 +9,7 @@ package dev.myriad.api.event.events;
 public final class InputEvent {
 	public boolean forward, backward, left, right, jump, sneak, sprint;
 
+	@ApiStatus.Internal
 	public InputEvent(boolean forward, boolean backward, boolean left, boolean right, boolean jump, boolean sneak, boolean sprint) {
 		this.forward = forward;
 		this.backward = backward;

@@ -5,6 +5,7 @@ import net.minecraft.client.Camera;
 import dev.myriad.api.render.Renderer3D;
 import dev.myriad.api.render.ShapeBuilder;
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Fired every frame while the world's geometry is collected for drawing. Draw with {@link #shapes()} in world
@@ -20,6 +21,7 @@ public final class Render3DEvent {
 	private final float tickDelta;
 	private final SubmitNodeCollector submits;
 
+	@ApiStatus.Internal
 	public Render3DEvent(PoseStack matrices, Camera camera, float tickDelta, SubmitNodeCollector submits) {
 		this.matrices = matrices;
 		this.camera = camera;

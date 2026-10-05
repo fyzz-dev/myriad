@@ -12,7 +12,9 @@ import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.ChoiceSetting;
 import dev.myriad.api.setting.ColorSetting;
 import dev.myriad.api.setting.DoubleSetting;
+import dev.myriad.api.setting.EnumSetSetting;
 import dev.myriad.api.setting.EnumSetting;
+import dev.myriad.api.setting.IntListSetting;
 import dev.myriad.api.setting.FileSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.KeybindSetting;
@@ -87,6 +89,8 @@ public final class CoreAddon implements MyriadAddon {
 		w.register(EnumSetting.class, s -> enumDropdown((EnumSetting) s), false);
 		w.register(StringSetting.class, s -> new TextField(s::get).onSubmit(s::set), false);
 		w.register(StringListSetting.class, StringListEditor::new, true);
+		w.register(IntListSetting.class, s -> new TextField(s::valueString).onSubmit(s::parse).placeholder("1, 2, 3"), false);
+		w.register(EnumSetSetting.class, s -> new RegistryPicker<>(enumSetSource((EnumSetSetting) s)), true);
 		w.register(ColorSetting.class, s -> new ColorPicker(s::get, s::set), false);
 		w.register(KeybindSetting.class, s -> new KeybindButton(s::get, s::set), false);
 		w.register(ActionSetting.class, s -> new Button("Run", s::run), false);
@@ -109,6 +113,50 @@ public final class CoreAddon implements MyriadAddon {
 			row.addFixed(new Button("Browse", () -> FilePicker.open(s)), 40);
 			return row;
 		}, false);
+	}
+
+	private static <E extends Enum<E>> RegistryPicker.Source<E> enumSetSource(EnumSetSetting<E> s) {
+		return new RegistryPicker.Source<>() {
+			@Override
+			public Iterable<E> all() {
+				return List.of(s.values());
+			}
+
+			@Override
+			public boolean accepts(E e) {
+				return true;
+			}
+
+			@Override
+			public boolean contains(E e) {
+				return s.contains(e);
+			}
+
+			@Override
+			public void toggle(E e) {
+				s.toggle(e);
+			}
+
+			@Override
+			public int size() {
+				return s.get().size();
+			}
+
+			@Override
+			public String label() {
+				return s.get().isEmpty() ? "none" : s.get().size() + " selected";
+			}
+
+			@Override
+			public String id(E e) {
+				return e.name();
+			}
+
+			@Override
+			public String name(E e) {
+				return EnumSetting.displayName(e);
+			}
+		};
 	}
 
 	/** Module lists reuse the searchable picker over every registered module. */

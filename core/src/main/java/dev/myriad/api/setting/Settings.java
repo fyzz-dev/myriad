@@ -97,8 +97,36 @@ public class Settings {
 	}
 
 	/**
+	 * Like {@link #toJson()}, also keeping what {@code previous} (the JSON loaded before) holds that these settings
+	 * don't know: values of settings a newer version added (after a downgrade), or of ones another version renamed. So
+	 * going back and forth between versions loses nothing.
+	 */
+	public JsonObject toJson(JsonObject previous) {
+		JsonObject o = previous == null ? new JsonObject() : previous.deepCopy();
+		for (SettingGroup g : groups) {
+			JsonElement ge = o.get(g.id());
+			if (ge == null || !ge.isJsonObject()) {
+				o.remove(g.id());
+				continue;
+			}
+			JsonObject go = ge.getAsJsonObject();
+			for (Setting<?> s : g.settings()) if (s.isSerializable()) go.remove(s.id());
+			if (go.isEmpty()) o.remove(g.id());
+		}
+		for (var e : toJson().entrySet()) {
+			JsonElement kept = o.get(e.getKey());
+			if (kept != null && kept.isJsonObject()) {
+				for (var v : e.getValue().getAsJsonObject().entrySet()) kept.getAsJsonObject().add(v.getKey(), v.getValue());
+			} else {
+				o.add(e.getKey(), e.getValue());
+			}
+		}
+		return o;
+	}
+
+	/**
 	 * Loads known groups/ids. Settings missing from the JSON are reset to their defaults (only non-defaults are
-	 * saved); unknown keys are ignored (the config layer preserves them separately).
+	 * saved); unknown keys are ignored here, and {@link #toJson(JsonObject)} keeps them when saving.
 	 */
 	public void fromJson(JsonObject o) {
 		for (SettingGroup g : groups) {

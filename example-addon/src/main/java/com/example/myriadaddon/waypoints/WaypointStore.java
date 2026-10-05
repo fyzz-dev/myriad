@@ -35,9 +35,16 @@ public final class WaypointStore {
 		this.storage = storage;
 	}
 
+	/**
+	 * The layout of the saved file. Bump it when the layout changes, and turn older layouts into the current one in
+	 * {@link #upgrade}: players never lose their waypoints to an update. Version 1 (unversioned) stored each
+	 * waypoint's position as "x", "y", "z"; version 2 stores "pos" as one array.
+	 */
+	private static final int FORMAT = 2;
+
 	public void load() {
 		worlds.clear();
-		storage.readJson(FILE).filter(JsonElement::isJsonObject).ifPresent(json -> {
+		storage.readJson(FILE, FORMAT, WaypointStore::upgrade).filter(JsonElement::isJsonObject).ifPresent(json -> {
 			for (var e : json.getAsJsonObject().entrySet()) {
 				List<Waypoint> list = new ArrayList<>();
 				for (JsonElement w : e.getValue().getAsJsonArray()) {
@@ -61,8 +68,26 @@ public final class WaypointStore {
 			for (Waypoint w : e.getValue()) arr.add(w.toJson());
 			json.add(e.getKey(), arr);
 		}
-		storage.writeJson(FILE, json);
+		storage.writeJson(FILE, json, FORMAT);
 		version++;
+	}
+
+	/** One step of the upgrade: data as version {@code from} in, as version {@code from + 1} out. */
+	private static JsonElement upgrade(int from, JsonElement data) {
+		if (from == 1 && data.isJsonObject()) {
+			for (var world : data.getAsJsonObject().entrySet()) {
+				for (JsonElement w : world.getValue().getAsJsonArray()) {
+					JsonObject o = w.getAsJsonObject();
+					if (o.has("pos") || !o.has("x")) continue;
+					JsonArray pos = new JsonArray();
+					pos.add(o.remove("x"));
+					pos.add(o.remove("y"));
+					pos.add(o.remove("z"));
+					o.add("pos", pos);
+				}
+			}
+		}
+		return data;
 	}
 
 	/** Goes up on every change. Compare it to rebuild UI only when something changed. */

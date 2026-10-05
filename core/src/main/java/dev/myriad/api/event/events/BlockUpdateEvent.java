@@ -2,6 +2,7 @@ package dev.myriad.api.event.events;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * The server changed a block: single updates and multi-block updates alike, including confirmations of blocks you
@@ -12,6 +13,7 @@ public final class BlockUpdateEvent {
 	private final BlockPos pos;
 	private final BlockState oldState, newState;
 
+	@ApiStatus.Internal
 	public BlockUpdateEvent(BlockPos pos, BlockState oldState, BlockState newState) {
 		this.pos = pos;
 		this.oldState = oldState;

@@ -2,6 +2,7 @@ package dev.myriad.api.service;
 
 import dev.myriad.api.build.Blueprint;
 import dev.myriad.api.build.Build;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 
@@ -27,29 +28,121 @@ import java.util.List;
  *
  * A module's builds stop when it's disabled.
  */
+@ApiStatus.NonExtendable
 public interface Building {
 	/**
-	 * @param placing        how blocks are placed ({@code Placement.Options.STRICT} on servers that check)
-	 * @param breaking       how blocks are broken
-	 * @param breakWrong     break blocks that are in the way of a placement; off for builds that should only fill
-	 *                       empty space (surround shouldn't dig up your base)
-	 * @param avoidFluids    don't break blocks that hold back water or lava
-	 * @param placesPerTick  most placements started per tick
-	 * @param priority       the priority of this build's breaks against other modules' breaks
-	 * @param keepUp         keep running when everything is done, putting back what changes (surround); otherwise
-	 *                       the build finishes once the blueprint is done
+	 * How a blueprint is built. Start from a preset ({@link #forServer()}, {@link #DEFAULT}, {@link #STRICT}) and change
+	 * what you need with the {@code with} methods, so options added in later versions keep their defaults in your code.
 	 */
-	record Options(Placement.Options placing, Breaking.Options breaking, boolean breakWrong, boolean avoidFluids, int placesPerTick,
-	               int priority, boolean keepUp) {
+	final class Options {
 		public static final Options DEFAULT = new Options(Placement.Options.DEFAULT, Breaking.Options.DEFAULT, true, true, 4, 0, false);
 		public static final Options STRICT = new Options(Placement.Options.STRICT, Breaking.Options.STRICT, true, true, 1, 0, false);
 
-		public Options withKeepUp(boolean keepUp) {
+		private final Placement.Options placing;
+		private final Breaking.Options breaking;
+		private final boolean breakWrong, avoidFluids, keepUp;
+		private final int placesPerTick, priority;
+
+		private Options(Placement.Options placing, Breaking.Options breaking, boolean breakWrong, boolean avoidFluids, int placesPerTick,
+		                int priority, boolean keepUp) {
+			this.placing = java.util.Objects.requireNonNull(placing);
+			this.breaking = java.util.Objects.requireNonNull(breaking);
+			this.breakWrong = breakWrong;
+			this.avoidFluids = avoidFluids;
+			this.placesPerTick = Math.max(1, placesPerTick);
+			this.priority = priority;
+			this.keepUp = keepUp;
+		}
+
+		/** {@link #STRICT} on servers that check placements and breaks ({@link AntiCheat#isStrict()}), otherwise {@link #DEFAULT}. */
+		public static Options forServer() {
+			return AntiCheat.strict() ? STRICT : DEFAULT;
+		}
+
+		/** How blocks are placed. */
+		public Placement.Options placing() {
+			return placing;
+		}
+
+		/** How blocks are broken. */
+		public Breaking.Options breaking() {
+			return breaking;
+		}
+
+		/**
+		 * Break blocks that are in the way of a placement; off for builds that should only fill empty space (surround
+		 * shouldn't dig up your base).
+		 */
+		public boolean breakWrong() {
+			return breakWrong;
+		}
+
+		/** Don't break blocks that hold back water or lava. */
+		public boolean avoidFluids() {
+			return avoidFluids;
+		}
+
+		/** Most placements started per tick. */
+		public int placesPerTick() {
+			return placesPerTick;
+		}
+
+		/** The priority of this build's breaks against other modules' breaks. */
+		public int priority() {
+			return priority;
+		}
+
+		/**
+		 * Keep running when everything is done, putting back what changes (surround); otherwise the build finishes once
+		 * the blueprint is done.
+		 */
+		public boolean keepUp() {
+			return keepUp;
+		}
+
+		public Options withPlacing(Placement.Options placing) {
+			return new Options(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
+		}
+
+		public Options withBreaking(Breaking.Options breaking) {
 			return new Options(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
 		}
 
 		public Options withBreakWrong(boolean breakWrong) {
 			return new Options(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
+		}
+
+		public Options withAvoidFluids(boolean avoidFluids) {
+			return new Options(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
+		}
+
+		public Options withPlacesPerTick(int placesPerTick) {
+			return new Options(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
+		}
+
+		public Options withPriority(int priority) {
+			return new Options(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
+		}
+
+		public Options withKeepUp(boolean keepUp) {
+			return new Options(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof Options x && x.placing.equals(placing) && x.breaking.equals(breaking) && x.breakWrong == breakWrong
+				&& x.avoidFluids == avoidFluids && x.placesPerTick == placesPerTick && x.priority == priority && x.keepUp == keepUp;
+		}
+
+		@Override
+		public int hashCode() {
+			return java.util.Objects.hash(placing, breaking, breakWrong, avoidFluids, placesPerTick, priority, keepUp);
+		}
+
+		@Override
+		public String toString() {
+			return "Building.Options[placing=" + placing + ", breaking=" + breaking + ", breakWrong=" + breakWrong + ", avoidFluids="
+				+ avoidFluids + ", placesPerTick=" + placesPerTick + ", priority=" + priority + ", keepUp=" + keepUp + "]";
 		}
 	}
 

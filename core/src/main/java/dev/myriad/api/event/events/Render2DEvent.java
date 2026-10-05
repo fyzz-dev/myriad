@@ -2,6 +2,7 @@ package dev.myriad.api.event.events;
 
 import dev.myriad.api.render.Canvas;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Fired after the vanilla HUD renders, in scaled GUI coordinates. Draw with {@link #canvas()} (Myriad's renderer,
@@ -13,6 +14,7 @@ public final class Render2DEvent {
 	private final Canvas canvas;
 	private final float tickDelta;
 
+	@ApiStatus.Internal
 	public Render2DEvent(GuiGraphicsExtractor context, Canvas canvas, float tickDelta) {
 		this.context = context;
 		this.canvas = canvas;

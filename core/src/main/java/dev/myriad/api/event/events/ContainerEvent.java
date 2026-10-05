@@ -1,6 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.service.Containers;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * A container (chest, shulker, furnace, villager trade, …) opening, receiving its contents, and closing. Use
@@ -19,6 +20,7 @@ public abstract class ContainerEvent {
 
 	/** The server opened a container screen. Its slots may still be empty until {@link Loaded}. */
 	public static final class Opened extends ContainerEvent {
+		@ApiStatus.Internal
 		public Opened(Containers.View view) {
 			super(view);
 		}
@@ -26,6 +28,7 @@ public abstract class ContainerEvent {
 
 	/** The container's contents arrived; slots are now accurate. */
 	public static final class Loaded extends ContainerEvent {
+		@ApiStatus.Internal
 		public Loaded(Containers.View view) {
 			super(view);
 		}
@@ -35,6 +38,7 @@ public abstract class ContainerEvent {
 	public static final class SlotUpdated extends ContainerEvent {
 		private final int slot;
 
+		@ApiStatus.Internal
 		public SlotUpdated(Containers.View view, int slot) {
 			super(view);
 			this.slot = slot;
@@ -48,6 +52,7 @@ public abstract class ContainerEvent {
 
 	/** The container closed (by you, the server, or a new screen replacing it). */
 	public static final class Closed extends ContainerEvent {
+		@ApiStatus.Internal
 		public Closed(Containers.View view) {
 			super(view);
 		}

@@ -1,5 +1,6 @@
 package dev.myriad.api.service;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
@@ -14,6 +15,7 @@ import net.minecraft.world.entity.player.Player;
  * int pops = Myriad.server().totemPops(player);
  * }</pre>
  */
+@ApiStatus.NonExtendable
 public interface ServerStats {
 	/** Average ticks per second over the last ~20 seconds, from the spacing of time updates; 20 until known. */
 	float tps();
@@ -46,6 +48,15 @@ public interface ServerStats {
 	int packetsSentPerSecond();
 
 	int packetsReceivedPerSecond();
+
+	/**
+	 * Joins the server you were last on (or are on) again, from any screen: the disconnect screen, the title screen,
+	 * or in game (which leaves first). False if there was none, or you're in singleplayer.
+	 */
+	boolean reconnect();
+
+	/** The address of the last server you joined this session, or null. */
+	@Nullable String lastAddress();
 
 	/** Totems {@code player} has used since they last died (reset when you join a world). */
 	int totemPops(UUID player);

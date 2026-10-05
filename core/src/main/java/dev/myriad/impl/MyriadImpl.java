@@ -69,6 +69,7 @@ public final class MyriadImpl implements MyriadApi {
 	private final Registry<Theme> themes = new Registry<>("theme");
 	private final Registry<BarWidget> barWidgets = new Registry<>("bar widget");
 	private final Registry<KeyAction> keyActions = new Registry<>("key action");
+	private final Registry<dev.myriad.api.addon.AddonSettings> addonSettings = new Registry<>("addon settings");
 	private final ConfigManagerImpl config = new ConfigManagerImpl(this);
 	private final NotificationManager notifications = new NotificationManager();
 	private final RotationManager rotations = new RotationManager();
@@ -76,6 +77,7 @@ public final class MyriadImpl implements MyriadApi {
 	private final BlockAckTracker blockAcks = new BlockAckTracker();
 	private final PacketLimiter packetLimiter = new PacketLimiter();
 	private final TickSpeedManager tickSpeed = new TickSpeedManager();
+	private final dev.myriad.impl.service.AntiCheatTracker antiCheat = new dev.myriad.impl.service.AntiCheatTracker();
 	private final dev.myriad.impl.service.PlacementManager placement = new dev.myriad.impl.service.PlacementManager(blockAcks);
 	private final BreakManager breaking = new BreakManager();
 	private final BuildManager building = new BuildManager();
@@ -111,6 +113,7 @@ public final class MyriadImpl implements MyriadApi {
 	private void start() {
 		long t0 = System.nanoTime();
 		events.setOwnerResolver(addonLoader::ownerOf);
+		events.setInGameCheck(() -> mc.level != null && mc.player != null);
 		Setting.setGlobalChangeHook(config::markDirty);
 		SettingColor.setPaletteProvider(windowManager.theme()::roleColor);
 		windowManager.setDirtyHook(config::markDirty);
@@ -124,6 +127,7 @@ public final class MyriadImpl implements MyriadApi {
 		events.subscribe(building);
 		events.subscribe(blockAcks);
 		events.subscribe(serverStats);
+		events.subscribe(antiCheat);
 		events.subscribe(containers);
 		events.subscribe(tasks);
 		events.subscribe(keybindManager);
@@ -141,7 +145,7 @@ public final class MyriadImpl implements MyriadApi {
 	}
 
 	public List<Registry<?>> registries() {
-		return List.of(categories, modules, commands, panels, layouts, themes, barWidgets, keyActions);
+		return List.of(categories, modules, commands, panels, layouts, themes, barWidgets, keyActions, addonSettings);
 	}
 
 	public ConfigManagerImpl configImpl() {
@@ -271,6 +275,19 @@ public final class MyriadImpl implements MyriadApi {
 		return tickSpeed;
 	}
 
+	@Override
+	public dev.myriad.api.service.AntiCheat antiCheat() {
+		return antiCheat;
+	}
+
+	public dev.myriad.impl.service.ServerStatsTracker serverStatsTracker() {
+		return serverStats;
+	}
+
+	public Registry<dev.myriad.api.addon.AddonSettings> addonSettings() {
+		return addonSettings;
+	}
+
 	public BlockAckTracker blockAcks() {
 		return blockAcks;
 	}
@@ -304,6 +321,12 @@ public final class MyriadImpl implements MyriadApi {
 			return;
 		}
 		sendChat(message);
+	}
+
+	@Override
+	public void runCommand(String line) {
+		String prefix = config.commandPrefix();
+		commandManager.execute(line.startsWith(prefix) ? line.substring(prefix.length()) : line);
 	}
 
 	@Override

@@ -1,7 +1,10 @@
 package dev.myriad.api.event;
 
+import org.jetbrains.annotations.ApiStatus;
+
 import java.util.function.Consumer;
 
+@ApiStatus.NonExtendable
 public interface EventBus {
 	/** Subscribes every {@link Subscribe} method on {@code listener} (including inherited ones). */
 	void subscribe(Object listener);
@@ -26,4 +29,11 @@ public interface EventBus {
 
 	/** True if anything listens for {@code event} or a supertype (to skip allocating unwatched events). */
 	boolean hasListeners(Class<?> event);
+
+	/**
+	 * A flag that stays equal to {@link #hasListeners} for {@code event}, kept current as listeners come and go: one
+	 * volatile read for hooks that run thousands of times a tick (collision shapes, block render shapes), where even a
+	 * map lookup is too much.
+	 */
+	ListenerFlag flag(Class<?> event);
 }

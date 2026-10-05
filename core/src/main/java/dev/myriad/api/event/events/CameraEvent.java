@@ -1,6 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.event.Cancellable;
+import org.jetbrains.annotations.ApiStatus;
 
 /** Hooks into the camera, for modules like Freecam and FreeLook. */
 public final class CameraEvent {
@@ -12,6 +13,7 @@ public final class CameraEvent {
 		public double x, y, z;
 		private final float tickDelta;
 
+		@ApiStatus.Internal
 		public Position(double x, double y, double z, float tickDelta) {
 			this.x = x;
 			this.y = y;
@@ -29,6 +31,7 @@ public final class CameraEvent {
 		public float yaw, pitch;
 		private final float tickDelta;
 
+		@ApiStatus.Internal
 		public Rotation(float yaw, float pitch, float tickDelta) {
 			this.yaw = yaw;
 			this.pitch = pitch;
@@ -44,6 +47,7 @@ public final class CameraEvent {
 	public static final class Detached {
 		public boolean renderSelf;
 
+		@ApiStatus.Internal
 		public Detached(boolean renderSelf) {
 			this.renderSelf = renderSelf;
 		}

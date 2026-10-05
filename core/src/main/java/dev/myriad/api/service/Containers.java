@@ -1,5 +1,6 @@
 package dev.myriad.api.service;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -26,6 +27,7 @@ import net.minecraft.world.item.ItemStack;
  *
  * Futures complete on the render thread, so it's safe to touch the game from them.
  */
+@ApiStatus.NonExtendable
 public interface Containers {
 	/** The open container, if one is open (the player's own inventory doesn't count). */
 	Optional<View> current();
@@ -41,6 +43,7 @@ public interface Containers {
 	void close();
 
 	/** An open container. Slot numbers are the container's own (0 = its first slot), unless noted. */
+	@ApiStatus.NonExtendable
 	interface View {
 		AbstractContainerMenu handler();
 

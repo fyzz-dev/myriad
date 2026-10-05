@@ -1,7 +1,11 @@
 package dev.myriad.impl.ui.panels;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.ui.WidgetPanel;
+import dev.myriad.api.ui.widget.Dropdown;
+import dev.myriad.impl.command.CoreCommands;
+import java.util.List;
 import dev.myriad.api.ui.widget.Button;
 import dev.myriad.api.ui.widget.HBox;
 import dev.myriad.api.ui.widget.Label;
@@ -50,5 +54,17 @@ public final class ProfilesPanel extends WidgetPanel {
 		}).accent(), 50);
 		content.add(create);
 		content.add(new Label("Creating a profile copies the current state into it.").dim());
+		content.add(Spacer.divider());
+		HBox ac = new HBox(4);
+		ac.addWeighted(new Label("Anti-cheat"), 1);
+		ac.addFixed(new Dropdown<>(() -> List.of(AntiCheat.Mode.values()), Myriad.antiCheat()::mode, Myriad.antiCheat()::setMode,
+			m -> switch (m) {
+				case AUTO -> "Auto";
+				case GRIM -> "Grim";
+				case VANILLA -> "Vanilla";
+			}), 80);
+		content.add(ac);
+		content.add(new Label(() -> CoreCommands.antiCheatStatus() + ". Grim makes modules rotate before acting, click only faces you "
+			+ "can see and wait for safe moments; Vanilla acts as fast as the vanilla server allows.").dim());
 	}
 }

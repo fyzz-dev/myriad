@@ -2,6 +2,7 @@ package dev.myriad.api.ui.layout;
 
 import com.google.gson.JsonObject;
 import dev.myriad.api.ui.Rect;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -10,6 +11,7 @@ import java.util.function.Function;
 /**
  * The tiling of one workspace. {@code W} is an opaque window handle; layouts only compare handles by identity.
  */
+@ApiStatus.NonExtendable
 public interface LayoutState<W> {
 	/** Adds a window. {@code focused} is the currently focused tiled window (or null), which new windows split. */
 	void add(W window, W focused);
@@ -48,6 +50,7 @@ public interface LayoutState<W> {
 	void load(JsonObject json, Function<String, W> windows);
 
 	/** A resizable boundary: {@code bounds} is the hit area; {@link #drag} receives the mouse position. */
+	@ApiStatus.NonExtendable
 	interface Splitter {
 		Rect bounds();
 

@@ -14,6 +14,7 @@ import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.layout.Layout;
 import dev.myriad.api.util.Keybind;
 import dev.myriad.api.util.MyriadId;
+import org.jetbrains.annotations.ApiStatus;
 import org.slf4j.Logger;
 
 import java.util.function.Supplier;
@@ -22,6 +23,7 @@ import java.util.function.Supplier;
  * Everything an addon can register, scoped to that addon: registrations are tagged with its mod id (which is also
  * the namespace of every id it creates) and are rolled back if the addon fails to load.
  */
+@ApiStatus.NonExtendable
 public interface AddonContext {
 	Addon addon();
 
@@ -83,6 +85,12 @@ public interface AddonContext {
 
 	/** A global key action (works in game, outside the menu), rebindable in the Keybinds panel. */
 	KeyAction registerKeyAction(String name, Keybind defaultBind, Runnable action);
+
+	/**
+	 * Settings of the addon itself (not of a module), shown under it in the Addons panel and saved with the profile.
+	 * Several groups of them can be declared, each with a name.
+	 */
+	AddonSettings settings(String name);
 
 	SettingWidgets settingWidgets();
 

@@ -1,5 +1,7 @@
 package dev.myriad.api.config;
 
+import org.jetbrains.annotations.ApiStatus;
+
 import java.nio.file.Path;
 import java.util.List;
 
@@ -7,6 +9,7 @@ import java.util.List;
  * Profiles and persistence. Module state and UI layout belong to the active profile; friends and global options
  * do not. Changes are saved automatically shortly after they happen.
  */
+@ApiStatus.NonExtendable
 public interface ConfigManager {
 	Path root();
 

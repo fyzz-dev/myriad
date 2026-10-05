@@ -1,6 +1,7 @@
 package dev.myriad.api.build;
 
 import net.minecraft.core.BlockPos;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -9,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
  * A running build from {@code Myriad.building().start(...)}: the plan for what's in reach, how much is left, and a
  * way to stop it. Draw {@link #steps()} to show the plan; each step says what's happening there or why it's stuck.
  */
+@ApiStatus.NonExtendable
 public interface Build {
 	/** Where one position stands. */
 	enum Status {

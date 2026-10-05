@@ -1,12 +1,14 @@
 package dev.myriad.api;
 
 import dev.myriad.api.addon.Addon;
+import dev.myriad.api.addon.AddonSettings;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.config.ConfigManager;
 import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.ModuleRegistry;
 import dev.myriad.api.registry.Registry;
+import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.service.Breaking;
 import dev.myriad.api.service.Building;
 import dev.myriad.api.service.Containers;
@@ -27,8 +29,10 @@ import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.layout.Layout;
 import java.util.List;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.ApiStatus;
 
 /** The services behind the {@link Myriad} facade. */
+@ApiStatus.NonExtendable
 public interface MyriadApi {
 	EventBus events();
 
@@ -49,6 +53,8 @@ public interface MyriadApi {
 	Registry<BarWidget> barWidgets();
 
 	Registry<KeyAction> keyActions();
+
+	Registry<AddonSettings> addonSettings();
 
 	ConfigManager config();
 
@@ -76,9 +82,13 @@ public interface MyriadApi {
 
 	TickSpeed tickSpeed();
 
+	AntiCheat antiCheat();
+
 	Desktop ui();
 
 	void chat(Component message);
 
 	void chat(Component message, String id);
+
+	void runCommand(String line);
 }

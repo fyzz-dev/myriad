@@ -1,5 +1,7 @@
 package dev.myriad.api.service;
 
+import org.jetbrains.annotations.ApiStatus;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -25,6 +27,7 @@ import java.util.function.Supplier;
  * A sequence fails when a step throws, a {@link Sequence#require} check is false, an {@link Sequence#await}ed
  * future fails or a wait times out (with a {@link java.util.concurrent.TimeoutException}).
  */
+@ApiStatus.NonExtendable
 public interface Tasks {
 	/** Runs {@code action} after {@code ticks} ticks (0 = the next time tasks run, at the end of this tick or the next). */
 	Handle later(Object owner, int ticks, Runnable action);
@@ -41,6 +44,7 @@ public interface Tasks {
 	/** Whether {@code owner} has anything scheduled. */
 	boolean isBusy(Object owner);
 
+	@ApiStatus.NonExtendable
 	interface Handle {
 		void cancel();
 
@@ -48,6 +52,7 @@ public interface Tasks {
 	}
 
 	/** Steps run in order; each waits for the one before. */
+	@ApiStatus.NonExtendable
 	interface Sequence {
 		/** Runs {@code action}, then moves straight on to the next step in the same tick. */
 		Sequence run(Runnable action);

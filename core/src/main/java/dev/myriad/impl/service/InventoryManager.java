@@ -67,7 +67,7 @@ public final class InventoryManager implements Inventory {
 	private ItemStack chargedItem = ItemStack.EMPTY;
 
 	/** Lowest priority: what actually goes out, after other handlers have changed it. */
-	@Subscribe(priority = Priority.LOWEST)
+	@Subscribe(priority = Priority.LOWEST, packets = {ServerboundSetCarriedItemPacket.class, ServerboundAttackPacket.class, ServerboundPlayerInputPacket.class, ServerboundPlayerCommandPacket.class})
 	private void onSend(PacketEvent.Send e) {
 		if (e.isCancelled()) return;
 		switch (e.packet()) {
@@ -82,7 +82,7 @@ public final class InventoryManager implements Inventory {
 	}
 
 	/** The server can set the slot itself (on join, or by a plugin); a respawn starts with no keys and no sprint. */
-	@Subscribe
+	@Subscribe(packets = {ClientboundSetHeldSlotPacket.class, ClientboundRespawnPacket.class, ClientboundLoginPacket.class})
 	private void onReceive(PacketEvent.Receive e) {
 		if (e.packet() instanceof ClientboundSetHeldSlotPacket p) serverSlot = p.slot();
 		if (e.packet() instanceof ClientboundRespawnPacket || e.packet() instanceof ClientboundLoginPacket) {
@@ -106,7 +106,26 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public float attackCharge() {
 		if (mc.player == null) return 0;
-		return Mth.clamp((attackTicks + 0.5f) / attackDelay(mc.player.getInventory().getItem(serverSlot)), 0, 1);
+		return Mth.clamp((attackTicks + 0.5f) / cachedAttackDelay(mc.player.getInventory().getItem(serverSlot)), 0, 1);
+	}
+
+	/** {@link #attackDelay} answers the same until the items or your attack speed modifiers change; asked every tick. */
+	private ItemStack delayItem, delayCharged, delayMain;
+	private int delayModifiers = -1;
+	private float delay;
+
+	private float cachedAttackDelay(ItemStack item) {
+		AttributeInstance speed = mc.player.getAttribute(Attributes.ATTACK_SPEED);
+		int modifiers = speed == null ? -1 : speed.getModifiers().size();
+		ItemStack main = mc.player.getMainHandItem();
+		if (item != delayItem || chargedItem != delayCharged || main != delayMain || modifiers != delayModifiers) {
+			delay = attackDelay(item);
+			delayItem = item;
+			delayCharged = chargedItem;
+			delayMain = main;
+			delayModifiers = modifiers;
+		}
+		return delay;
 	}
 
 	/**
@@ -338,6 +357,8 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public boolean safeToClick() {
 		if (mc.player == null) return false;
+		// Only anti-cheats that simulate movement (Grim) refuse clicks while you move.
+		if (!dev.myriad.api.Myriad.antiCheat().isStrict()) return true;
 		Input sent = sentInput;
 		return !sent.forward() && !sent.backward() && !sent.left() && !sent.right() && !sent.jump() && !sent.shift() && !sentSprinting;
 	}

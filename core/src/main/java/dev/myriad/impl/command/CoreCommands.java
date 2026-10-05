@@ -11,12 +11,16 @@ import dev.myriad.api.command.Command;
 import dev.myriad.api.command.arguments.Arguments;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.Module;
+import dev.myriad.api.command.arguments.EnumArgumentType;
+import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.setting.Setting;
 import dev.myriad.api.util.FakePlayers;
 import dev.myriad.api.util.Texts;
 import dev.myriad.impl.Diagnostics;
+import dev.myriad.impl.event.MyriadEventBus;
+import dev.myriad.impl.event.Profiler;
 import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.ui.ThemeManager;
 import dev.myriad.impl.ui.WindowManager;
@@ -25,6 +29,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+
+import java.util.List;
 
 import static dev.myriad.api.command.arguments.ModuleArgumentType.module;
 import static dev.myriad.api.command.arguments.PlayerArgumentType.player;
@@ -37,8 +43,16 @@ public final class CoreCommands {
 	private CoreCommands() {
 	}
 
+	/** "Anti-cheat: Auto (Grim detected)" and the like. */
+	public static String antiCheatStatus() {
+		AntiCheat ac = Myriad.antiCheat();
+		String profile = ac.profile() == AntiCheat.Profile.GRIM ? "Grim" : "Vanilla";
+		return ac.mode() == AntiCheat.Mode.AUTO ? "Anti-cheat: Auto (" + profile + (ac.detected() == AntiCheat.Profile.GRIM ? " detected)" : ", none detected)")
+			: "Anti-cheat: " + profile;
+	}
+
 	public static void register(AddonContext ctx) {
-		ctx.registerCommand(new Command("toggle", "Toggles a module.", "t") {
+		ctx.registerCommand(new Command("toggle", "Toggles a module, or turns it on or off (.toggle sprint on).", "t") {
 			@Override
 			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
 				b.then(argument("module", module()).executes(c -> {
@@ -46,7 +60,12 @@ public final class CoreCommands {
 					m.toggle();
 					if (!m.chatFeedback.get()) info(m.name() + (m.isEnabled() ? " enabled" : " disabled"));
 					return SINGLE_SUCCESS;
-				}));
+				}).then(argument("state", Arguments.choice(() -> List.of("on", "off"))).executes(c -> {
+					Module m = c.getArgument("module", Module.class);
+					m.setEnabled(StringArgumentType.getString(c, "state").equals("on"));
+					if (!m.chatFeedback.get()) info(m.name() + (m.isEnabled() ? " enabled" : " disabled"));
+					return SINGLE_SUCCESS;
+				})));
 			}
 		});
 
@@ -216,6 +235,65 @@ public final class CoreCommands {
 				b.then(argument("prefix", StringArgumentType.word()).executes(c -> {
 					Myriad.config().setCommandPrefix(StringArgumentType.getString(c, "prefix"));
 					info("Prefix is now " + Myriad.config().commandPrefix());
+					return SINGLE_SUCCESS;
+				}));
+			}
+		});
+
+		ctx.registerCommand(new Command("anticheat", "Shows or sets what the server checks: auto, grim or vanilla.", "ac") {
+			@Override
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
+				b.executes(c -> {
+					info(antiCheatStatus());
+					return SINGLE_SUCCESS;
+				});
+				b.then(argument("mode", Arguments.enumValue(AntiCheat.Mode.class)).executes(c -> {
+					Myriad.antiCheat().setMode(EnumArgumentType.get(c, "mode", AntiCheat.Mode.class));
+					info(antiCheatStatus());
+					return SINGLE_SUCCESS;
+				}));
+				b.then(literal("known").executes(c -> {
+					info("Known Grim servers: " + String.join(", ", Myriad.antiCheat().knownServers()));
+					return SINGLE_SUCCESS;
+				}).then(literal("add").then(argument("host", StringArgumentType.word()).executes(c -> {
+					String host = StringArgumentType.getString(c, "host");
+					info(Myriad.antiCheat().addKnownServer(host) ? "Added " + host : host + " is already known");
+					return SINGLE_SUCCESS;
+				}))).then(literal("remove").then(argument("host", StringArgumentType.word())
+					.suggests((c, s) -> SharedSuggestionProvider.suggest(Myriad.antiCheat().knownServers(), s)).executes(c -> {
+						String host = StringArgumentType.getString(c, "host");
+						info(Myriad.antiCheat().removeKnownServer(host) ? "Removed " + host : host + " wasn't known");
+						return SINGLE_SUCCESS;
+					}))));
+			}
+		});
+
+		ctx.registerCommand(new Command("profiler", "Times every event handler: .profiler on|off, or .profiler for the heaviest right now.") {
+			@Override
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
+				MyriadEventBus bus = (MyriadEventBus) Myriad.events();
+				b.executes(c -> {
+					Profiler p = bus.profiler();
+					if (p == null) {
+						info("Not profiling: .profiler on, or open the Profiler window");
+						return SINGLE_SUCCESS;
+					}
+					int n = 0;
+					for (Profiler.Entry e : p.snapshot()) {
+						if (n++ >= 10) break;
+						info(String.format(java.util.Locale.ROOT, "%s: %.2f ms/s (tick %.2f, render %.2f)", e.name(), e.totalMs(), e.tickMs(), e.renderMs()));
+					}
+					if (n == 0) info("Nothing measured yet");
+					return SINGLE_SUCCESS;
+				});
+				b.then(literal("on").executes(c -> {
+					if (bus.profiler() == null) bus.setProfiler(new Profiler());
+					info("Profiling every handler; .profiler shows the heaviest, .profiler off stops");
+					return SINGLE_SUCCESS;
+				}));
+				b.then(literal("off").executes(c -> {
+					bus.setProfiler(null);
+					info("Profiling off");
 					return SINGLE_SUCCESS;
 				}));
 			}

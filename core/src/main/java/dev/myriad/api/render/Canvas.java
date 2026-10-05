@@ -4,6 +4,7 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Myriad's 2D drawing surface: anti-aliased SDF shapes, gradient borders, drop shadows, frosted-glass backdrops and
@@ -13,6 +14,7 @@ import net.minecraft.world.item.ItemStack;
  * {@link #translate}/{@link #scale} stack on top of it. Colours are ARGB ints (see {@code ColorUtil}); angles are in
  * degrees, 0 = left-to-right, 90 = top-to-bottom.
  */
+@ApiStatus.NonExtendable
 public interface Canvas {
 	// ---- shapes ---------------------------------------------------------------------------------------------------
 
