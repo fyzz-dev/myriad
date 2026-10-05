@@ -48,6 +48,22 @@ Then a test is: set the scene, mark the log, act, read the flags.
 | `./setup.sh --update` | shows the newest builds, to move `versions.env` to on purpose |
 | `./stop.sh` | stops the server |
 
-The client steps come from `DevConsole` in core, which dev runs turn on: Myriad commands (`.toggle kill_aura`),
+The client steps come from `DevConsole` in core, which dev runs turn on: Myriad commands (`.toggle kill_aura on`),
 server commands as the player (`/gamemode survival`), `hold forward,sprint,jump 40`, `look <yaw> <pitch>`,
-`select <1-9>`, `attack`, `use`, `wait <ticks>`, `status`.
+`select <1-9>`, `attack`, `use`, `wait <ticks>`, `respawn`, `status`, and `selftest [ticks] [-module]`, which turns
+every module on for a while and off again and reports any that failed or whose handlers threw.
+
+## The Essentials suite
+
+```bash
+./suite              # every test (about 3 minutes)
+./suite kill_aura    # the tests whose names contain a word
+./suite --list
+```
+
+With the server and the dev client running, `./suite` turns every module off, then for each test builds a scene of
+its own (mostly on a stone floor around x=1000, away from the rest of the world), runs the client steps, checks the
+result on the server (the husk is dead, the block is gone, the totem is in the off hand, the elytra didn't wear) and
+fails the test if Grim flagged anything while the module ran. It covers the self-test, Kill Aura (holding and switch),
+Packet Mine, Scaffold, Offhand, Auto Armor, Auto Eat, Stack Replenish, Elytra Fly and No Durability, and that Auto
+detects Grim. Run it after changing core or Essentials; add a test when you add a module.
