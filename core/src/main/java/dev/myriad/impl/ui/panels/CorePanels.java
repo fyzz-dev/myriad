@@ -25,6 +25,7 @@ public final class CorePanels {
 	public static final MyriadId THEME = MyriadId.of("myriad", "theme");
 	public static final MyriadId KEYBINDS = MyriadId.of("myriad", "keybinds");
 	public static final MyriadId HUD_ELEMENTS = MyriadId.of("myriad", "hud_elements");
+	public static final MyriadId PROFILER = MyriadId.of("myriad", "profiler");
 
 	private CorePanels() {
 	}
@@ -50,6 +51,7 @@ public final class CorePanels {
 		ctx.registerPanel(PanelType.builder(THEME, "Theme").icon("").factory(ThemePanel::new).build());
 		ctx.registerPanel(PanelType.builder(HUD_ELEMENTS, "HUD").icon("\uf2d2").factory(() -> new HudElementsPanel(wm)).build());
 		ctx.registerPanel(PanelType.builder(KEYBINDS, "Keybinds").icon("").factory(() -> new KeybindsPanel(wm)).build());
+		ctx.registerPanel(PanelType.builder(PROFILER, "Profiler").icon("\uf0e4").factory(ProfilerPanel::new).build());
 	}
 
 	/**

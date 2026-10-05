@@ -19,6 +19,8 @@ import dev.myriad.api.setting.Setting;
 import dev.myriad.api.util.FakePlayers;
 import dev.myriad.api.util.Texts;
 import dev.myriad.impl.Diagnostics;
+import dev.myriad.impl.event.MyriadEventBus;
+import dev.myriad.impl.event.Profiler;
 import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.ui.ThemeManager;
 import dev.myriad.impl.ui.WindowManager;
@@ -248,6 +250,50 @@ public final class CoreCommands {
 				b.then(argument("mode", Arguments.enumValue(AntiCheat.Mode.class)).executes(c -> {
 					Myriad.antiCheat().setMode(EnumArgumentType.get(c, "mode", AntiCheat.Mode.class));
 					info(antiCheatStatus());
+					return SINGLE_SUCCESS;
+				}));
+				b.then(literal("known").executes(c -> {
+					info("Known Grim servers: " + String.join(", ", Myriad.antiCheat().knownServers()));
+					return SINGLE_SUCCESS;
+				}).then(literal("add").then(argument("host", StringArgumentType.word()).executes(c -> {
+					String host = StringArgumentType.getString(c, "host");
+					info(Myriad.antiCheat().addKnownServer(host) ? "Added " + host : host + " is already known");
+					return SINGLE_SUCCESS;
+				}))).then(literal("remove").then(argument("host", StringArgumentType.word())
+					.suggests((c, s) -> SharedSuggestionProvider.suggest(Myriad.antiCheat().knownServers(), s)).executes(c -> {
+						String host = StringArgumentType.getString(c, "host");
+						info(Myriad.antiCheat().removeKnownServer(host) ? "Removed " + host : host + " wasn't known");
+						return SINGLE_SUCCESS;
+					}))));
+			}
+		});
+
+		ctx.registerCommand(new Command("profile", "Times every event handler: .profile on|off, or .profile for the heaviest right now.") {
+			@Override
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
+				MyriadEventBus bus = (MyriadEventBus) Myriad.events();
+				b.executes(c -> {
+					Profiler p = bus.profiler();
+					if (p == null) {
+						info("Not profiling: .profile on, or open the Profiler window");
+						return SINGLE_SUCCESS;
+					}
+					int n = 0;
+					for (Profiler.Entry e : p.snapshot()) {
+						if (n++ >= 10) break;
+						info(String.format(java.util.Locale.ROOT, "%s: %.2f ms/s (tick %.2f, render %.2f)", e.name(), e.totalMs(), e.tickMs(), e.renderMs()));
+					}
+					if (n == 0) info("Nothing measured yet");
+					return SINGLE_SUCCESS;
+				});
+				b.then(literal("on").executes(c -> {
+					if (bus.profiler() == null) bus.setProfiler(new Profiler());
+					info("Profiling every handler; .profile shows the heaviest, .profile off stops");
+					return SINGLE_SUCCESS;
+				}));
+				b.then(literal("off").executes(c -> {
+					bus.setProfiler(null);
+					info("Profiling off");
 					return SINGLE_SUCCESS;
 				}));
 			}

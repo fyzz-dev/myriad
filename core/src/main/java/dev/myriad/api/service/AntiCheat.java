@@ -1,6 +1,8 @@
 package dev.myriad.api.service;
 
 import dev.myriad.api.Myriad;
+
+import java.util.Set;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -61,6 +63,14 @@ public interface AntiCheat {
 	Mode mode();
 
 	void setMode(Mode mode);
+
+	/** Hosts known to run Grim, for {@link Mode#AUTO} to take as {@link Profile#GRIM} from the moment you join (subdomains included). */
+	Set<String> knownServers();
+
+	/** Adds a host ("2b2t.org") to {@link #knownServers()}; saved globally. */
+	boolean addKnownServer(String host);
+
+	boolean removeKnownServer(String host);
 
 	/**
 	 * {@link #isStrict()} from anywhere, including before Myriad has started (then true: when in doubt, be careful).

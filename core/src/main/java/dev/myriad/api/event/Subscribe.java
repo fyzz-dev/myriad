@@ -22,4 +22,17 @@ public @interface Subscribe {
 
 	/** If false (default) the handler is skipped once an earlier handler cancelled the event. */
 	boolean receiveCancelled() default false;
+
+	/**
+	 * Only call the handler while there's a player in a world, so it needn't check. Most handlers that touch the
+	 * player or the level want this; the few that run on the title screen (rendering a HUD preview, a world join)
+	 * don't.
+	 */
+	boolean inGame() default false;
+
+	/**
+	 * For {@code PacketEvent} handlers: only the packets of these classes (or subclasses). The bus then skips the
+	 * handler for every other packet, cheaper than an {@code instanceof} in a handler that runs for every packet.
+	 */
+	Class<?>[] packets() default {};
 }

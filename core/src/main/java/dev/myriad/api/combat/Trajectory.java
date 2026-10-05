@@ -45,6 +45,10 @@ import java.util.function.Predicate;
  *     path.hit();      // the block or entity it lands on, or null
  * }
  * }</pre>
+ *
+ * Each simulated tick raycasts against blocks and entities, so a path costs about as much as a hundred raycasts.
+ * Simulating one path per frame is fine; several (every arrow in the air) should be simulated once per tick
+ * ({@link dev.myriad.api.util.TickCached}) and drawn from that.
  */
 public final class Trajectory {
 	private Trajectory() {
@@ -134,6 +138,68 @@ public final class Trajectory {
 		Vec3 own = shooter.getKnownMovement();
 		Vec3 velocity = dir.normalize().scale(power).add(own.x, shooter.onGround() ? 0 : own.y, own.z);
 		return new Launch(new Vec3(shooter.getX(), shooter.getEyeY() + eyeOffset, shooter.getZ()), velocity, b);
+	}
+
+	/**
+	 * The yaw and pitch to launch {@code item} at so it passes through {@code target}, on the low arc (the direct shot),
+	 * ignoring blocks and entities in the way; or null if it can't reach that far. For bows the power is the current
+	 * draw (full when not drawing). Worked out from the same physics as {@link #simulate}, without the world.
+	 */
+	public static float @Nullable [] aimAt(LivingEntity shooter, ItemStack item, Vec3 target) {
+		Launch flat = launch(shooter, item, shooter.getYRot(), 0);
+		if (flat == null) return null;
+		Vec3 from = flat.origin();
+		double dx = target.x - from.x, dz = target.z - from.z;
+		float yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+		double distance = Math.sqrt(dx * dx + dz * dz), rise = target.y - from.y;
+		// The shooter's own movement is added to the launch; take it back out so the arc is the item's alone.
+		Vec3 own = shooter.getKnownMovement();
+		double speed = flat.velocity().subtract(own.x, shooter.onGround() ? 0 : own.y, own.z).length();
+		// Height at the target's distance rises with pitch on the low arc until the apex; search the pitch whose arc
+		// passes closest, between straight down and 45° up.
+		float lo = -90, hi = 45, best = Float.NaN;
+		double bestError = Double.MAX_VALUE;
+		for (int i = 0; i < 40; i++) {
+			float mid = (lo + hi) / 2;
+			double y = heightAt(flat.ballistics(), speed, mid, distance);
+			if (Double.isNaN(y)) {
+				hi = mid;
+				continue;
+			}
+			double error = Math.abs(y - rise);
+			if (error < bestError) {
+				bestError = error;
+				best = mid;
+			}
+			if (y < rise) hi = mid;
+			else lo = mid;
+		}
+		return Float.isNaN(best) || bestError > 0.5 ? null : new float[]{yaw, -best};
+	}
+
+	/** Height reached when the arc has travelled {@code distance} horizontally, or NaN if it never gets that far. */
+	private static double heightAt(Ballistics b, double speed, float pitchUp, double distance) {
+		double r = Math.toRadians(pitchUp);
+		double vx = speed * Math.cos(r), vy = speed * Math.sin(r), x = 0, y = 0;
+		for (int tick = 0; tick < 400; tick++) {
+			double nx = x + vx, ny = y + vy;
+			if (nx >= distance) {
+				double t = vx == 0 ? 1 : (distance - x) / vx;
+				return y + vy * t;
+			}
+			x = nx;
+			y = ny;
+			if (b.movesFirst()) {
+				vx *= b.drag();
+				vy = vy * b.drag() - b.gravity();
+			} else {
+				vy -= b.gravity();
+				vx *= b.drag();
+				vy *= b.drag();
+			}
+			if (vx <= 1e-4 || y < -512) return Double.NaN;
+		}
+		return Double.NaN;
 	}
 
 	/** {@link #simulate(Level, Launch, int, Entity)} in {@code owner}'s level. */

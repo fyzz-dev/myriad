@@ -31,7 +31,10 @@ public class MyriadClient implements ClientModInitializer {
 		MyriadPipelines.init();
 		var bus = myriad.events();
 
-		ClientTickEvents.START_CLIENT_TICK.register(mc -> bus.post(TickEvent.Pre.INSTANCE));
+		ClientTickEvents.START_CLIENT_TICK.register(mc -> {
+			dev.myriad.api.util.Ticks.advance();
+			bus.post(TickEvent.Pre.INSTANCE);
+		});
 		ClientTickEvents.END_CLIENT_TICK.register(mc -> {
 			bus.post(TickEvent.Post.INSTANCE);
 			myriad.windowManager().tick();

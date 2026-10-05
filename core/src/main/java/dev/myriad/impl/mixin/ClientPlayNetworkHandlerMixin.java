@@ -2,7 +2,9 @@ package dev.myriad.impl.mixin;
 
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.ChatSendEvent;
+import dev.myriad.api.event.events.HealthEvent;
 import dev.myriad.api.event.events.TeleportEvent;
+import net.minecraft.network.protocol.game.ClientboundSetHealthPacket;
 import dev.myriad.impl.MyriadImpl;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -51,6 +53,14 @@ public abstract class ClientPlayNetworkHandlerMixin {
 		PositionMoveRotation now = PositionMoveRotation.of(player);
 		Vec3 to = PositionMoveRotation.calculateAbsolute(now, packet.change(), packet.relatives()).position();
 		Myriad.events().post(new TeleportEvent(now.position(), to));
+	}
+
+	/** HealthEvent, with the values before the packet is applied. */
+	@Inject(method = "handleSetHealth", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/protocol/PacketUtils;ensureRunningOnSameThread(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketListener;Lnet/minecraft/network/PacketProcessor;)V", shift = At.Shift.AFTER))
+	private void myriad$health(ClientboundSetHealthPacket packet, CallbackInfo ci) {
+		Player player = Minecraft.getInstance().player;
+		if (!Myriad.isReady() || player == null || !Myriad.events().hasListeners(HealthEvent.class)) return;
+		Myriad.events().post(new HealthEvent(player.getHealth(), packet.getHealth(), player.getFoodData().getFoodLevel(), packet.getFood()));
 	}
 
 	@Inject(method = "sendChat", at = @At("HEAD"), cancellable = true)

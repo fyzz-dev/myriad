@@ -6,6 +6,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
@@ -87,6 +89,21 @@ public class SettingGroup {
 
 	public StringSetting.Builder string(String name) {
 		return bind(new StringSetting.Builder(name));
+	}
+
+	/** Any number of an enum's constants ("which of these"). */
+	public <E extends Enum<E>> EnumSetSetting.Builder<E> enumSet(String name, Class<E> type) {
+		return bind(new EnumSetSetting.Builder<>(name, type));
+	}
+
+	/** A list of whole numbers (slots, ids, levels). */
+	public IntListSetting.Builder intList(String name) {
+		return bind(new IntListSetting.Builder(name));
+	}
+
+	/** A sound, e.g. what to play on an alert. */
+	public RegistrySetting.Builder<SoundEvent> sound(String name, SoundEvent defaultValue) {
+		return bind(new RegistrySetting.Builder<>(name, BuiltInRegistries.SOUND_EVENT, defaultValue));
 	}
 
 	public StringListSetting.Builder stringList(String name) {

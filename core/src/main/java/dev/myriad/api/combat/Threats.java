@@ -1,6 +1,7 @@
 package dev.myriad.api.combat;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.util.Ticks;
 import dev.myriad.api.combat.Damage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -23,7 +24,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * if (Threats.isLethal(2)) forceTotem();
  * }</pre>
  *
- * Call it in game only (with a player).
+ * Call it in game only (with a player). {@link #worst()} and {@link #isLethal} are computed once per tick however many
+ * modules ask; the others query the world each call.
  */
 public final class Threats {
 	private Threats() {
@@ -43,8 +45,17 @@ public final class Threats {
 	 * 5). Crystals are added up, since several can go off at once.
 	 */
 	public static float worst() {
-		return Math.max(Math.max(Math.max(crystals(12, true), beds(8)), Math.max(anchors(8), creepers(8))), Math.max(players(5), fall()));
+		long tick = Ticks.current();
+		if (tick != worstTick) {
+			worst = Math.max(Math.max(Math.max(crystals(12, true), beds(8)), Math.max(anchors(8), creepers(8))), Math.max(players(5), fall()));
+			worstTick = tick;
+		}
+		return worst;
 	}
+
+	/** {@link #worst()} is six world queries; several modules ask every tick, so it's worked out once per tick. */
+	private static long worstTick = -1;
+	private static float worst;
 
 	/** Whether {@link #worst()} plus {@code margin} could take all your health (including absorption). */
 	public static boolean isLethal(float margin) {

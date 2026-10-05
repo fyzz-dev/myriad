@@ -86,6 +86,12 @@ public interface AddonContext {
 	/** A global key action (works in game, outside the menu), rebindable in the Keybinds panel. */
 	KeyAction registerKeyAction(String name, Keybind defaultBind, Runnable action);
 
+	/**
+	 * Settings of the addon itself (not of a module), shown under it in the Addons panel and saved with the profile.
+	 * Several groups of them can be declared, each with a name.
+	 */
+	AddonSettings settings(String name);
+
 	SettingWidgets settingWidgets();
 
 	/**
