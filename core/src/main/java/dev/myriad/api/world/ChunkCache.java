@@ -34,7 +34,7 @@ import java.util.function.IntSupplier;
 /**
  * Something worked out once per chunk and kept until that chunk changes: the storage blocks in it, its safe holes, the
  * ores of a search. Instead of rescanning everything around you every few ticks, a chunk is computed when it loads or
- * comes into range, and again only when a block in it changes. With a {@link #mesh mesher} each chunk also keeps a
+ * comes into range, and again only when a block in it changes. With a {@link Builder#mesh mesher} each chunk also keeps a
  * {@link WorldMesh}, so what you found is drawn every frame without a render handler.
  *
  * <pre>{@code

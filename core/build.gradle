@@ -29,3 +29,14 @@ test {
 		exceptionFormat "full"
 	}
 }
+
+// The published javadoc is the API addons build on (dev.myriad.api); the internals aren't part of it.
+java {
+	withJavadocJar()
+}
+
+javadoc {
+	include 'dev/myriad/api/**'
+	options.addStringOption('Xdoclint:all,-missing', '-quiet')
+	options.addStringOption('encoding', 'UTF-8')
+}
