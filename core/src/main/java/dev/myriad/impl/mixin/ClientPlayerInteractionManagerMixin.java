@@ -5,6 +5,7 @@ import dev.myriad.api.event.events.BlockBreakEvent;
 import dev.myriad.api.event.events.BlockBrokenEvent;
 import dev.myriad.api.event.events.InteractEvent;
 import dev.myriad.api.event.events.ItemUseEvent;
+import dev.myriad.impl.service.InventoryManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
@@ -48,6 +49,12 @@ public abstract class ClientPlayerInteractionManagerMixin {
 	private void myriad$interactEntity(Player player, Entity entity, EntityHitResult hit, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
 		if (Myriad.isReady() && Myriad.events().hasListeners(InteractEvent.EntityTarget.class)
 			&& Myriad.events().post(new InteractEvent.EntityTarget(hand, entity)).isCancelled()) cir.setReturnValue(InteractionResult.FAIL);
+	}
+
+	/** Your own click while a module holds a slot: the server gets your visible slot for it (see Inventory.hold). */
+	@Inject(method = "ensureHasSentCarriedItem", at = @At("HEAD"))
+	private void myriad$userSlot(CallbackInfo ci) {
+		if (Myriad.isReady() && Myriad.inventory() instanceof InventoryManager inventory) inventory.beforeCarriedSync();
 	}
 
 	@Unique

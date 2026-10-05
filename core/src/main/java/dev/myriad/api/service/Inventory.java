@@ -23,8 +23,17 @@ public interface Inventory {
 	 * Holds the server-side slot on {@code hotbarSlot} across ticks without changing the visible slot, until
 	 * {@link #release} or {@code maxTicks} pass. One module holds at a time; returns false if another owner holds.
 	 * Calling it again as the same owner refreshes the timeout (and moves the hold to the new slot).
+	 * <p>
+	 * Your own right clicks (using an item, placing, eating) use the slot you see: the hold steps aside for them and
+	 * comes back once you're done (it returns false meanwhile). Your left clicks attack and mine with the held item.
 	 */
 	boolean hold(Object owner, int hotbarSlot, int maxTicks);
+
+	/**
+	 * Like {@link #hold}, but any other module's {@link #hold} takes it over: for holding something just in case (a weapon
+	 * charging before a target is in reach) without keeping others from what they need now.
+	 */
+	boolean holdWeakly(Object owner, int hotbarSlot, int maxTicks);
 
 	/** Ends {@code owner}'s hold and syncs the server back to the visible slot. */
 	void release(Object owner);
@@ -37,6 +46,14 @@ public interface Inventory {
 	 * otherwise the selected item. Mining speed and tool checks use it, so holding a pickaxe mines at its speed.
 	 */
 	ItemStack serverItem();
+
+	/**
+	 * The attack charge (0-1) of the item the server holds in your main hand, as the server counts it: from your last
+	 * hit, or from when that item came into your hand (switching to a different item starts the charge over). With a
+	 * {@link #hold} the client's own charge follows the item you see instead, so a hit with a held weapon waits for
+	 * this one. A full charge (1) hits for full damage.
+	 */
+	float attackCharge();
 
 	/** First hotbar slot matching, or -1. */
 	int findInHotbar(Predicate<ItemStack> predicate);
