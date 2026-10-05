@@ -8,6 +8,8 @@ import com.example.myriadaddon.modules.AutoTool;
 import com.example.myriadaddon.modules.BlockSearch;
 import com.example.myriadaddon.modules.ChatTimestamps;
 import com.example.myriadaddon.modules.SettingsShowcase;
+import com.example.myriadaddon.modules.HoleEsp;
+import com.example.myriadaddon.modules.Trajectories;
 import com.example.myriadaddon.modules.Tunnel;
 import com.example.myriadaddon.modules.Waypoints;
 import com.example.myriadaddon.panels.WaypointsPanel;
@@ -66,6 +68,8 @@ public final class ExampleAddon implements MyriadAddon {
 			new BlockSearch(),
 			new AutoTool(),
 			new Tunnel(),
+			new Trajectories(),
+			new HoleEsp(),
 			new ChatTimestamps(),
 			new SettingsShowcase(showcase)
 		);

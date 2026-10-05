@@ -1,5 +1,6 @@
 package com.example.myriadaddon.waypoints;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
@@ -26,9 +27,11 @@ public record Waypoint(String name, BlockPos pos, String dimension, int color, b
 	JsonObject toJson() {
 		JsonObject o = new JsonObject();
 		o.addProperty("name", name);
-		o.addProperty("x", pos.getX());
-		o.addProperty("y", pos.getY());
-		o.addProperty("z", pos.getZ());
+		JsonArray at = new JsonArray();
+		at.add(pos.getX());
+		at.add(pos.getY());
+		at.add(pos.getZ());
+		o.add("pos", at);
 		o.addProperty("dimension", dimension);
 		if (color != 0) o.addProperty("color", String.format("#%08X", color));
 		if (!visible) o.addProperty("visible", false);
@@ -37,7 +40,8 @@ public record Waypoint(String name, BlockPos pos, String dimension, int color, b
 
 	static Waypoint fromJson(JsonObject o) {
 		int color = o.has("color") ? (int) Long.parseLong(o.get("color").getAsString().substring(1), 16) : 0;
-		return new Waypoint(o.get("name").getAsString(), new BlockPos(o.get("x").getAsInt(), o.get("y").getAsInt(), o.get("z").getAsInt()),
+		JsonArray at = o.getAsJsonArray("pos");
+		return new Waypoint(o.get("name").getAsString(), new BlockPos(at.get(0).getAsInt(), at.get(1).getAsInt(), at.get(2).getAsInt()),
 			o.get("dimension").getAsString(), color, !o.has("visible") || o.get("visible").getAsBoolean());
 	}
 }
