@@ -4,9 +4,11 @@
 	"version": "${version}",
 	"name": "Myriad",
 	"description": "An addon-first utility client with a tiling window manager UI. Ships with no modules of its own: everything plugs in through the Myriad API.",
-	"authors": ["Myriad contributors"],
+	"authors": ["fyzz"],
+	"contributors": ["Myriad contributors"],
 	"license": "CC0-1.0",
 	"contact": {
+		"homepage": "https://github.com/fyzz-dev/myriad",
 		"sources": "https://github.com/fyzz-dev/myriad",
 		"issues": "https://github.com/fyzz-dev/myriad/issues"
 	},

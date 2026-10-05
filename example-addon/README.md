@@ -19,6 +19,8 @@ numbered steps.
 | **Auto Tool** module: best tool while mining (brought in from the inventory when you stand still), defers to Essentials' Packet Mine | Player category |
 | **Tunnel** module: digs a tunnel the way you face through the building planner | World category |
 | **Block Search** module: highlights the blocks you pick in the chunks around you | World category |
+| **Trajectories** module: where the item in your hand and every projectile in the air will land | Render category |
+| **Hole ESP** module: holes you can stand in safely, green for bedrock | Combat category |
 | **Chat Timestamps** module, driven by a mixin | Misc category |
 | **Settings Showcase** module: every setting type and a custom one | its own "Showcase" category |
 | Server TPS on the top bar, and an "Example Sunset" theme | bar / Theme panel |
@@ -33,6 +35,8 @@ numbered steps.
 | `modules/Waypoints.java` | setting groups, theme-role colours, `Render3DEvent` boxes and lines, `Render2DEvent` world labels, reacting to vanilla with `ScreenOpenEvent` |
 | `modules/AutoTool.java` | the `Myriad.inventory()` service (`select`, `pullToHotbar`), `Mining` helpers, soft integration with another addon by id |
 | `modules/BlockSearch.java` | finding blocks cheaply: `ChunkCache` (once per chunk, again on changes), `BlockScan` palette skipping, cached meshes instead of a render handler |
+| `modules/Trajectories.java` | `Trajectory.launch`/`simulate` for the held item and projectiles in flight; `TickCached` so paths cost once per tick, not per frame |
+| `modules/HoleEsp.java` | `Holes.scan` through a `ChunkCache` with `neighbours()` and no mesher; `Holes.holeOf` for the module list |
 | `modules/Tunnel.java` | the planner: a `Blueprint` of `Target.air()` handed to `Myriad.building()`, drawing `Build.steps()`, `Building.Options.forServer()` instead of a "Strict" option |
 | `modules/ChatTimestamps.java` + `mixin/ChatHudMixin.java` | the standard mixin-driven module: a static hook using `Modules.active(...)` |
 | `modules/SettingsShowcase.java` | every setting type, `visible`, `onChanged`, `sliderRange`, keybinds, action buttons |

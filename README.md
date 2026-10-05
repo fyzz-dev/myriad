@@ -73,6 +73,8 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
     colour you change on a module is saved with that module's settings as an override.
   - **Preferences** (UI scale, pausing singleplayer, mod key, vim keys) are yours, not the theme's, and stay put when
     you switch.
+- **Profiler** (a window from the launcher): milliseconds per second spent by every module, service and listener in
+  tick, render and other handlers, so a slow addon is a glance away. Timing runs only while it's open.
 
 Default shortcuts follow [Omarchy](https://omarchy.org)'s tiling bindings. The mod key stands in for Super, which
 Hyprland keeps for itself, and defaults to **Alt** (change it in Theme → Preferences):
@@ -122,7 +124,8 @@ Prefix `.` (change with `.prefix`). Commands autocomplete in chat and in the con
 `.profile [load|delete|save]`, `.friend add|remove|list`, `.theme <preset>`, `.addons`, `.diagnostics` (copies versions,
 addons, mods and enabled modules' changed settings for a bug report), `.panic`, `.help`, `.menu`,
 `.modules` (click one to toggle it), `.binds`, `.say <message>` (sends text starting with the prefix as chat),
-`.reload` (re-read the profile from disk), `.anticheat [auto|grim|vanilla]` (what the server checks; see below), `.disconnect`, and `.fakeplayer add|remove|clear|list` (client-side
+`.reload` (re-read the profile from disk), `.anticheat [auto|grim|vanilla]` and `.anticheat known add|remove <host>` (what the
+server checks; see below), `.profile [on|off]` (where the time goes, by module), `.disconnect`, and `.fakeplayer add|remove|clear|list` (client-side
 dummies for testing).
 
 Setting ids are scoped to their group. When two groups share a name, use `group.setting`, for example
@@ -134,8 +137,9 @@ Modules behave differently on a server running Grim (2b2t) and on one that only 
 on Grim they rotate before acting, click only faces you can see, move along the sent rotation, mine at the times it
 allows and click in the inventory only while you stand still; elsewhere they act as fast as the vanilla server lets
 them. **Auto** (the default) picks per server: Grim once it sends the steady pings anti-cheats like it use to keep in
-step with the client (vanilla servers never send them), or at once on servers known to run it. Pick it yourself in the
-Profiles panel or with `.anticheat`. Essentials is made for 2b2t and stays Grim-safe either way.
+step with the client (vanilla servers never send them), or at once on servers known to run it (2b2t by default;
+`.anticheat known add <host>` adds more). Pick it yourself in the Profiles panel or with `.anticheat`. Essentials is
+made for 2b2t and stays Grim-safe either way.
 
 ## Config
 
@@ -167,7 +171,8 @@ An addon is an ordinary Fabric mod with a `myriad` entrypoint. Two projects get 
 - [**myriad-addon-template**](https://github.com/fyzz-dev/myriad-addon-template) is the project to start from: a module, a mixin-driven module and
   a HUD element, wired up and building.
 - [`example-addon/`](example-addon) is the reference. It's a complete feature set (waypoints with a module, command,
-  window, HUD element and saved data, plus Auto Tool, Chat Timestamps and a settings showcase) written to be read.
+  window, HUD element and versioned saved data, plus Auto Tool, Tunnel, Block Search, Trajectories, Hole ESP, Chat
+  Timestamps and a settings showcase) written to be read.
   Its [README](example-addon/README.md) maps each file to the pattern it shows.
 
 ### Setting up
@@ -259,7 +264,8 @@ An addon built against one version of Myriad keeps working on the next. What tha
 - **`@ApiStatus.Internal`** marks what's public for Myriad's own use: event constructors, lifecycle hooks. Events gain
   accessors over time; only Myriad creates them.
 - **Removals are announced.** Something going away is `@Deprecated` for at least one minor release first, with its
-  replacement in the javadoc.
+  replacement in the javadoc. [`CHANGELOG.md`](CHANGELOG.md) lists what each release adds and changes, and the
+  versioning rule (while the major version is 0, minor releases may change the API, patch releases never do).
 - **Versions.** Declare the oldest core you support in `fabric.mod.json` (`"depends": {"myriad": ">=0.1.0"}`). To use
   something newer while supporting older cores, check `Myriad.isAtLeast("0.2.0")` (`Myriad.version()` is the running one).
 - **Your own data** belongs in `ctx.storage()`. Write it with a version (`writeJson(name, json, 2)`) and read it with
@@ -268,6 +274,7 @@ An addon built against one version of Myriad keeps working on the next. What tha
 ### Modules
 
 Modules are subscribed to the event bus only while enabled, so their `@Subscribe` methods run only while they're on.
+`conflictsWith(Other.class, ...)` in the constructor turns those off when this one goes on (two flight modules).
 
 ```java
 public final class MyModule extends Module {
@@ -289,15 +296,21 @@ public final class MyModule extends Module {
 list, color (fixed, rainbow, or a theme role), keybind, action button, registry lists (blocks, items, entity
 types, status effects, any registry), a single registry entry (`item`, `block`, `registry`), a block position
 (`blockPos`, with a "Here" button), a runtime dropdown (`choice`), other modules (`modules`, e.g. "pause while
-these are on") and a file (`file`, with the system file picker). `visible(...)` hides a setting until it matters, and `onChanged(...)` reacts
+these are on"), any number of an enum's constants (`enumSet`), whole numbers (`intList`), a sound (`sound`) and a
+file (`file`, with the system file picker). `visible(...)` hides a setting until it matters, and `onChanged(...)` reacts
 to changes; `settings.onAnyChanged(...)` reacts to any of a module's settings, e.g. to drop something cached from them.
 Helpers that should only run while the module is on bind to it with `whileEnabled(start, stop)` (`ChunkCache` and
 `WorldMesh` do this for you). For a new type, extend `Setting<T>` and register an editor with
 `ctx.settingWidgets().register(MySetting.class, s -> widget, stacked)`. See the example's `RangeSetting`.
 
+Settings that belong to the addon rather than a module (units, a prefix) come from `ctx.settings("Name")`: they're
+shown under the addon in the Addons panel and saved with the profile like a module's.
+
 ### Events
 
-Annotate a method with `@Subscribe(priority = Priority.HIGH, receiveCancelled = false)`. Handlers for a
+Annotate a method with `@Subscribe(priority = Priority.HIGH, receiveCancelled = false)`. `inGame = true` skips the
+handler unless there's a player in a world, so it needn't check; `packets = {ClientboundSetTimePacket.class}` on a
+`PacketEvent` handler has the bus skip it for every other packet, cheaper than an `instanceof` that runs for each one. Handlers for a
 supertype also receive its subtypes. A cancelled event is still dispatched, but handlers skip it unless they set
 `receiveCancelled`. `ctx.events().listen(Event.class, e -> …)` returns a `Subscription`, and
 `ctx.events().subscribe(object)` subscribes any object's `@Subscribe` methods. A handler that keeps throwing is
@@ -309,6 +322,10 @@ Core events: `TickEvent.Pre/Post`, `Render2DEvent` (with a `canvas()` in GUI pix
 `InputEvent` (press movement keys for one tick), `MouseLookEvent` (scale or cancel turning),
 `CollisionShapeEvent` (change the blocks your movement collides with: walk on water, avoid fire and cactus),
 `TeleportEvent` (the server set your position: a teleport or a rubberband), `PlaySoundEvent` (cancel any sound),
+`HealthEvent` (your health and food from the server, with the damage taken), `DisconnectEvent` (the reason, and the
+address, for `Myriad.server().reconnect()`), `BlockRenderEvent` (leave a block out of the chunk mesh: X-ray, hiding),
+`EntityRenderEvent.Visible/Nametag/Model` (hide an entity, replace its name tag, draw its model again for chams),
+`ContainerScreenEvent.SlotDrawn/Tooltip/Click` (icons on slots, content previews, taking over inventory clicks),
 `BlockBreakEvent.Start/Progress` (take over block breaking), `BlockBrokenEvent` (you broke a block),
 `InteractEvent.Block/Item/EntityTarget` (cancellable right-clicks), `ItemUseEvent.Finished/Stopped`, `AttackEvent`
 (cancellable, before any attack goes out), `EntityEvent.Added/Removed/TotemPopped/Died`, `BlockUpdateEvent` (server block changes, old
@@ -333,7 +350,8 @@ Shared services keep addons from fighting over the same state:
 | `Myriad.limits()` | the shared packet budget for block actions, interactions and inventory clicks; `placement()` and `inventory()` respect it, `urgent(...)` skips it for must-happen actions (totems) |
 | `Myriad.antiCheat()` | the player's anti-cheat profile (Auto, Grim, Vanilla) and what Auto detected; the services' `forServer()` presets and `inventory().safeToClick()` follow it |
 | `Myriad.tickSpeed()` | client tick speed ("timer") per owner, multiplied together so features don't overwrite each other; cleared when a module is disabled |
-| `Myriad.server()` | TPS, ping, address, lag (`isLagging(ms)`), rubberbands (`rubberbandedWithin(ms)`), packets per second, totem pops |
+| `Myriad.server()` | TPS, ping, address, lag (`isLagging(ms)`), rubberbands (`rubberbandedWithin(ms)`), packets per second, totem pops, `reconnect()` to the last server |
+| `Myriad.runCommand(line)` | runs a Myriad command from code (macros, binds, clickable chat) |
 | `Myriad.chat(text, id)` | a chat line that replaces the previous one with the same id (progress, status) |
 | `Myriad.friends()`, `Myriad.notifications()` | friends list; toasts |
 | `Myriad.ui().confirm(...)` | a yes/no dialog |
@@ -347,8 +365,8 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 | `combat.Damage` | explosion, crystal, bed, anchor, fall and melee damage after armour, enchantments and effects; against a predicted position, with chosen blocks treated as air |
 | `combat.Threats` | what could hurt you right now (crystals, beds, anchors, creepers, players, the fall you're in) and `isLethal(margin)`: when to force a totem or leave |
 | `combat.Crystals` | where a crystal can go as the server decides (`canPlace`, `bases(from, range)`, ignoring entities about to go), its position and space; the 1.12 two-high rule optional |
-| `combat.Trajectory` | where a projectile goes: `launch(shooter, item, yaw, pitch)` for bows (at their draw), crossbows, tridents, pearls, snowballs, potions, bottles and wind charges, and `simulate` tick by tick (gravity, drag, water) to the block or entity it hits |
-| `world.Holes` | 1x1, 2x1 and 2x2 holes with their safety (bedrock or blast-proof), `holeOf(entity)`, an entity's `footprint`, `surround` positions, `isSurrounded` and the `city` blocks that open it |
+| `combat.Trajectory` | where a projectile goes: `launch(shooter, item, yaw, pitch)` for bows (at their draw), crossbows, tridents, pearls, snowballs, potions, bottles and wind charges, `simulate` tick by tick (gravity, drag, water) to the block or entity it hits, and `aimAt(target)` for the angles that reach it |
+| `world.Holes` | 1x1, 2x1 and 2x2 holes with their safety (bedrock or blast-proof): `scan(chunk)` for a `ChunkCache`, `around` for a one-off, `holeOf(entity)`, an entity's `footprint`, `surround` positions, `isSurrounded` and the `city` blocks that open it |
 | `util.Entities` | `kind`, `isHostile`, `isFriend`, `ping`/`gameMode` of a player, `intersects(box)`, render distance, render-interpolated boxes, `predict(entity, ticks)` |
 | `util.BlockInfo`, `util.ItemInfo` | unbreakable, instant-break, blast-resistant, storage, clickable blocks; enchantment levels, food, shulker contents, durability, weapon/tool/armour slot, armour and toughness, gliders, Curse of Binding |
 | `util.Reach` | reach and line of sight from the eyes, `canReach(pos)` (to the block's nearest point, as the server and Grim measure), `aimPoint(entity)`, `hitFor(pos)` (the nearest visible point to click to open or break a block) |
@@ -360,7 +378,8 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 | `util.MathUtil` | angles to a point, angle differences, look and ground direction vectors, closest point on a box, lerp/map/snap |
 | `util.Movement` | which way the movement keys point, horizontal speed, `baseSpeed()` (sprinting speed with your effects), setting speed along the input, stopping |
 | `util.Slots` | player inventory indexes ↔ screen slot ids |
-| `util.Timer`, `util.RateCounter`, `util.Format`, `util.Texts` | delays and cooldowns; events per second; distances, durations, compact numbers; clickable chat (run a Myriad command, copy, hover) |
+| `util.Timer`, `util.RateCounter`, `util.Format`, `util.Texts` | delays and cooldowns; events per second (lock-free); distances, durations, compact numbers; clickable chat (run a Myriad command, copy, hover) |
+| `util.Ticks`, `util.TickCached` | the client tick counter; a value computed at most once per tick however often a render handler reads it |
 | `util.Async`, `util.Http` | a shared worker pool (and a hop back to the render thread); GET/POST with JSON |
 | `util.FakePlayers` | client-side dummy players for testing combat and render features |
 | `util.Baritone` | drive Baritone when it's installed, without depending on it: `pathTo`, `isPathing`, `stop`, `command`, and `pause(owner)`/`resume(owner)` counted per module. Every call is a no-op without Baritone |
@@ -422,6 +441,22 @@ How the pieces fit the kinds of addons people build:
   `Myriad.ui().openPanel(id)`. Top-bar widgets extend `BarWidget`.
 - Add a `contact` block (`homepage`, `sources`, `issues`) to your fabric.mod.json and the Addons panel links to it.
 
+### Performance
+
+Myriad is built so that a module costs nothing until it does something, and the Profiler window shows what each one
+costs. To keep an addon cheap:
+
+- **Work per tick, draw per frame.** A render handler runs a few hundred times a second; the world changes twenty.
+  Put what you find in the world (targets, colours, paths) in a `TickCached`, and read it from the render handler.
+- **Per chunk, not per tick.** Anything about blocks goes in a `ChunkCache` (`BlockScan` skips sections by palette,
+  and a chunk is redone only when a block in it changes), with a mesher so a frame is one draw per chunk.
+- **Say what you listen for.** `@Subscribe(inGame = true)`, `packets = {...}` on packet handlers, and no handler for
+  an event you only need now and then (`Myriad.events().listen` returns a `Subscription` to drop).
+- **Cache what the game recomputes.** `Threats.worst()`, `Inventory.attackCharge()` and friend lookups are already
+  cached per tick; `Targets.query().list()` isn't, so hold its result in a `TickCached`.
+- **Measure.** Open the Profiler (or `.profile on`) with your module running: anything above a millisecond per second
+  in a tick handler, or a few in a render handler, is worth a look.
+
 ### Drawing in the world
 
 There are three ways to draw shapes in the world, and they share one vocabulary (`ShapeBuilder`: `box`, `blockShape`,
@@ -447,7 +482,7 @@ private final ChunkCache<long[]> found = ChunkCache.of(this, chunk -> {   // run
 ```
 
 The cache runs while its module is on and frees everything when it turns off. Chunks are worked through within a
-time budget each tick, nearest first, and a chunk is recomputed only when a block in it changes (`.neighbours()` also
+time budget each tick, nearest first (or on the worker pool with `.async()`, for scans that take long), and a chunk is recomputed only when a block in it changes (`.neighbours()` also
 recomputes it when the chunk beside it changes, for checks that look past the edge). Keep the compute function to facts
 about the world and turn settings into looks in the mesher: a colour setting then only needs `remeshAll()`, which
 never reads the world; call `invalidateAll()` when a setting changes what is found. Theme changes re-mesh by
