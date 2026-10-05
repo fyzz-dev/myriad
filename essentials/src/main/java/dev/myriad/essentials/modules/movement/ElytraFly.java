@@ -4,6 +4,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.InputEvent;
+import dev.myriad.api.event.events.InteractEvent;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
@@ -49,8 +50,9 @@ import java.util.List;
  * stops the glide at each landing; the answers to Grim's pings from then on are held back until you're in the air again
  * (see GlideHold), so Grim keeps expecting the glide the client keeps up, and the elytra is opened again (with a jump
  * press, as vanilla does) right after they're sent. The server's glide restarts every hop, so the elytra doesn't wear
- * either. Something in the lane (an ender chest, a portal, a wall) stops the bounce, and Obstacles decides
- * what happens next: stop, mine through it, or have Baritone walk you round it and carry on bouncing past it.</li>
+ * either (with No Durability, long glides are cut with a chestplate, paused while you eat). Something in the lane
+ * (an ender chest, a portal, a wall) stops the bounce, and Obstacles decides what happens next: stop, mine through it,
+ * or have Baritone walk you round it and carry on bouncing past it.</li>
  * <li><b>Altitude</b> crosses open country without fireworks, "pitch 40" style. It dives until you're fast, pulls up hard, then eases
  * back to level: pulling up gives back more height than the speed it costs, so the cycle holds the altitude you started
  * gliding at (it dives harder when you're above it and climbs more when you're below). Start high, since the first dive
@@ -212,6 +214,17 @@ public class ElytraFly extends Module {
 		jumpedLastTick = e.jump;
 	}
 
+	/**
+	 * Something you hold to use (food, a potion) waits while the chestplate is on: putting the elytra back at the next
+	 * redeploy is a swap, which Grim takes as using another item and stops what you were using. It's used once the
+	 * elytra is back (Auto Eat tries again, and holding right click uses it again); no swaps run meanwhile.
+	 */
+	@Subscribe
+	private void onUse(InteractEvent.Item e) {
+		if (state != State.BOUNCING || !chestMode || !inGame() || ChestSwap.elytraWorn()) return;
+		if (mc.player.getItemInHand(e.hand()).getUseDuration(mc.player) > 0) e.cancel();
+	}
+
 	@Subscribe
 	private void onPacket(PacketEvent.Receive e) {
 		if (e.packet() instanceof ClientboundPlayerPositionPacket) flagged = true;
@@ -324,7 +337,8 @@ public class ElytraFly extends Module {
 		// With Elytra Tweaks' No Durability: the server wears the elytra once one of its glides lasts 20 ticks, which a
 		// hop never does unless the server misses the landing (packets bunched up) or you glide off an edge. A glide
 		// running that long gets the chestplate put on, so the server stops it first; it's opened again as usual.
-		chestMode = ElytraTweaks.noDurability() && ChestSwap.ready();
+		// Not while you eat (or use anything held): Grim stops it at every swap (see onUse).
+		chestMode = ElytraTweaks.noDurability() && ChestSwap.ready() && !mc.player.isUsingItem();
 		boolean cleared = GlideHold.cleared(this);
 		longGlide = cleared || !gliding || ground || !ChestSwap.elytraWorn() ? 0 : longGlide + 1;
 		if (cleared && !ground && airTicks >= 2) {

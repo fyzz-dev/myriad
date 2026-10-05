@@ -23,6 +23,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
@@ -46,7 +47,9 @@ import net.minecraft.world.phys.Vec3;
  * glide again (jump pressed, as vanilla starts one), and comes off again. The server never glides for more than a
  * tick in one go, so it never wears the elytra. Rockets you use meanwhile go out in those moments, when the server
  * takes them. Swaps only run with enough air below you, so the server never sees you land without the elytra. The
- * server's equip sound for each swap is muted.
+ * server's equip sound for each swap is muted. Eating (or anything you hold to use) pauses the swapping: Grim stops what
+ * you're using at every swap, so the elytra goes back on at the next start, and swapping picks up again once you're
+ * done.
  */
 public class ElytraTweaks extends Module {
 	private final BoolSetting rocketBoost = sgGeneral.bool("Rocket Boost")
@@ -82,6 +85,8 @@ public class ElytraTweaks extends Module {
 	private static final int ARM_TICKS = 10;
 
 	private boolean engaged, startNow, rocketWanted, firing, warned;
+	/** Something to eat or hold to use was used meanwhile: swapping stops at the next start, so it can go then. */
+	private boolean stopForUse;
 	private InteractionHand rocketHand = InteractionHand.MAIN_HAND;
 	/** The hotbar slot a waiting rocket was used from (it may have been a silent swap, as Middle Click's are). */
 	private int rocketSlot = -1;
@@ -94,7 +99,7 @@ public class ElytraTweaks extends Module {
 	@Override
 	protected void onEnable() {
 		lastGlidePos = null;
-		engaged = startNow = rocketWanted = false;
+		engaged = startNow = rocketWanted = stopForUse = false;
 		armTicks = 0;
 	}
 
@@ -142,7 +147,9 @@ public class ElytraTweaks extends Module {
 		}
 		if (!engaged) {
 			// Elytra Fly's bounce does its own swapping.
-			boolean ready = p.isFallFlying() && ChestSwap.elytraWorn() && !p.onGround() && !p.isInWater() && !p.isPassenger() && !ElytraFly.holdsGlide() && roomBelow(true);
+			// Not while you eat (or use anything held): a swap would stop it (see onUse).
+			boolean ready = p.isFallFlying() && ChestSwap.elytraWorn() && !p.onGround() && !p.isInWater() && !p.isPassenger() && !p.isUsingItem()
+				&& !ElytraFly.holdsGlide() && roomBelow(true);
 			armTicks = ready ? armTicks + 1 : 0;
 			if (armTicks < ARM_TICKS) return;
 			if (ChestSwap.pair() == null) {
@@ -166,10 +173,12 @@ public class ElytraTweaks extends Module {
 		}
 		sinceStart++;
 		boolean cleared = GlideHold.cleared(this);
-		boolean due = sinceStart >= INTERVAL || rocketWanted || GlideHold.exposed(this);
+		boolean due = sinceStart >= INTERVAL || rocketWanted || stopForUse || GlideHold.exposed(this);
 		// Not two starts in a row (Grim's ElytraC).
 		if (cleared && due && sinceStart >= 2) {
-			restart(true);
+			// Something to eat is waiting: this start puts the elytra back for good, and the swapping stops.
+			if (stopForUse) finish();
+			else restart(true);
 		} else if (!cleared && sinceStart > INTERVAL + CLEAR_TIMEOUT) {
 			finish();
 		}
@@ -208,7 +217,7 @@ public class ElytraTweaks extends Module {
 			if (cleared && p.isFallFlying()) p.stopFallFlying();
 		}
 		GlideHold.disarm(this);
-		rocketWanted = false;
+		rocketWanted = stopForUse = false;
 	}
 
 	/** While swapping: jump only as the press that starts the glide again (released the tick before). */
@@ -217,14 +226,25 @@ public class ElytraTweaks extends Module {
 		if (engaged || startNow) e.jump = startNow;
 	}
 
-	/** A rocket used meanwhile waits for the next start: the server only attaches rockets while it sees you gliding. */
+	/**
+	 * A rocket used meanwhile waits for the next start: the server only attaches rockets while it sees you gliding.
+	 * Something you hold to use (food, a potion, a bow) waits for the swapping to stop: Grim stops whatever you're using
+	 * each time you use another item (each swap) or change slot, so you'd never finish eating. It's used once the elytra
+	 * is back on for good, at the next start (Auto Eat tries again, and holding right click uses it again).
+	 */
 	@Subscribe
 	private void onUse(InteractEvent.Item e) {
-		if (!engaged || firing || !mc.player.getItemInHand(e.hand()).is(Items.FIREWORK_ROCKET)) return;
-		e.cancel();
-		rocketWanted = true;
-		rocketHand = e.hand();
-		rocketSlot = e.hand() == InteractionHand.MAIN_HAND ? Myriad.inventory().serverSlot() : -1;
+		if (!engaged || firing) return;
+		ItemStack stack = mc.player.getItemInHand(e.hand());
+		if (stack.is(Items.FIREWORK_ROCKET)) {
+			e.cancel();
+			rocketWanted = true;
+			rocketHand = e.hand();
+			rocketSlot = e.hand() == InteractionHand.MAIN_HAND ? Myriad.inventory().serverSlot() : -1;
+		} else if (stack.getUseDuration(mc.player) > 0) {
+			e.cancel();
+			stopForUse = true;
+		}
 	}
 
 	/** Uses the waiting rocket, from the hand or hotbar slot it was used from (or any rockets in the hotbar). */
