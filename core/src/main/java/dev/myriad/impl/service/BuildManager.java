@@ -255,7 +255,7 @@ public final class BuildManager implements Building {
 			BlockHitResult hit = orientedClick(pos, oriented, slot, po);
 			if (hit == null) return Status.WRONG_ANGLE;
 			// The orientation follows the rotation, so it's always sent.
-			Placement.Options rotated = new Placement.Options(true, po.airPlace(), po.swing(), po.range(), po.visibleFaces());
+			Placement.Options rotated = po.withRotate(true);
 			attempt = Myriad.placement().place(b, hit, slot, rotated);
 		} else {
 			attempt = Myriad.placement().place(b, pos, slot, po);

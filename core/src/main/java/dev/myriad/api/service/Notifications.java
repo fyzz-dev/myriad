@@ -1,6 +1,8 @@
 package dev.myriad.api.service;
 
+import org.jetbrains.annotations.ApiStatus;
 /** Toast notifications, drawn by the window manager overlay both in game and on the desktop. */
+@ApiStatus.NonExtendable
 public interface Notifications {
 	enum Level {
 		INFO, SUCCESS, WARNING, ERROR

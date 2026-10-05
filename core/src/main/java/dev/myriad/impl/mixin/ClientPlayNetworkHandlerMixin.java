@@ -2,8 +2,14 @@ package dev.myriad.impl.mixin;
 
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.ChatSendEvent;
+import dev.myriad.api.event.events.TeleportEvent;
 import dev.myriad.impl.MyriadImpl;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.world.entity.PositionMoveRotation;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
@@ -35,6 +41,16 @@ public abstract class ClientPlayNetworkHandlerMixin {
 	@Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
 	private void myriad$containerSlot(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
 		if (Myriad.isReady() && MyriadImpl.get() != null) MyriadImpl.get().containerTracker().onSlot(packet.getContainerId(), packet.getSlot());
+	}
+
+	/** TeleportEvent, on the render thread (the packet first arrives on the network thread and is handed over). */
+	@Inject(method = "handleMovePlayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/protocol/PacketUtils;ensureRunningOnSameThread(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketListener;Lnet/minecraft/network/PacketProcessor;)V", shift = At.Shift.AFTER))
+	private void myriad$teleport(ClientboundPlayerPositionPacket packet, CallbackInfo ci) {
+		Player player = Minecraft.getInstance().player;
+		if (!Myriad.isReady() || player == null || player.isPassenger()) return;
+		PositionMoveRotation now = PositionMoveRotation.of(player);
+		Vec3 to = PositionMoveRotation.calculateAbsolute(now, packet.change(), packet.relatives()).position();
+		Myriad.events().post(new TeleportEvent(now.position(), to));
 	}
 
 	@Inject(method = "sendChat", at = @At("HEAD"), cancellable = true)

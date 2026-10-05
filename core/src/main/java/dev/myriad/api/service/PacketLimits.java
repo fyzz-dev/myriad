@@ -1,5 +1,6 @@
 package dev.myriad.api.service;
 
+import org.jetbrains.annotations.ApiStatus;
 /**
  * A shared budget for packets servers count, so that several modules acting at once (or one module on a fast loop)
  * don't add up to a kick. Every packet of each kind is counted as it's sent, by vanilla or by any feature, and
@@ -14,6 +15,7 @@ package dev.myriad.api.service;
  *
  * Wrap actions that must happen whatever the cost, like putting a totem in your off hand, in {@link #urgent}.
  */
+@ApiStatus.NonExtendable
 public interface PacketLimits {
 	enum Kind {
 		/** Block digging actions: starting, stopping and aborting a break, swapping hands, dropping the held item. */

@@ -1,10 +1,12 @@
 package dev.myriad.api.service;
 
+import org.jetbrains.annotations.ApiStatus;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.world.item.ItemStack;
 
 /** Hotbar helpers that track the slot the server thinks is selected. */
+@ApiStatus.NonExtendable
 public interface Inventory {
 	/** The hotbar slot (0-8) last sent to the server. */
 	int serverSlot();
@@ -88,6 +90,7 @@ public interface Inventory {
 	 * Whether an inventory click now would pass anti-cheats that refuse clicks while you move: Grim (2b2t) cancels a
 	 * click when the last movement keys the server heard had a direction or jump down, or sneak, or while you sprint.
 	 * Moves that can wait (refills, tools, building material) should wait for this; urgent ones (a totem) go anyway.
+	 * Always true where the server doesn't check this ({@link AntiCheat#isStrict()} is false).
 	 */
 	boolean safeToClick();
 

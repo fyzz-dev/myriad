@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
@@ -24,6 +25,7 @@ public abstract class InteractEvent extends Cancellable {
 	public static final class Block extends InteractEvent {
 		private final BlockHitResult hit;
 
+		@ApiStatus.Internal
 		public Block(InteractionHand hand, BlockHitResult hit) {
 			super(hand);
 			this.hit = hit;
@@ -36,6 +38,7 @@ public abstract class InteractEvent extends Cancellable {
 
 	/** Using the held item without a block (eating, throwing, shooting). */
 	public static final class Item extends InteractEvent {
+		@ApiStatus.Internal
 		public Item(InteractionHand hand) {
 			super(hand);
 		}
@@ -45,6 +48,7 @@ public abstract class InteractEvent extends Cancellable {
 	public static final class EntityTarget extends InteractEvent {
 		private final Entity entity;
 
+		@ApiStatus.Internal
 		public EntityTarget(InteractionHand hand, Entity entity) {
 			super(hand);
 			this.entity = entity;

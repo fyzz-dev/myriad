@@ -1,5 +1,6 @@
 package dev.myriad.api.addon;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
@@ -22,6 +23,7 @@ import java.util.function.Supplier;
  * Everything an addon can register, scoped to that addon: registrations are tagged with its mod id (which is also
  * the namespace of every id it creates) and are rolled back if the addon fails to load.
  */
+@ApiStatus.NonExtendable
 public interface AddonContext {
 	Addon addon();
 

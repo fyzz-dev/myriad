@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.myriad.api.config.ConfigManager;
 import dev.myriad.api.module.Module;
+import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.util.Keybind;
 import dev.myriad.api.util.MyriadId;
@@ -23,12 +24,26 @@ import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 
 /**
- * Persists Myriad to {@code .minecraft/myriad/}. Module entries for modules that aren't installed are carried over
- * unchanged on every save, so removing an addon and adding it back later loses nothing.
+ * Persists Myriad to {@code .minecraft/myriad/}, so that updating (or going back to an older version of) Myriad or an
+ * addon loses nothing:
+ * <ul>
+ *   <li>entries for modules that aren't installed are carried over unchanged on every save;</li>
+ *   <li>saved settings a module doesn't know (from a newer or older version) are kept, and settings saved at a newer
+ *   {@code settingsVersion} keep that version, so they aren't migrated twice;</li>
+ *   <li>each file records its {@code _format}; one from a newer Myriad is copied aside before it's overwritten;</li>
+ *   <li>every file is written atomically, the first save of a session keeps the previous one as {@code .bak}, and a
+ *   file that can't be read is kept as {@code .broken} and replaced by that backup.</li>
+ * </ul>
  */
 public final class ConfigManagerImpl implements ConfigManager {
 	private static final Logger LOG = LoggerFactory.getLogger("Myriad/Config");
 	private static final long SAVE_DELAY_MS = 2000;
+	/**
+	 * The layout of Myriad's own config files, written into each as {@code _format}. Bump it when a file's structure
+	 * changes and read older layouts on load; files from a newer format are copied aside before this version saves.
+	 */
+	static final int FORMAT = 1;
+	static final String FORMAT_KEY = "_format";
 
 	private final MyriadImpl myriad;
 	private final Path root = FabricLoader.getInstance().getGameDir().resolve("myriad");
@@ -74,9 +89,16 @@ public final class ConfigManagerImpl implements ConfigManager {
 	public void load() {
 		loading = true;
 		try {
-			JsonFiles.read(root.resolve("myriad.json")).filter(JsonElement::isJsonObject).map(JsonElement::getAsJsonObject).ifPresent(o -> {
+			java.util.Optional.ofNullable(readObject(root.resolve("myriad.json"))).ifPresent(o -> {
 				if (o.has("profile")) profile = sanitize(o.get("profile").getAsString());
 				if (o.has("prefix")) prefix = o.get("prefix").getAsString();
+				if (o.has("antiCheat")) {
+					try {
+						myriad.antiCheat().setMode(AntiCheat.Mode.valueOf(o.get("antiCheat").getAsString().toUpperCase(java.util.Locale.ROOT)));
+					} catch (RuntimeException ignored) {
+						// An unknown value (from a newer version) keeps the default.
+					}
+				}
 				if (o.has("keyActions") && o.get("keyActions").isJsonObject()) rawKeyActions = o.getAsJsonObject("keyActions");
 				// "Open Desktop" was renamed to "Open Menu"; keep the user's bind.
 				if (rawKeyActions.has("myriad:open_desktop") && !rawKeyActions.has("myriad:open_menu")) {
@@ -95,7 +117,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 
 	private void loadProfile(String name) {
 		Path dir = profileDir(name);
-		rawModules = JsonFiles.read(dir.resolve("modules.json")).filter(JsonElement::isJsonObject).map(JsonElement::getAsJsonObject).orElse(new JsonObject());
+		rawModules = java.util.Objects.requireNonNullElseGet(readObject(dir.resolve("modules.json")), JsonObject::new);
 		for (Module m : myriad.modules()) {
 			JsonElement e = savedEntry(m);
 			if (e == null || !e.isJsonObject()) {
@@ -106,7 +128,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 			JsonObject o = e.getAsJsonObject();
 			if (o.has("settings") && o.get("settings").isJsonObject()) {
 				JsonObject settings = o.getAsJsonObject("settings");
-				int version = o.has("version") ? o.get("version").getAsInt() : 1;
+				int version = intOr(o, "version", 1);
 				if (version < m.settingsVersion()) {
 					try {
 						m.upgradeSavedSettings(settings, version);
@@ -118,7 +140,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 			}
 			m.setEnabledSilently(o.has("enabled") && o.get("enabled").getAsBoolean());
 		}
-		JsonObject ui = JsonFiles.read(dir.resolve("ui.json")).filter(JsonElement::isJsonObject).map(JsonElement::getAsJsonObject).orElse(null);
+		JsonObject ui = readObject(dir.resolve("ui.json"));
 		myriad.windowManager().load(ui);
 	}
 
@@ -139,18 +161,26 @@ public final class ConfigManagerImpl implements ConfigManager {
 	/** Builds the JSON on this (render) thread; writes on the IO thread if {@code async}. */
 	private void save(boolean async) {
 		JsonObject global = new JsonObject();
+		global.addProperty(FORMAT_KEY, FORMAT);
 		global.addProperty("profile", profile);
 		global.addProperty("prefix", prefix);
+		global.addProperty("antiCheat", myriad.antiCheat().mode().name().toLowerCase(java.util.Locale.ROOT));
 		JsonObject keys = rawKeyActions.deepCopy();
 		for (KeyAction a : myriad.keyActions()) keys.addProperty(a.id().toString(), a.bind().serialize());
 		global.add("keyActions", keys);
 
 		JsonObject modules = rawModules.deepCopy();
+		modules.addProperty(FORMAT_KEY, FORMAT);
 		for (Module m : myriad.modules()) {
+			JsonElement before = modules.get(m.id().toString());
+			JsonObject prev = before != null && before.isJsonObject() ? before.getAsJsonObject() : new JsonObject();
+			JsonObject prevSettings = prev.has("settings") && prev.get("settings").isJsonObject() ? prev.getAsJsonObject("settings") : null;
+			// Settings saved by a newer version of the module keep their version, so they aren't migrated again later.
+			int version = Math.max(m.settingsVersion(), intOr(prev, "version", 1));
 			JsonObject o = new JsonObject();
 			o.addProperty("enabled", m.isEnabled());
-			if (m.settingsVersion() > 1) o.addProperty("version", m.settingsVersion());
-			o.add("settings", m.settings.toJson());
+			if (version > 1) o.addProperty("version", version);
+			o.add("settings", m.settings.toJson(prevSettings));
 			modules.add(m.id().toString(), o);
 		}
 		rawModules = modules;
@@ -159,7 +189,10 @@ public final class ConfigManagerImpl implements ConfigManager {
 		Runnable write = () -> {
 			JsonFiles.write(root.resolve("myriad.json"), global);
 			JsonFiles.write(dir.resolve("modules.json"), modules);
-			if (ui != null) JsonFiles.write(dir.resolve("ui.json"), ui);
+			if (ui != null) {
+				ui.addProperty(FORMAT_KEY, FORMAT);
+				JsonFiles.write(dir.resolve("ui.json"), ui);
+			}
 		};
 		if (async) io.execute(write);
 		else write.run();
@@ -256,6 +289,34 @@ public final class ConfigManagerImpl implements ConfigManager {
 		if (prefix == null || prefix.isBlank()) return;
 		this.prefix = prefix.trim();
 		markDirty();
+	}
+
+	private static int intOr(JsonObject o, String key, int fallback) {
+		try {
+			return o.has(key) ? o.get(key).getAsInt() : fallback;
+		} catch (RuntimeException e) {
+			return fallback;
+		}
+	}
+
+	/**
+	 * Reads a config file, keeping a copy of one written by a newer Myriad ({@code <name>.format<N>.bak}): what this
+	 * version doesn't understand would otherwise be lost when it saves.
+	 */
+	private static JsonObject readObject(Path file) {
+		JsonObject o = JsonFiles.read(file).filter(JsonElement::isJsonObject).map(JsonElement::getAsJsonObject).orElse(null);
+		if (o == null) return null;
+		int format = intOr(o, FORMAT_KEY, 1);
+		if (format > FORMAT) {
+			Path copy = file.resolveSibling(file.getFileName() + ".format" + format + ".bak");
+			try {
+				if (!Files.exists(copy)) Files.copy(file, copy);
+				LOG.warn("{} was written by a newer version of Myriad (format {}); kept a copy as {}", file, format, copy.getFileName());
+			} catch (IOException e) {
+				LOG.error("Could not keep a copy of {}", file, e);
+			}
+		}
+		return o;
 	}
 
 	private static String sanitize(String name) {

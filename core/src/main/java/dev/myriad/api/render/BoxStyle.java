@@ -1,4 +1,4 @@
-package dev.myriad.essentials.util;
+package dev.myriad.api.render;
 
 import dev.myriad.api.render.Renderer3D;
 import dev.myriad.api.render.ShapeBuilder;
@@ -10,8 +10,15 @@ import dev.myriad.api.util.ColorUtil;
 import net.minecraft.world.phys.AABB;
 
 /**
- * How ESP and Storage draw their boxes, so both offer the same options: outline, fill or both, fill opacity, line
- * width, and whether to draw through walls.
+ * The standard options for drawing boxes, so every highlight (entities, storage, blocks, holes) offers the same
+ * ones: outline, fill or both, fill opacity, line width, and whether to draw through walls.
+ *
+ * <pre>{@code
+ * private final BoxStyle style = new BoxStyle(settings.group("Render"));
+ *
+ * // in a Render3DEvent handler
+ * style.draw(e.shapes(), box, color.argb(), 1);
+ * }</pre>
  */
 public final class BoxStyle {
 	public final EnumSetting<Renderer3D.ShapeMode> shape;
@@ -19,6 +26,7 @@ public final class BoxStyle {
 	public final DoubleSetting lineWidth;
 	public final BoolSetting throughWalls;
 
+	/** Adds the options to {@code group}. */
 	public BoxStyle(SettingGroup group) {
 		shape = group.enumSetting("Shape", Renderer3D.ShapeMode.BOTH).description("Outline, fill, or both.").build();
 		fillOpacity = group.doubleSetting("Fill Opacity").defaultValue(0.2).range(0, 1).decimals(2)

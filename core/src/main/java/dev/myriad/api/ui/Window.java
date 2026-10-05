@@ -1,8 +1,10 @@
 package dev.myriad.api.ui;
 
+import org.jetbrains.annotations.ApiStatus;
 import com.google.gson.JsonObject;
 
 /** A window managed by the desktop. */
+@ApiStatus.NonExtendable
 public interface Window {
 	Panel panel();
 

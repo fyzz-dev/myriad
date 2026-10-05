@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import org.lwjgl.glfw.GLFW;
 
@@ -8,6 +9,7 @@ public final class KeyEvent extends Cancellable {
 	private final int key, scancode, action, modifiers;
 	private final boolean inScreen;
 
+	@ApiStatus.Internal
 	public KeyEvent(int key, int scancode, int action, int modifiers, boolean inScreen) {
 		this.key = key;
 		this.scancode = scancode;

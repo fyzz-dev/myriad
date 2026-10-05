@@ -48,7 +48,7 @@ public final class PlacementManager implements Placement {
 	 * Placement rotations snap, and walk along the sent yaw while they're held: Grim simulates movement with the yaw it
 	 * was sent, so without the fix walking while facing a placement is flagged.
 	 */
-	static final Rotations.Options MOVE_FIX = new Rotations.Options(0, true);
+	static final Rotations.Options MOVE_FIX = Rotations.Options.MOVE_FIX;
 
 	/** Just above the first request's, so the refined aim wins it. */
 	static final int REFINED_PRIORITY = Rotations.PRIORITY_HIGH + 1;
@@ -185,7 +185,7 @@ public final class PlacementManager implements Placement {
 		Myriad.inventory().silentSwap(slot, () -> {
 			if (air) {
 				// Swap the block to the off hand, place it from there, swing that hand, and swap back: how 2b2t clients
-				// (Bep Hax's "Grim" air place) place against air there, past its Grim.
+				// place against air there, past its Grim.
 				swapHands();
 				mc.gameMode.useItemOn(mc.player, InteractionHand.OFF_HAND, target);
 				swing(InteractionHand.OFF_HAND, o.swing());

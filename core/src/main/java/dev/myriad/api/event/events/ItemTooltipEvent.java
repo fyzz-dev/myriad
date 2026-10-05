@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import java.util.List;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
@@ -11,6 +12,7 @@ public final class ItemTooltipEvent {
 	private final List<Component> lines;
 	private final TooltipFlag type;
 
+	@ApiStatus.Internal
 	public ItemTooltipEvent(ItemStack stack, List<Component> lines, TooltipFlag type) {
 		this.stack = stack;
 		this.lines = lines;

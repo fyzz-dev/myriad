@@ -1,7 +1,9 @@
 package dev.myriad.api.event;
 
+import org.jetbrains.annotations.ApiStatus;
 import java.util.function.Consumer;
 
+@ApiStatus.NonExtendable
 public interface EventBus {
 	/** Subscribes every {@link Subscribe} method on {@code listener} (including inherited ones). */
 	void subscribe(Object listener);

@@ -5,6 +5,7 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"BlockItemAccessor",
+		"BlockStateBaseMixin",
 		"CameraMixin",
 		"ChatHudMixin",
 		"ChatInputSuggestorMixin",
@@ -28,6 +29,7 @@
 		"MouseMixin",
 		"PlayerMixin",
 		"ScreenMixin",
+		"SoundManagerMixin",
 		"WorldRendererMixin"
 	],
 	"injectors": {

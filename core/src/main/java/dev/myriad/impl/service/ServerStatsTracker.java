@@ -1,6 +1,8 @@
 package dev.myriad.impl.service;
 
+import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.EntityEvent;
 import dev.myriad.api.event.events.PacketEvent;
 import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.service.ServerStats;
@@ -13,7 +15,7 @@ import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.LivingEntity;
 
 /** Server TPS from the once-a-second time updates, and totem pops from entity status 35 (pop) and 3 (death). */
 public final class ServerStatsTracker implements ServerStats {
@@ -41,9 +43,14 @@ public final class ServerStatsTracker implements ServerStats {
 			mc.execute(() -> {
 				if (mc.level == null) return;
 				Entity entity = p.getEntity(mc.level);
-				if (!(entity instanceof Player player)) return;
-				if (status == 35) pops.merge(player.getUUID(), 1, Integer::sum);
-				else pops.remove(player.getUUID());
+				if (!(entity instanceof LivingEntity living)) return;
+				if (status == 35) {
+					int n = pops.merge(living.getUUID(), 1, Integer::sum);
+					Myriad.events().post(new EntityEvent.TotemPopped(living, n));
+				} else {
+					Integer n = pops.remove(living.getUUID());
+					Myriad.events().post(new EntityEvent.Died(living, n == null ? 0 : n));
+				}
 			});
 		}
 	}

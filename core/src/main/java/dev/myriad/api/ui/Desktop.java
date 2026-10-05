@@ -1,5 +1,6 @@
 package dev.myriad.api.ui;
 
+import org.jetbrains.annotations.ApiStatus;
 import com.google.gson.JsonObject;
 import dev.myriad.api.util.MyriadId;
 
@@ -9,6 +10,7 @@ import java.util.Optional;
 /**
  * Myriad's window manager: nine tiling workspaces plus a HUD workspace whose windows are drawn in game.
  */
+@ApiStatus.NonExtendable
 public interface Desktop {
 	int HUD_WORKSPACE = 0;
 	int WORKSPACES = 9;

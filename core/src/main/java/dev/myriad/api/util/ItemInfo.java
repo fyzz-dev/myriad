@@ -10,6 +10,11 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -19,7 +24,7 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 
-/** Questions about item stacks that features keep asking: enchantments, food, contents, durability, gear kind. */
+/** Questions about item stacks that features keep asking: enchantments, food, contents, durability, gear kind, armour. */
 public final class ItemInfo {
 	private ItemInfo() {
 	}
@@ -83,6 +88,37 @@ public final class ItemInfo {
 	public static @Nullable EquipmentSlot armorSlot(ItemStack stack) {
 		Equippable e = stack.get(DataComponents.EQUIPPABLE);
 		return e != null && e.slot().getType() == EquipmentSlot.Type.HUMANOID_ARMOR ? e.slot() : null;
+	}
+
+	/** Armour points it gives worn in {@code slot} (a diamond chestplate gives 8); 0 for anything that isn't armour there. */
+	public static double armor(ItemStack stack, EquipmentSlot slot) {
+		return stack.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY).compute(Attributes.ARMOR, 0, slot);
+	}
+
+	/** Armour toughness it gives worn in {@code slot} (diamond 2, netherite 3). */
+	public static double toughness(ItemStack stack, EquipmentSlot slot) {
+		return stack.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY).compute(Attributes.ARMOR_TOUGHNESS, 0, slot);
+	}
+
+	/** Whether it's something to glide with (an elytra), worn out or not. */
+	public static boolean isGlider(ItemStack stack) {
+		return stack.has(DataComponents.GLIDER);
+	}
+
+	/** Whether you could glide with it worn on your chest now: a glider that isn't about to break. */
+	public static boolean canGlide(ItemStack stack) {
+		return !stack.isEmpty() && LivingEntity.canGlideUsing(stack, EquipmentSlot.CHEST);
+	}
+
+	/** Whether it's armour for the chest that isn't a glider: a chestplate. */
+	public static boolean isChestplate(ItemStack stack) {
+		Equippable e = stack.get(DataComponents.EQUIPPABLE);
+		return e != null && e.slot() == EquipmentSlot.CHEST && !isGlider(stack);
+	}
+
+	/** Whether it has Curse of Binding (or anything else that keeps worn armour from being taken off). */
+	public static boolean isBound(ItemStack stack) {
+		return EnchantmentHelper.has(stack, EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE);
 	}
 
 	/** The inventory index ({@link Slots#HEAD} etc.) for an armour slot. */

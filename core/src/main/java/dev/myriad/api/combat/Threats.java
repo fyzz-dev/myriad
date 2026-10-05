@@ -1,4 +1,4 @@
-package dev.myriad.essentials.util;
+package dev.myriad.api.combat;
 
 import dev.myriad.api.Myriad;
 import dev.myriad.api.combat.Damage;
@@ -14,10 +14,16 @@ import net.minecraft.world.level.block.RespawnAnchorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * How much damage nearby dangers could do to you right now: end crystals, beds (which explode outside the Overworld),
- * charged respawn anchors (which explode outside the Nether), creepers about to explode, players about to hit you, and the
- * fall you're in. Offhand
- * and Auto Disconnect use it to decide when a hit could kill you.
+ * How much damage nearby dangers could do to you right now, after your armour and effects: end crystals, beds (which
+ * explode outside the Overworld), charged respawn anchors (which explode outside the Nether), creepers about to
+ * explode, players about to hit you, and the fall you're in. For anything that reacts before a hit could kill you:
+ * totems, auto disconnect, surround, escaping.
+ *
+ * <pre>{@code
+ * if (Threats.isLethal(2)) forceTotem();
+ * }</pre>
+ *
+ * Call it in game only (with a player).
  */
 public final class Threats {
 	private Threats() {
@@ -30,6 +36,17 @@ public final class Threats {
 	/** Your health including absorption. */
 	public static float health() {
 		return player().getHealth() + player().getAbsorptionAmount();
+	}
+
+	/** The worst of every danger around you, with the usual ranges (crystals 12, beds and anchors 8, creepers 8, players 5). */
+	public static float worst() {
+		return Math.max(Math.max(Math.max(crystals(12, false), beds(8)), Math.max(anchors(8), creepers(8))), Math.max(players(5), fall()));
+	}
+
+	/** Whether {@link #worst()} plus {@code margin} could take all your health (including absorption). */
+	public static boolean isLethal(float margin) {
+		float worst = worst();
+		return worst > 0 && worst + margin >= health();
 	}
 
 	/** The worst crystal within {@code range}, or all of them added up when {@code sum}. */

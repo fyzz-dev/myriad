@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.render.Canvas;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
@@ -13,6 +14,7 @@ public final class Render2DEvent {
 	private final Canvas canvas;
 	private final float tickDelta;
 
+	@ApiStatus.Internal
 	public Render2DEvent(GuiGraphicsExtractor context, Canvas canvas, float tickDelta) {
 		this.context = context;
 		this.canvas = canvas;

@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import dev.myriad.api.render.Renderer3D;
@@ -20,6 +21,7 @@ public final class Render3DEvent {
 	private final float tickDelta;
 	private final SubmitNodeCollector submits;
 
+	@ApiStatus.Internal
 	public Render3DEvent(PoseStack matrices, Camera camera, float tickDelta, SubmitNodeCollector submits) {
 		this.matrices = matrices;
 		this.camera = camera;

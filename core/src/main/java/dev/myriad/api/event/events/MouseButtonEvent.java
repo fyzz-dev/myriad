@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import dev.myriad.api.event.Cancellable;
 import org.lwjgl.glfw.GLFW;
 
@@ -8,6 +9,7 @@ public final class MouseButtonEvent extends Cancellable {
 	private final int button, action, modifiers;
 	private final boolean inScreen;
 
+	@ApiStatus.Internal
 	public MouseButtonEvent(int button, int action, int modifiers, boolean inScreen) {
 		this.button = button;
 		this.action = action;

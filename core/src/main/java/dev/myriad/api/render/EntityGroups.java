@@ -1,4 +1,4 @@
-package dev.myriad.essentials.util;
+package dev.myriad.api.render;
 
 import dev.myriad.api.setting.BoolSetting;
 import dev.myriad.api.setting.ColorSetting;
@@ -22,8 +22,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The entity groups ESP and Tracers pick from (players, friends, monsters, crystals, pearls, …), each with an on/off
- * setting and a colour from the theme, plus a list of extra entity types for anything the groups don't cover.
+ * The standard way to pick entities to show (players, friends, monsters, crystals, pearls, …), each group with an
+ * on/off setting and a colour from the theme, plus a list of extra entity types for anything the groups don't cover.
+ * ESP, tracers, chams and radars use it so they all offer the same choices.
  *
  * <pre>{@code
  * private final EntityGroups targets = new EntityGroups(settings, Set.of(Group.PLAYERS, Group.FRIENDS));
@@ -45,7 +46,8 @@ public final class EntityGroups {
 		ITEM_FRAMES("Item Frames", SettingColor.Mode.TEXT);
 
 		public final String title;
-		final SettingColor.Mode color;
+		/** The theme colour the group defaults to. */
+		public final SettingColor.Mode color;
 
 		Group(String title, SettingColor.Mode color) {
 			this.title = title;

@@ -1,5 +1,6 @@
 package dev.myriad.api.service;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
@@ -14,6 +15,7 @@ import net.minecraft.world.entity.player.Player;
  * int pops = Myriad.server().totemPops(player);
  * }</pre>
  */
+@ApiStatus.NonExtendable
 public interface ServerStats {
 	/** Average ticks per second over the last ~20 seconds, from the spacing of time updates; 20 until known. */
 	float tps();

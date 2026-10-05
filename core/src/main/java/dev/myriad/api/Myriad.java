@@ -7,6 +7,7 @@ import dev.myriad.api.event.EventBus;
 import dev.myriad.api.module.Category;
 import dev.myriad.api.module.ModuleRegistry;
 import dev.myriad.api.registry.Registry;
+import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.service.Breaking;
 import dev.myriad.api.service.Building;
 import dev.myriad.api.service.Containers;
@@ -25,6 +26,9 @@ import dev.myriad.api.ui.Desktop;
 import dev.myriad.api.ui.PanelType;
 import dev.myriad.api.ui.Theme;
 import dev.myriad.api.ui.layout.Layout;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.Version;
+import net.fabricmc.loader.api.VersionParsingException;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
@@ -58,6 +62,23 @@ public final class Myriad {
 
 	public static boolean isReady() {
 		return api != null;
+	}
+
+	/** The version of Myriad core that's running, e.g. {@code "0.1.0"}. */
+	public static String version() {
+		return FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("0.0.0");
+	}
+
+	/**
+	 * Whether the running core is {@code version} or newer: for using something added in a later core version while
+	 * still supporting older ones (declare the oldest you support in {@code fabric.mod.json}'s {@code depends}).
+	 */
+	public static boolean isAtLeast(String version) {
+		try {
+			return Version.parse(version()).compareTo(Version.parse(version)) >= 0;
+		} catch (VersionParsingException e) {
+			throw new IllegalArgumentException("Not a version: " + version, e);
+		}
 	}
 
 	public static EventBus events() {
@@ -159,6 +180,14 @@ public final class Myriad {
 	/** The speed the client runs game ticks at, combined from every feature that changes it. */
 	public static TickSpeed tickSpeed() {
 		return api().tickSpeed();
+	}
+
+	/**
+	 * What the server checks (Grim or nothing beyond vanilla), from the player's choice or detected per server. The
+	 * services' {@code forServer()} presets follow it.
+	 */
+	public static AntiCheat antiCheat() {
+		return api().antiCheat();
 	}
 
 	/** The window manager. */

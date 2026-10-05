@@ -1,5 +1,6 @@
 package dev.myriad.api.event.events;
 
+import org.jetbrains.annotations.ApiStatus;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.phys.Vec3;
 
@@ -11,6 +12,7 @@ public final class PlayerMoveEvent {
 	private final MoverType type;
 	private Vec3 movement;
 
+	@ApiStatus.Internal
 	public PlayerMoveEvent(MoverType type, Vec3 movement) {
 		this.type = type;
 		this.movement = movement;
