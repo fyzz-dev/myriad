@@ -4,10 +4,12 @@ import com.mojang.blaze3d.platform.Window;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.WindowResizeEvent;
 import dev.myriad.impl.MyriadImpl;
+import dev.myriad.impl.service.InventoryManager;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -18,6 +20,22 @@ public abstract class MinecraftClientMixin {
 	@Shadow
 	@Final
 	private Window window;
+
+	/** Your own right clicks, so a module's slot hold steps aside for them (see Inventory.hold). */
+	@Inject(method = "startUseItem", at = @At("HEAD"))
+	private void myriad$useStart(CallbackInfo ci) {
+		myriad$click(true);
+	}
+
+	@Inject(method = "startUseItem", at = @At("RETURN"))
+	private void myriad$useEnd(CallbackInfo ci) {
+		myriad$click(false);
+	}
+
+	@Unique
+	private static void myriad$click(boolean active) {
+		if (Myriad.isReady() && Myriad.inventory() instanceof InventoryManager inventory) inventory.userClick(active);
+	}
 
 	@Inject(method = "resizeGui", at = @At("TAIL"))
 	private void myriad$onResize(CallbackInfo ci) {

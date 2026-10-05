@@ -12,13 +12,25 @@ import dev.myriad.api.service.Inventory;
 import dev.myriad.api.service.PacketLimits;
 import dev.myriad.api.util.Slots;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
+import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
@@ -32,7 +44,13 @@ public final class InventoryManager implements Inventory {
 	private final Minecraft mc = Minecraft.getInstance();
 	private volatile int serverSlot;
 	private Object holder;
-	private int holdTicks;
+	private int holdTicks, holdSlot;
+	/** The hold gives way to anyone else's (see holdWeakly). */
+	private boolean weakHold;
+	/** Set while vanilla handles one of your own right clicks (using an item, placing, interacting). */
+	private boolean userClick;
+	/** The hold stepped aside for your own click: the server has your visible slot until you're done. */
+	private boolean yielded;
 
 	/**
 	 * What the server last heard of your movement: the keys of the last input packet (vanilla only sends one when they
@@ -41,12 +59,20 @@ public final class InventoryManager implements Inventory {
 	private volatile Input sentInput = Input.EMPTY;
 	private volatile boolean sentSprinting;
 
+	/**
+	 * The server's attack charge counter: ticks since your last hit, or since the item in your hand (the one the server
+	 * holds) changed to a different one, which starts it over (as vanilla's player tick does on both sides).
+	 */
+	private int attackTicks;
+	private ItemStack chargedItem = ItemStack.EMPTY;
+
 	/** Lowest priority: what actually goes out, after other handlers have changed it. */
 	@Subscribe(priority = Priority.LOWEST)
 	private void onSend(PacketEvent.Send e) {
 		if (e.isCancelled()) return;
 		switch (e.packet()) {
 			case ServerboundSetCarriedItemPacket p -> serverSlot = p.getSlot();
+			case ServerboundAttackPacket p -> attackTicks = 0;
 			case ServerboundPlayerInputPacket p -> sentInput = p.input();
 			case ServerboundPlayerCommandPacket p when p.getAction() == ServerboundPlayerCommandPacket.Action.START_SPRINTING -> sentSprinting = true;
 			case ServerboundPlayerCommandPacket p when p.getAction() == ServerboundPlayerCommandPacket.Action.STOP_SPRINTING -> sentSprinting = false;
@@ -65,19 +91,111 @@ public final class InventoryManager implements Inventory {
 		}
 	}
 
-	/** Expires holds at the start of the tick, so the slot change back goes out before movement, like vanilla's. */
+	/** First thing each tick, before any module attacks: counts the charge on, for the item the server now holds. */
+	@Subscribe(priority = Priority.BEFORE_ACTIONS + 100)
+	private void countCharge(TickEvent.Pre e) {
+		if (mc.player == null) return;
+		attackTicks++;
+		ItemStack held = mc.player.getInventory().getItem(serverSlot);
+		if (!ItemStack.isSameItem(chargedItem, held)) {
+			attackTicks = 0;
+			chargedItem = held.copy();
+		}
+	}
+
+	@Override
+	public float attackCharge() {
+		if (mc.player == null) return 0;
+		return Mth.clamp((attackTicks + 0.5f) / attackDelay(mc.player.getInventory().getItem(serverSlot)), 0, 1);
+	}
+
+	/**
+	 * Ticks a full charge takes with {@code item} in hand: your attack speed with its modifiers in place of those of the
+	 * item your attributes were last worked out with (effects like Haste stay).
+	 */
+	private float attackDelay(ItemStack item) {
+		AttributeInstance speed = mc.player.getAttribute(Attributes.ATTACK_SPEED);
+		if (speed == null) return mc.player.getCurrentItemAttackStrengthDelay();
+		Set<Identifier> fromItems = new HashSet<>();
+		List<AttributeModifier> held = new ArrayList<>();
+		for (ItemStack stack : new ItemStack[]{mc.player.getMainHandItem(), item, chargedItem}) {
+			stack.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY).forEach(EquipmentSlot.MAINHAND, (attribute, modifier) -> {
+				if (!attribute.equals(Attributes.ATTACK_SPEED)) return;
+				fromItems.add(modifier.id());
+				if (stack == item) held.add(modifier);
+			});
+		}
+		AttributeInstance withItem = new AttributeInstance(Attributes.ATTACK_SPEED, i -> {
+		});
+		withItem.setBaseValue(speed.getBaseValue());
+		for (AttributeModifier modifier : speed.getModifiers()) if (!fromItems.contains(modifier.id())) withItem.addTransientModifier(modifier);
+		for (AttributeModifier modifier : held) withItem.addOrUpdateTransientModifier(modifier);
+		return (float) (1 / Math.max(withItem.getValue(), 0.05) * 20);
+	}
+
+	/**
+	 * Expires holds at the start of the tick, so the slot change back goes out before movement, like vanilla's; and takes
+	 * the held slot back once you're done with a click it stepped aside for.
+	 */
 	@Subscribe(priority = 950)
 	private void onTick(TickEvent.Pre e) {
-		if (holder == null) return;
-		if (mc.player == null || --holdTicks <= 0) release(holder);
+		if (holder == null) {
+			yielded = false;
+			return;
+		}
+		if (mc.player == null || --holdTicks <= 0) {
+			release(holder);
+			return;
+		}
+		if (yielded && !userBusy()) {
+			yielded = false;
+			if (serverSlot != holdSlot) mc.getConnection().send(new ServerboundSetCarriedItemPacket(holdSlot));
+		}
+	}
+
+	/** Whether you're still using your hand: eating or drawing a bow with it, or holding right click. */
+	private boolean userBusy() {
+		var p = mc.player;
+		return p.isUsingItem() && p.getUsedItemHand() == InteractionHand.MAIN_HAND || mc.options.keyUse.isDown();
+	}
+
+	/** Vanilla is handling one of your own right clicks (from the mixin on {@code Minecraft}). */
+	public void userClick(boolean active) {
+		userClick = active;
+	}
+
+	/**
+	 * Vanilla makes sure the server holds your visible slot before an action. For your own right click while a module
+	 * holds another slot, the hold steps aside: the server gets your visible slot (what you see is what you use) until
+	 * you're done ({@link #userBusy()}), then the held slot again. Left clicks keep the hold: attacking and mining with
+	 * what a module holds is what Auto Tool and Kill Aura hold for.
+	 */
+	public void beforeCarriedSync() {
+		if (!userClick || holder == null || mc.player == null) return;
+		int visible = mc.player.getInventory().getSelectedSlot();
+		if (serverSlot != visible) mc.getConnection().send(new ServerboundSetCarriedItemPacket(visible));
+		yielded = true;
 	}
 
 	@Override
 	public boolean hold(Object owner, int hotbarSlot, int maxTicks) {
+		return hold(owner, hotbarSlot, maxTicks, false);
+	}
+
+	@Override
+	public boolean holdWeakly(Object owner, int hotbarSlot, int maxTicks) {
+		return hold(owner, hotbarSlot, maxTicks, true);
+	}
+
+	private boolean hold(Object owner, int hotbarSlot, int maxTicks, boolean weak) {
 		if (mc.player == null || hotbarSlot < 0 || hotbarSlot > 8) return false;
-		if (holder != null && holder != owner) return false;
+		if (holder != null && holder != owner && (weak || !weakHold)) return false;
 		holder = owner;
+		weakHold = weak;
 		holdTicks = Math.max(1, maxTicks);
+		holdSlot = hotbarSlot;
+		// Stepped aside for your own click: taken back once you're done.
+		if (yielded) return false;
 		if (serverSlot != hotbarSlot) mc.getConnection().send(new ServerboundSetCarriedItemPacket(hotbarSlot));
 		return true;
 	}
@@ -87,6 +205,7 @@ public final class InventoryManager implements Inventory {
 		if (holder == null || holder != owner) return;
 		holder = null;
 		holdTicks = 0;
+		yielded = false;
 		if (mc.player != null && mc.getConnection() != null) {
 			int visible = mc.player.getInventory().getSelectedSlot();
 			if (serverSlot != visible) mc.getConnection().send(new ServerboundSetCarriedItemPacket(visible));
@@ -102,7 +221,7 @@ public final class InventoryManager implements Inventory {
 	public ItemStack serverItem() {
 		if (mc.player == null) return ItemStack.EMPTY;
 		var inv = mc.player.getInventory();
-		return holder != null ? inv.getItem(serverSlot) : inv.getSelectedItem();
+		return holder != null && !yielded ? inv.getItem(serverSlot) : inv.getSelectedItem();
 	}
 
 	@Override

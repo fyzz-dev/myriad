@@ -1,5 +1,6 @@
 package dev.myriad.api.util;
 
+import dev.myriad.api.Myriad;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -88,9 +89,12 @@ public final class Interactions {
 		if (mc().player != null) mc().player.swing(hand);
 	}
 
-	/** Attack charge, 0..1 (1 = a full-strength hit). */
+	/**
+	 * Attack charge, 0..1 (1 = a full-strength hit), of the item the server holds in your hand (a weapon a module holds
+	 * silently counts, not the one you see): see {@link dev.myriad.api.service.Inventory#attackCharge()}.
+	 */
 	public static float attackCharge() {
-		return mc().player == null ? 0 : mc().player.getAttackStrengthScale(0.5f);
+		return Myriad.inventory().attackCharge();
 	}
 
 	/** Ticks since you last swung to attack (the counter attack charge comes from). */

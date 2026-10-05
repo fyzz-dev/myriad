@@ -7,6 +7,7 @@ import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.MouseButtonEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.impl.command.CommandManager;
+import dev.myriad.impl.service.InventoryManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
@@ -146,7 +147,8 @@ public final class DevConsole {
 				}
 				case "select" -> Myriad.inventory().select(Integer.parseInt(a[1]) - 1);
 				case "attack" -> attack();
-				case "use" -> use();
+				// As your own right click (a module's slot hold steps aside for it).
+				case "use" -> asClick(this::use);
 				case "middle" -> {
 					Myriad.events().post(new MouseButtonEvent(GLFW.GLFW_MOUSE_BUTTON_MIDDLE, GLFW.GLFW_PRESS, 0, false));
 					Myriad.events().post(new MouseButtonEvent(GLFW.GLFW_MOUSE_BUTTON_MIDDLE, GLFW.GLFW_RELEASE, 0, false));
@@ -158,6 +160,16 @@ public final class DevConsole {
 			}
 		} catch (RuntimeException ex) {
 			LOG.warn("[dev] failed: {} ({})", line, ex.toString());
+		}
+	}
+
+	private static void asClick(Runnable click) {
+		var inventory = (InventoryManager) Myriad.inventory();
+		inventory.userClick(true);
+		try {
+			click.run();
+		} finally {
+			inventory.userClick(false);
 		}
 	}
 
