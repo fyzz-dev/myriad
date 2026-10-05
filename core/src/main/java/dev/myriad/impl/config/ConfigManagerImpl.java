@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.myriad.api.config.ConfigManager;
 import dev.myriad.api.module.Module;
+import dev.myriad.api.addon.AddonSettings;
 import dev.myriad.api.service.AntiCheat;
 import dev.myriad.api.service.KeyAction;
 import dev.myriad.api.util.Keybind;
@@ -56,6 +57,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 	private String profile = "default";
 	private String prefix = ".";
 	private JsonObject rawModules = new JsonObject();
+	private JsonObject rawAddonSettings = new JsonObject();
 	private JsonObject rawKeyActions = new JsonObject();
 	private boolean loading;
 	private long dirtySince = -1;
@@ -92,6 +94,11 @@ public final class ConfigManagerImpl implements ConfigManager {
 			java.util.Optional.ofNullable(readObject(root.resolve("myriad.json"))).ifPresent(o -> {
 				if (o.has("profile")) profile = sanitize(o.get("profile").getAsString());
 				if (o.has("prefix")) prefix = o.get("prefix").getAsString();
+				if (o.has("knownGrimServers") && o.get("knownGrimServers").isJsonArray()) {
+					List<String> hosts = new ArrayList<>();
+					for (JsonElement e : o.getAsJsonArray("knownGrimServers")) if (e.isJsonPrimitive()) hosts.add(e.getAsString());
+					((dev.myriad.impl.service.AntiCheatTracker) myriad.antiCheat()).setKnownServers(hosts);
+				}
 				if (o.has("antiCheat")) {
 					try {
 						myriad.antiCheat().setMode(AntiCheat.Mode.valueOf(o.get("antiCheat").getAsString().toUpperCase(java.util.Locale.ROOT)));
@@ -140,6 +147,12 @@ public final class ConfigManagerImpl implements ConfigManager {
 			}
 			m.setEnabledSilently(o.has("enabled") && o.get("enabled").getAsBoolean());
 		}
+		rawAddonSettings = java.util.Objects.requireNonNullElseGet(readObject(dir.resolve("addons.json")), JsonObject::new);
+		for (AddonSettings a : myriad.addonSettings()) {
+			JsonElement e = rawAddonSettings.get(a.id().toString());
+			if (e != null && e.isJsonObject()) a.settings().fromJson(e.getAsJsonObject());
+			else a.settings().resetAll();
+		}
 		JsonObject ui = readObject(dir.resolve("ui.json"));
 		myriad.windowManager().load(ui);
 	}
@@ -165,6 +178,9 @@ public final class ConfigManagerImpl implements ConfigManager {
 		global.addProperty("profile", profile);
 		global.addProperty("prefix", prefix);
 		global.addProperty("antiCheat", myriad.antiCheat().mode().name().toLowerCase(java.util.Locale.ROOT));
+		com.google.gson.JsonArray known = new com.google.gson.JsonArray();
+		for (String h : myriad.antiCheat().knownServers()) known.add(h);
+		global.add("knownGrimServers", known);
 		JsonObject keys = rawKeyActions.deepCopy();
 		for (KeyAction a : myriad.keyActions()) keys.addProperty(a.id().toString(), a.bind().serialize());
 		global.add("keyActions", keys);
@@ -184,11 +200,19 @@ public final class ConfigManagerImpl implements ConfigManager {
 			modules.add(m.id().toString(), o);
 		}
 		rawModules = modules;
+		JsonObject addons = rawAddonSettings.deepCopy();
+		addons.addProperty(FORMAT_KEY, FORMAT);
+		for (AddonSettings a : myriad.addonSettings()) {
+			JsonElement before = addons.get(a.id().toString());
+			addons.add(a.id().toString(), a.settings().toJson(before != null && before.isJsonObject() ? before.getAsJsonObject() : null));
+		}
+		rawAddonSettings = addons;
 		JsonObject ui = myriad.windowManager().save();
 		Path dir = profileDir(profile);
 		Runnable write = () -> {
 			JsonFiles.write(root.resolve("myriad.json"), global);
 			JsonFiles.write(dir.resolve("modules.json"), modules);
+			if (addons.size() > 1) JsonFiles.write(dir.resolve("addons.json"), addons);
 			if (ui != null) {
 				ui.addProperty(FORMAT_KEY, FORMAT);
 				JsonFiles.write(dir.resolve("ui.json"), ui);

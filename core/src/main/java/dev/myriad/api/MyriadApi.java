@@ -1,6 +1,7 @@
 package dev.myriad.api;
 
 import dev.myriad.api.addon.Addon;
+import dev.myriad.api.addon.AddonSettings;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.config.ConfigManager;
 import dev.myriad.api.event.EventBus;
@@ -53,6 +54,8 @@ public interface MyriadApi {
 
 	Registry<KeyAction> keyActions();
 
+	Registry<AddonSettings> addonSettings();
+
 	ConfigManager config();
 
 	Notifications notifications();
@@ -86,4 +89,6 @@ public interface MyriadApi {
 	void chat(Component message);
 
 	void chat(Component message, String id);
+
+	void runCommand(String line);
 }

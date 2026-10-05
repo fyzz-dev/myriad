@@ -106,7 +106,26 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public float attackCharge() {
 		if (mc.player == null) return 0;
-		return Mth.clamp((attackTicks + 0.5f) / attackDelay(mc.player.getInventory().getItem(serverSlot)), 0, 1);
+		return Mth.clamp((attackTicks + 0.5f) / cachedAttackDelay(mc.player.getInventory().getItem(serverSlot)), 0, 1);
+	}
+
+	/** {@link #attackDelay} answers the same until the items or your attack speed modifiers change; asked every tick. */
+	private ItemStack delayItem, delayCharged, delayMain;
+	private int delayModifiers = -1;
+	private float delay;
+
+	private float cachedAttackDelay(ItemStack item) {
+		AttributeInstance speed = mc.player.getAttribute(Attributes.ATTACK_SPEED);
+		int modifiers = speed == null ? -1 : speed.getModifiers().size();
+		ItemStack main = mc.player.getMainHandItem();
+		if (item != delayItem || chargedItem != delayCharged || main != delayMain || modifiers != delayModifiers) {
+			delay = attackDelay(item);
+			delayItem = item;
+			delayCharged = chargedItem;
+			delayMain = main;
+			delayModifiers = modifiers;
+		}
+		return delay;
 	}
 
 	/**

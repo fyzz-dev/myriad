@@ -7,7 +7,9 @@ import dev.myriad.api.render.Canvas;
 import dev.myriad.api.ui.WidgetPanel;
 import dev.myriad.api.ui.widget.Button;
 import dev.myriad.api.ui.widget.HBox;
+import dev.myriad.api.addon.AddonSettings;
 import dev.myriad.api.ui.widget.Label;
+import dev.myriad.api.ui.widget.SettingsView;
 import dev.myriad.api.ui.widget.VBox;
 import java.util.HashSet;
 import java.util.Set;
@@ -98,6 +100,10 @@ public final class AddonsPanel extends WidgetPanel {
 			addon.sources().ifPresent(url -> links.add(new Button(" Source", () -> Util.getPlatform().openUri(url))).tooltip(url));
 			addon.issues().ifPresent(url -> links.add(new Button(" Issues", () -> Util.getPlatform().openUri(url))).tooltip(url));
 			if (!links.children().isEmpty()) body.add(links);
+			for (AddonSettings s : Myriad.addonSettings().ownedBy(id)) {
+				body.add(new Label(s.name()).bold());
+				body.add(SettingsView.build(s.settings()));
+			}
 		}
 
 		/** "12 modules · 3 HUD elements · 1 command", leaving out what the addon doesn't add. */

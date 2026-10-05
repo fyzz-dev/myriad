@@ -53,6 +53,7 @@ public abstract class Module implements Identified {
 	private boolean enabled;
 	private final List<Runnable[]> bindings = new ArrayList<>(0);
 	private List<String> formerNames = List.of();
+	private List<Class<? extends Module>> conflicts = List.of();
 
 	public final Settings settings = new Settings();
 	protected final SettingGroup sgGeneral = settings.group("General");
@@ -119,6 +120,10 @@ public abstract class Module implements Identified {
 		if (enable == enabled) return;
 		enabled = enable;
 		if (enable) {
+			for (Class<? extends Module> type : conflicts) {
+				Module other = Modules.active(type);
+				if (other != null) other.setEnabled(false, feedback);
+			}
 			Myriad.events().subscribe(this);
 			try {
 				for (Runnable[] b : bindings) b[0].run();
@@ -200,6 +205,15 @@ public abstract class Module implements Identified {
 	 * order, before saved settings written by an older {@link #settingsVersion} load.
 	 */
 	protected void migrateSettings(int fromVersion, SavedSettings saved) {
+	}
+
+	/**
+	 * Modules that can't be on at the same time as this one (two flight modules, Freecam and Free Look): turning this
+	 * one on turns them off. Call it from the constructor; the other modules needn't know.
+	 */
+	@SafeVarargs
+	protected final void conflictsWith(Class<? extends Module>... others) {
+		conflicts = List.of(others);
 	}
 
 	/**

@@ -49,6 +49,15 @@ public interface ServerStats {
 
 	int packetsReceivedPerSecond();
 
+	/**
+	 * Joins the server you were last on (or are on) again, from any screen: the disconnect screen, the title screen,
+	 * or in game (which leaves first). False if there was none, or you're in singleplayer.
+	 */
+	boolean reconnect();
+
+	/** The address of the last server you joined this session, or null. */
+	@Nullable String lastAddress();
+
 	/** Totems {@code player} has used since they last died (reset when you join a world). */
 	int totemPops(UUID player);
 

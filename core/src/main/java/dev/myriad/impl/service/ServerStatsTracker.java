@@ -11,6 +11,12 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
@@ -57,6 +63,7 @@ public final class ServerStatsTracker implements ServerStats {
 
 	@Subscribe
 	private void onJoin(WorldEvent.Join e) {
+		rememberServer();
 		synchronized (this) {
 			count = next = 0;
 			lastUpdate = 0;
@@ -97,6 +104,33 @@ public final class ServerStatsTracker implements ServerStats {
 	public String address() {
 		Minecraft mc = Minecraft.getInstance();
 		return mc.getCurrentServer() == null || mc.isLocalServer() ? null : mc.getCurrentServer().ip;
+	}
+
+	/** The server you're on, remembered when you leave it (the client forgets it once disconnected). */
+	private volatile ServerData lastServer;
+
+	public void rememberServer() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.getCurrentServer() != null && !mc.isLocalServer()) lastServer = mc.getCurrentServer();
+	}
+
+	@Override
+	public @Nullable String lastAddress() {
+		ServerData s = lastServer;
+		return s == null ? address() : s.ip;
+	}
+
+	@Override
+	public boolean reconnect() {
+		Minecraft mc = Minecraft.getInstance();
+		rememberServer();
+		ServerData server = lastServer;
+		if (server == null) return false;
+		mc.execute(() -> {
+			if (mc.level != null) mc.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE);
+			ConnectScreen.startConnecting(new TitleScreen(), mc, ServerAddress.parseString(server.ip), server, false, null);
+		});
+		return true;
 	}
 
 	@Override

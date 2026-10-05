@@ -7,6 +7,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -30,7 +31,9 @@ import java.util.Set;
  * List<BlockPos> mine = Holes.city(target);
  * }</pre>
  *
- * Methods without a {@link BlockGetter} read the client world.
+ * Methods without a {@link BlockGetter} read the client world. {@link #around} is a full scan each call (about 5,000
+ * positions at radius 8): fine for a one-off, not per tick; a Hole ESP uses {@link #scan(LevelChunk)} from a
+ * {@link ChunkCache} instead, which redoes a chunk only when a block in it changes.
  */
 public final class Holes {
 	private Holes() {
@@ -127,6 +130,31 @@ public final class Holes {
 		}
 		Vec3 c = Vec3.atCenterOf(center);
 		found.sort(Comparator.comparingDouble(h -> h.center().distanceToSqr(c)));
+		return found;
+	}
+
+	/**
+	 * Every hole whose origin cell is in {@code chunk}, each once, for a {@link ChunkCache} (use {@code .neighbours()},
+	 * as walls can be in the chunk beside). Only cells whose floor is blast-proof are looked at, which the chunk's
+	 * palettes answer for whole sections without reading a block.
+	 */
+	public static List<Hole> scan(LevelChunk chunk) {
+		List<Hole> found = new ArrayList<>();
+		Set<BlockPos> seen = new HashSet<>();
+		BlockGetter level = chunk.getLevel();
+		BlockScan.forEach(chunk, BlockInfo::isBlastResistant, (pos, state) -> {
+			BlockPos cell = pos.above();
+			if (seen.contains(cell)) return;
+			Hole h = at(level, cell);
+			if (h == null || !h.origin().equals(cell) && !h.cells().contains(cell)) return;
+			// Count the hole where its origin is, so a 2x2 across a chunk border is found by one chunk only.
+			if (!h.origin().equals(cell)) {
+				seen.addAll(h.cells());
+				return;
+			}
+			seen.addAll(h.cells());
+			found.add(h);
+		});
 		return found;
 	}
 

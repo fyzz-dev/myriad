@@ -2,6 +2,7 @@ package dev.myriad.impl.addon;
 
 import dev.myriad.api.addon.Addon;
 import dev.myriad.api.addon.AddonContext;
+import dev.myriad.api.addon.AddonSettings;
 import dev.myriad.api.addon.AddonStorage;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.event.EventBus;
@@ -99,6 +100,11 @@ final class AddonContextImpl implements AddonContext {
 	@Override
 	public KeyAction registerKeyAction(String name, Keybind defaultBind, Runnable action) {
 		return myriad.keyActions().register(new KeyAction(id(MyriadId.toPath(name)), name, defaultBind, action), addon.id());
+	}
+
+	@Override
+	public AddonSettings settings(String name) {
+		return myriad.addonSettings().register(new AddonSettings(id(MyriadId.toPath(name)), name), addon.id());
 	}
 
 	@Override

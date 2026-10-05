@@ -1,6 +1,7 @@
 package dev.myriad.api;
 
 import dev.myriad.api.addon.Addon;
+import dev.myriad.api.addon.AddonSettings;
 import dev.myriad.api.command.Command;
 import dev.myriad.api.config.ConfigManager;
 import dev.myriad.api.event.EventBus;
@@ -122,6 +123,11 @@ public final class Myriad {
 		return api().keyActions();
 	}
 
+	/** Every addon's own settings (see {@link dev.myriad.api.addon.AddonContext#settings}). */
+	public static Registry<AddonSettings> addonSettings() {
+		return api().addonSettings();
+	}
+
 	public static ConfigManager config() {
 		return api().config();
 	}
@@ -198,6 +204,14 @@ public final class Myriad {
 	/** Prints a client-side chat message with the Myriad prefix (also mirrored in the console panel). */
 	public static void chat(Component message) {
 		api().chat(message);
+	}
+
+	/**
+	 * Runs a Myriad command as if typed in chat, with or without the prefix ({@code "toggle sprint"} or
+	 * {@code ".toggle sprint"}): for macros, binds and clickable chat. Errors are shown in chat as they would be.
+	 */
+	public static void runCommand(String line) {
+		api().runCommand(line);
 	}
 
 	/**
