@@ -225,9 +225,9 @@ public class ElytraFly extends Module {
 		if (mc.player.getItemInHand(e.hand()).getUseDuration(mc.player) > 0) e.cancel();
 	}
 
-	@Subscribe
+	@Subscribe(packets = ClientboundPlayerPositionPacket.class)
 	private void onPacket(PacketEvent.Receive e) {
-		if (e.packet() instanceof ClientboundPlayerPositionPacket) flagged = true;
+		flagged = true;
 	}
 
 	/**

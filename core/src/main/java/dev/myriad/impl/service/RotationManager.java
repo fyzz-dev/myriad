@@ -239,7 +239,7 @@ public final class RotationManager implements Rotations {
 	 * this tick's movement packet carries it too; any other item use gets the rotation this tick sends anyway (see
 	 * {@link #rotationForAction()}), so a module turning you isn't interrupted. Later uses this tick get the same one.
 	 */
-	@Subscribe(priority = Priority.HIGH)
+	@Subscribe(priority = Priority.HIGH, packets = ServerboundUseItemPacket.class)
 	private void onSendAction(PacketEvent.Send e) {
 		if (!(e.packet() instanceof ServerboundUseItemPacket p) || mc.player == null) return;
 		ItemStack used = mc.player.getItemInHand(p.getHand());

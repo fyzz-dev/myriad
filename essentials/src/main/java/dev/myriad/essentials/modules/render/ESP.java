@@ -2,6 +2,7 @@ package dev.myriad.essentials.modules.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.EntityRenderEvent;
 import dev.myriad.api.event.events.Render2DEvent;
 import dev.myriad.api.event.events.Render3DEvent;
 import dev.myriad.api.module.Categories;
@@ -96,10 +97,15 @@ public class ESP extends Module {
 		seen.clear();
 	}
 
-	/** Model mode: called (by this addon's mixin) as an entity's model is submitted, to draw its wireframe and fill. */
+	/** Model mode: as an entity's model is submitted, its wireframe and fill go with it. */
+	@Subscribe(inGame = true)
 	@SuppressWarnings("unchecked")
-	public void submitModel(SubmitNodeCollector submits, Model<?> model, LivingEntityRenderState state, PoseStack poseStack) {
-		if (!isEnabled() || mode.get() != Mode.MODEL || mc.player == null) return;
+	private void onModel(EntityRenderEvent.Model event) {
+		if (mode.get() != Mode.MODEL) return;
+		LivingEntityRenderState state = event.state();
+		Model<?> model = event.model();
+		PoseStack poseStack = event.pose();
+		SubmitNodeCollector submits = event.submits();
 		Entity e = RenderStates.entity(state);
 		if (e == null) return;
 		int c = colorFor(e);

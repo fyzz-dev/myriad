@@ -120,7 +120,7 @@ public final class GlideHold {
 
 	// ---- network thread ---------------------------------------------------------------------------------------------
 
-	@Subscribe(priority = Priority.HIGHEST)
+	@Subscribe(priority = Priority.HIGHEST, packets = {ClientboundPingPacket.class, ClientboundSetEntityDataPacket.class})
 	private void onReceive(PacketEvent.Receive e) {
 		if (e.packet() instanceof ClientboundPingPacket ping) {
 			lastPing = ping.getId();

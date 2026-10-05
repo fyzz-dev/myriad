@@ -79,9 +79,8 @@ public class Offhand extends Module {
 		if (e.entity() == mc.player) popped = true;
 	}
 
-	@Subscribe
+	@Subscribe(inGame = true)
 	private void onTick(TickEvent.Pre e) {
-		if (!inGame()) return;
 		if (popped) {
 			// A totem just popped: re-arm this tick, ignoring the delay.
 			popped = false;

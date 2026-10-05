@@ -132,9 +132,9 @@ public final class ChestSwap {
 	private static void mute(ItemStack a, ItemStack b) {
 		if (!subscribed) {
 			Myriad.events().subscribe(new Object() {
-				@Subscribe
+				@Subscribe(packets = ClientboundSoundPacket.class)
 				private void onReceive(PacketEvent.Receive e) {
-					if (e.packet() instanceof ClientboundSoundPacket sound && isSwapSound(sound)) e.cancel();
+					if (isSwapSound((ClientboundSoundPacket) e.packet())) e.cancel();
 				}
 			});
 			subscribed = true;

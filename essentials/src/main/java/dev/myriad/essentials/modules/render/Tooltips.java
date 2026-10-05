@@ -2,6 +2,7 @@ package dev.myriad.essentials.modules.render;
 
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.ContainerScreenEvent;
 import dev.myriad.api.event.events.ItemTooltipEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.event.events.WorldEvent;
@@ -157,10 +158,6 @@ public class Tooltips extends Module {
 		return counts.entrySet().stream().max(Map.Entry.comparingByValue()).map(e -> first.get(e.getKey())).orElse(null);
 	}
 
-	public boolean slotIcons() {
-		return slotIcons.get();
-	}
-
 	public boolean hotbarIcons() {
 		return hotbarIcons.get();
 	}
@@ -177,8 +174,19 @@ public class Tooltips extends Module {
 		pose.popMatrix();
 	}
 
-	/** Called (by this addon's mixin) in place of the inventory tooltip. Returns true if a preview replaced it. */
-	public boolean renderTooltip(GuiGraphicsExtractor ctx, @Nullable Slot hovered, int mouseX, int mouseY) {
+	@Subscribe
+	private void onTooltip(ContainerScreenEvent.Tooltip e) {
+		if (renderTooltip(e.graphics(), e.hovered(), e.mouseX(), e.mouseY())) e.cancel();
+	}
+
+	@Subscribe
+	private void onSlot(ContainerScreenEvent.SlotDrawn e) {
+		Slot slot = e.slot();
+		if (slotIcons.get() && slot.hasItem() && isShulker(slot.getItem())) drawIcon(e.graphics(), slot.getItem(), slot.x, slot.y);
+	}
+
+	/** In place of the inventory tooltip. Returns true if a preview replaced it. */
+	private boolean renderTooltip(GuiGraphicsExtractor ctx, @Nullable Slot hovered, int mouseX, int mouseY) {
 		ItemStack hoveredStack = hovered != null && hovered.hasItem() ? hovered.getItem() : null;
 		if (lockKey.get().isPressed()) {
 			if (locked == null && hoveredStack != null) {

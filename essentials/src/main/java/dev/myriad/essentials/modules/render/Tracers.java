@@ -39,9 +39,8 @@ public class Tracers extends Module {
 		super(Categories.RENDER, "Tracers", "Draws lines to entities and storage.");
 	}
 
-	@Subscribe
+	@Subscribe(inGame = true)
 	private void onRender(Render3DEvent e) {
-		if (!inGame()) return;
 		Renderer3D.lineWidth(lineWidth.getFloat());
 		for (Entity entity : mc.level.entitiesForRendering()) {
 			if (entity == mc.player) continue;

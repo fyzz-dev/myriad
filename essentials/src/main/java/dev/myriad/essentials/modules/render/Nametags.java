@@ -2,10 +2,10 @@ package dev.myriad.essentials.modules.render;
 
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.EntityRenderEvent;
 import dev.myriad.api.event.events.Render2DEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
-import dev.myriad.api.module.Modules;
 import dev.myriad.api.render.Canvas;
 import dev.myriad.api.render.FontFamily;
 import dev.myriad.api.render.PlayerHeads;
@@ -100,17 +100,17 @@ public class Nametags extends Module {
 	}
 
 	/** Whether this draws {@code entity}'s label, so vanilla's should be hidden. */
-	public static boolean hidesVanilla(Entity entity) {
-		Nametags m = Modules.active(Nametags.class);
-		if (m == null) return false;
-		if (entity instanceof Player) return m.players.get();
-		if (entity instanceof ItemEntity) return m.items.get();
-		return entity instanceof LivingEntity && !(entity instanceof ArmorStand) && m.mobs.get();
+	/** Vanilla's tag stays off whatever this module draws its own for. */
+	@Subscribe
+	private void onVanillaTag(EntityRenderEvent.Nametag e) {
+		Entity entity = e.entity();
+		boolean ours = entity instanceof Player ? players.get() : entity instanceof ItemEntity ? items.get()
+			: entity instanceof LivingEntity && !(entity instanceof ArmorStand) && mobs.get();
+		if (ours) e.cancel();
 	}
 
-	@Subscribe
+	@Subscribe(inGame = true)
 	private void onRender(Render2DEvent e) {
-		if (!inGame()) return;
 		Canvas c = e.canvas();
 		Vec3 cam = Projection.camera();
 		List<Entity> entities = new ArrayList<>();

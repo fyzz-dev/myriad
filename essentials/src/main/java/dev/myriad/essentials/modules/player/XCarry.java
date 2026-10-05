@@ -16,9 +16,9 @@ public class XCarry extends Module {
 		super(Categories.PLAYER, "X Carry", "Use the crafting grid as four extra inventory slots.");
 	}
 
-	@Subscribe
+	@Subscribe(packets = ServerboundContainerClosePacket.class)
 	private void onSend(PacketEvent.Send e) {
-		if (mc.player != null && e.packet() instanceof ServerboundContainerClosePacket p && p.getContainerId() == mc.player.inventoryMenu.containerId) e.cancel();
+		if (mc.player != null && ((ServerboundContainerClosePacket) e.packet()).getContainerId() == mc.player.inventoryMenu.containerId) e.cancel();
 	}
 
 	@Override

@@ -297,9 +297,9 @@ public class ElytraTweaks extends Module {
 
 	// ---- Rocket Boost -----------------------------------------------------------------------------------------------
 
-	@Subscribe
+	@Subscribe(packets = ClientboundPlayerPositionPacket.class)
 	private void onReceive(PacketEvent.Receive e) {
-		if (e.packet() instanceof ClientboundPlayerPositionPacket) teleported = true;
+		teleported = true;
 	}
 
 	/**

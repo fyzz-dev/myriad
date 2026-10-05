@@ -114,16 +114,14 @@ public class PacketMine extends Module {
 		return Breaking.Options.PACKET.withMode(mode).withRotate(rotate.get()).withSwing(false).withRange(Reach.blockRange()).withDoubleBreak(fast.get() && doubleBreak.get());
 	}
 
-	@Subscribe
+	@Subscribe(inGame = true)
 	private void onTick(TickEvent.Post e) {
-		if (!inGame()) return;
 		mining.removeIf(p -> !Myriad.breaking().isPending(p));
 		if (autoRebreak.get() && last != null && Myriad.breaking().canRebreak(last)) select(last, false);
 	}
 
-	@Subscribe
+	@Subscribe(inGame = true)
 	private void onRender(Render3DEvent e) {
-		if (!inGame()) return;
 		int c = color.argb();
 		for (BlockPos pos : mining) {
 			float progress = Myriad.breaking().progress(pos);

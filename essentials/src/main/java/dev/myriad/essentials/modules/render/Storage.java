@@ -327,7 +327,7 @@ public class Storage extends Module {
 	// ---- lids -------------------------------------------------------------------------------------------------------
 
 	/** Chests and shulker boxes tell the client when they open and close: start drawing those live. */
-	@Subscribe
+	@Subscribe(packets = ClientboundBlockEventPacket.class)
 	private void onPacket(PacketEvent.Receive e) {
 		if (!lids.get() || !(e.packet() instanceof ClientboundBlockEventPacket p) || p.getB0() != 1) return;
 		if (p.getBlock() instanceof ChestBlock || p.getBlock() instanceof EnderChestBlock || p.getBlock() instanceof ShulkerBoxBlock) lidEvents.add(p.getPos());
@@ -339,9 +339,8 @@ public class Storage extends Module {
 		lidEvents.clear();
 	}
 
-	@Subscribe
+	@Subscribe(inGame = true)
 	private void onTick(TickEvent.Post e) {
-		if (!inGame()) return;
 		long now = System.currentTimeMillis();
 		for (BlockPos pos; (pos = lidEvents.poll()) != null; ) {
 			BlockPos from = drawnFrom(pos);
@@ -449,9 +448,8 @@ public class Storage extends Module {
 
 	// ---- per frame --------------------------------------------------------------------------------------------------
 
-	@Subscribe
+	@Subscribe(inGame = true)
 	private void onRender3D(Render3DEvent e) {
-		if (!inGame()) return;
 		ShapeBuilder shapes = e.shapes();
 		for (BlockPos pos : animating.keySet()) {
 			List<Found> list = found.get(pos);

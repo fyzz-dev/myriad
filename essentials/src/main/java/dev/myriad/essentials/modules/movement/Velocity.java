@@ -97,9 +97,8 @@ public class Velocity extends Module {
 		applyReconcile();
 	}
 
-	@Subscribe(priority = Priority.LOWEST)
+	@Subscribe(priority = Priority.LOWEST, inGame = true, packets = {ClientboundSetEntityMotionPacket.class, ClientboundPlayerPositionPacket.class, ClientboundEntityEventPacket.class})
 	private void onReceive(PacketEvent.Receive e) {
-		if (!inGame()) return;
 		if (e.packet() instanceof ClientboundSetEntityMotionPacket p && p.id() == mc.player.getId()) {
 			if (concealVelocity && p.movement().lengthSqr() == 0) {
 				concealVelocity = false;

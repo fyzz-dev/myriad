@@ -1,5 +1,8 @@
 package dev.myriad.essentials.modules.render;
 
+import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.BlockRenderEvent;
+import dev.myriad.api.event.events.EntityRenderEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.module.Modules;
@@ -12,7 +15,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
 
 /** Hides distracting overlays, HUD parts, entities and blocks. Read by this addon's render mixins. */
 public class NoRender extends Module {
@@ -85,22 +87,19 @@ public class NoRender extends Module {
 		if (mc.levelRenderer != null && mc.level != null && (isEnabled() || !blocks.get().isEmpty() || vines.get() || textureRotations.get())) mc.levelRenderer.invalidateCompiledGeometry(mc.level, mc.options, mc.gameRenderer.mainCamera(), mc.getBlockColors());
 	}
 
-	/** Whether the entity should not be drawn at all. */
-	public static boolean hides(Entity e) {
-		NoRender m = Modules.active(NoRender.class);
-		if (m == null) return false;
-		if (m.entities.contains(e.getType())) return true;
-		return m.deadEntities.get() && e instanceof LivingEntity l && l.isDeadOrDying();
+	/** Hidden entities aren't drawn at all. */
+	@Subscribe
+	private void onEntity(EntityRenderEvent.Visible e) {
+		Entity entity = e.entity();
+		if (entities.contains(entity.getType()) || deadEntities.get() && entity instanceof LivingEntity l && l.isDeadOrDying()) e.cancel();
 	}
 
-	/** Whether the block should not be drawn. */
-	public static boolean hides(BlockState state) {
-		NoRender m = Modules.active(NoRender.class);
-		if (m == null) return false;
-		Block b = state.getBlock();
-		if (m.blocks.contains(b)) return true;
-		return m.vines.get() && (b == Blocks.VINE || b == Blocks.CAVE_VINES || b == Blocks.CAVE_VINES_PLANT || b == Blocks.TWISTING_VINES
+	/** Hidden blocks leave the chunk mesh (asked on the chunk builder threads; settings are safe to read there). */
+	@Subscribe
+	private void onBlock(BlockRenderEvent e) {
+		Block b = e.state().getBlock();
+		if (blocks.contains(b) || vines.get() && (b == Blocks.VINE || b == Blocks.CAVE_VINES || b == Blocks.CAVE_VINES_PLANT || b == Blocks.TWISTING_VINES
 			|| b == Blocks.TWISTING_VINES_PLANT || b == Blocks.WEEPING_VINES || b == Blocks.WEEPING_VINES_PLANT || b == Blocks.KELP || b == Blocks.KELP_PLANT
-			|| b == Blocks.GLOW_LICHEN);
+			|| b == Blocks.GLOW_LICHEN)) e.cancel();
 	}
 }

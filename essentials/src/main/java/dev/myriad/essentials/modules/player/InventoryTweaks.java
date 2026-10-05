@@ -1,6 +1,8 @@
 package dev.myriad.essentials.modules.player;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.events.ContainerScreenEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.service.Breaking;
@@ -47,8 +49,13 @@ public class InventoryTweaks extends Module {
 		busy = false;
 	}
 
-	/** Called by the inventory screen mixin for each slot click. Returns true to swallow the click. */
-	public boolean onSlotClick(Slot slot, int button, ContainerInput input) {
+	@Subscribe
+	private void onClick(ContainerScreenEvent.Click e) {
+		if (onSlotClick(e.slot(), e.button(), e.input())) e.cancel();
+	}
+
+	/** Each slot click in an inventory screen. Returns true to swallow the click. */
+	private boolean onSlotClick(Slot slot, int button, ContainerInput input) {
 		if (busy || input != ContainerInput.PICKUP || button != 1 || slot == null || !slot.hasItem() || !inGame()) return false;
 		if (mc.player.containerMenu != mc.player.inventoryMenu || mc.player.isCreative() || slot.container != mc.player.getInventory()) return false;
 		if (!mc.player.inventoryMenu.getCarried().isEmpty()) return false;
