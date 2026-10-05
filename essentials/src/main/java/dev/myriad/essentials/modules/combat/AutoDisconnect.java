@@ -14,7 +14,7 @@ import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.setting.SavedSettings;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ItemInfo;
-import dev.myriad.essentials.util.Threats;
+import dev.myriad.api.combat.Threats;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;

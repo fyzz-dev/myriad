@@ -111,7 +111,7 @@ public class PacketMine extends Module {
 	private Breaking.Options options() {
 		Breaking.Mode mode = fast.get() ? Breaking.Mode.FAST_GRIM : Breaking.Mode.PACKET;
 		// No swings of its own: your hand only moves while you hold the button.
-		return new Breaking.Options(mode, rotate.get(), false, Reach.blockRange(), true, fast.get() && doubleBreak.get());
+		return Breaking.Options.PACKET.withMode(mode).withRotate(rotate.get()).withSwing(false).withRange(Reach.blockRange()).withDoubleBreak(fast.get() && doubleBreak.get());
 	}
 
 	@Subscribe

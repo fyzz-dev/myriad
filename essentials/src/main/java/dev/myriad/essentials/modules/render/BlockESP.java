@@ -14,7 +14,7 @@ import dev.myriad.api.setting.RegistryListSetting;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.world.BlockScan;
 import dev.myriad.api.world.ChunkCache;
-import dev.myriad.essentials.util.BoxStyle;
+import dev.myriad.api.render.BoxStyle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;

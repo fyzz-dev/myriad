@@ -113,7 +113,7 @@ public class InventoryTweaks extends Module {
 
 	private static Breaking.Options breakOptions(boolean silkTouch) {
 		Breaking.Options d = Breaking.Options.DEFAULT;
-		return silkTouch ? new Breaking.Options(d.mode(), d.rotate(), d.swing(), d.range(), false, false) : d;
+		return silkTouch ? d.withAutoTool(false) : d;
 	}
 
 	/** {@code result} as a future that fails with {@code message} when it completes false. */

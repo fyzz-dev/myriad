@@ -19,7 +19,7 @@ import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.util.Entities;
 import dev.myriad.api.world.ChunkCache;
-import dev.myriad.essentials.util.BoxStyle;
+import dev.myriad.api.render.BoxStyle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ClientboundBlockEventPacket;

@@ -28,7 +28,7 @@ import java.util.function.Predicate;
  * place builds a tower. When the block under you has nothing to be placed against (sprinting off a corner), a
  * neighbouring block is placed first to bridge to it. Blocks come from the hotbar, or are moved there from your
  * inventory, with your keys released for a tick first (Grim refuses inventory clicks while you move). Placements
- * click a face you can see. Without Rotate they're sent without turning, as 2b2t clients do (Bep Hax's default): 2b2t
+ * click a face you can see. Without Rotate they're sent without turning, as 2b2t clients usually do: 2b2t
  * takes them, and you keep running smoothly. With Rotate each placement faces its block first, for Grim builds that
  * check where you look (RotationPlace, as on the test server); the block you place against is behind you, so while
  * facing it you walk along that yaw, and sprint drops for that tick.
@@ -49,7 +49,7 @@ public class Scaffold extends Module {
 
 	/** Clicks only faces you can see; with Rotate, faces each block first (walking along that yaw meanwhile). */
 	private Placement.Options options() {
-		return new Placement.Options(rotate.get(), false, true, Reach.blockRange(), true);
+		return Placement.Options.STRICT.withRotate(rotate.get()).withRange(Reach.blockRange());
 	}
 
 	/** Which items it may place. */

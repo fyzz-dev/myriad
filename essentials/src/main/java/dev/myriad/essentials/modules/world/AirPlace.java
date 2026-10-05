@@ -32,7 +32,7 @@ public class AirPlace extends Module {
 	}
 
 	private Placement.Options options() {
-		return new Placement.Options(false, true, true, Reach.blockRange(), false);
+		return Placement.Options.DEFAULT.withAirPlace(true).withRange(Reach.blockRange());
 	}
 
 	/** Where a right-click would place now, or null if vanilla should handle it (or it can't go there). */

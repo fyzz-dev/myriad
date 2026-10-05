@@ -101,7 +101,7 @@ public class KillAura extends Module {
 		// Aimed from where you stand: Grim measures the hit from there.
 		Vec3 eyes = mc.player.getEyePosition();
 		float[] r = MathUtil.anglesTo(eyes, aimPoint(t, eyes));
-		Myriad.rotations().request(this, r[0], r[1], Rotations.PRIORITY_NORMAL, new Rotations.Options(turnSpeed.get(), true), null);
+		Myriad.rotations().request(this, r[0], r[1], Rotations.PRIORITY_NORMAL, Rotations.Options.MOVE_FIX.withTurnSpeed(turnSpeed.get()), null);
 
 		// The charge counts for the item the server holds (a held weapon's, not what you see).
 		if (Interactions.attackCharge() < 1) return;

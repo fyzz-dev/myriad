@@ -104,10 +104,10 @@ public class AutoArmor extends Module {
 	/** Puts on a better piece for {@code slot} if you have one; true if it swapped. */
 	private boolean equipBest(EquipmentSlot slot) {
 		ItemStack worn = mc.player.getItemBySlot(slot);
-		if (slot == EquipmentSlot.CHEST && awaitLanding.get() && mc.player.isFallFlying() && isElytra(worn)) return false;
+		if (slot == EquipmentSlot.CHEST && awaitLanding.get() && mc.player.isFallFlying() && ItemInfo.canGlide(worn)) return false;
 		// Elytra Tweaks takes the elytra off for a moment while you fly; it puts it back itself.
 		if (slot == EquipmentSlot.CHEST && ElytraTweaks.holdsChest()) return false;
-		if (avoidBinding.get() && ItemInfo.hasEnchantment(worn, Enchantments.BINDING_CURSE)) return false;
+		if (avoidBinding.get() && ItemInfo.isBound(worn)) return false;
 		double current = score(worn, slot);
 		int best = -1;
 		double bestScore = current;
@@ -126,24 +126,22 @@ public class AutoArmor extends Module {
 	/** Higher is better; 0 for nothing worth wearing. */
 	private double score(ItemStack s, EquipmentSlot slot) {
 		if (s.isEmpty()) return 0;
-		if (avoidBinding.get() && ItemInfo.hasEnchantment(s, Enchantments.BINDING_CURSE)) return 0;
+		if (avoidBinding.get() && ItemInfo.isBound(s)) return 0;
 		if (s.isDamageableItem() && ItemInfo.durabilityFraction(s) * 100 < preserve.get()) return 0.01;
 		if (slot == EquipmentSlot.CHEST) {
-			boolean elytra = isElytra(s);
+			boolean elytra = ItemInfo.canGlide(s);
 			// The wanted kind always beats the other; the other still beats an empty slot.
 			boolean wanted = elytra == (chest.get() == Chest.ELYTRA);
 			if (elytra) return (wanted ? 1000 : 0.5) + ItemInfo.durabilityFraction(s);
 			if (!wanted) return 0.5 + armorValue(s, slot) / 1000;
 		}
 		// Pumpkins and heads go in the head slot but aren't armour.
-		ItemAttributeModifiers mods = s.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
-		if (mods.compute(Attributes.ARMOR, 0, slot) <= 0) return 0;
+		if (ItemInfo.armor(s, slot) <= 0) return 0;
 		return 1 + armorValue(s, slot);
 	}
 
 	private double armorValue(ItemStack s, EquipmentSlot slot) {
-		ItemAttributeModifiers mods = s.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY);
-		double armor = mods.compute(Attributes.ARMOR, 0, slot), toughness = mods.compute(Attributes.ARMOR_TOUGHNESS, 0, slot);
+		double armor = ItemInfo.armor(s, slot), toughness = ItemInfo.toughness(s, slot);
 		double protection = ItemInfo.enchantmentLevel(s, Enchantments.PROTECTION);
 		double preferred = ItemInfo.enchantmentLevel(s, preferredKey(slot));
 		return armor * 10 + toughness * 4 + protection * 2 + preferred * 3 + ItemInfo.durabilityFraction(s) * 0.1;
@@ -159,7 +157,4 @@ public class AutoArmor extends Module {
 		};
 	}
 
-	private static boolean isElytra(ItemStack s) {
-		return !s.isEmpty() && LivingEntity.canGlideUsing(s, EquipmentSlot.CHEST);
-	}
 }

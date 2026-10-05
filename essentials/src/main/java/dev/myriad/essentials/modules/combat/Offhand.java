@@ -11,7 +11,7 @@ import dev.myriad.api.setting.DoubleSetting;
 import dev.myriad.api.setting.EnumSetting;
 import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.SettingGroup;
-import dev.myriad.essentials.util.Threats;
+import dev.myriad.api.combat.Threats;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.tags.ItemTags;

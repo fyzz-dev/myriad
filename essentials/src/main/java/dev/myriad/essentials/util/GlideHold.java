@@ -4,6 +4,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.PacketEvent;
+import dev.myriad.api.event.events.TeleportEvent;
 import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.essentials.mixin.EntityAccessor;
 import net.minecraft.client.Minecraft;
@@ -17,7 +18,7 @@ import java.util.ArrayDeque;
 
 /**
  * Keeps the local player gliding through a moment the server stops the glide, without Grim (2b2t) noticing: the
- * trick behind Elytra Tweaks' No Durability and Elytra Fly's bounce, as Bep Hax does it.
+ * trick behind Elytra Tweaks' No Durability and Elytra Fly's bounce.
  * <p>
  * The server stops a glide (it sees the elytra come off, or you land) by sending your entity flags with the gliding bit
  * cleared. Grim sends one of its pings just before those flags, and only takes the glide as stopped once that ping is
@@ -139,13 +140,18 @@ public final class GlideHold {
 	}
 
 	@Subscribe
+	private void onTeleport(TeleportEvent e) {
+		onTeleport();
+	}
+
+	@Subscribe
 	private void onLeave(WorldEvent.Leave e) {
 		held.clear();
 		holdingAnswers = clearApplied = exposed = clearArriving = false;
 		holdFrom = lastPing = NONE;
 	}
 
-	// ---- game thread, from the mixins -------------------------------------------------------------------------------
+	// ---- game thread, from the mixins and events --------------------------------------------------------------------
 
 	/** A ping is being answered: true to hold the answer back. */
 	public static boolean holdAnswer(int id) {
@@ -177,7 +183,7 @@ public final class GlideHold {
 	}
 
 	/** A teleport is being applied: Grim resets around it, so the held answers go out and the hold is exposed. */
-	public static void onTeleport() {
+	private static void onTeleport() {
 		GlideHold h = INSTANCE;
 		if (h.owner == null || h.held.isEmpty() && !h.clearApplied) return;
 		boolean applied = h.clearApplied;

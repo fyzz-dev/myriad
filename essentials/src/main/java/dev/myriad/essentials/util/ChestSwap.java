@@ -3,6 +3,7 @@ package dev.myriad.essentials.util;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.PacketEvent;
+import dev.myriad.api.util.ItemInfo;
 import dev.myriad.api.util.Packets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponents;
@@ -14,8 +15,6 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.equipment.Equippable;
 
 import java.util.HashSet;
@@ -55,9 +54,9 @@ public final class ChestSwap {
 	public static Pair pair() {
 		var p = mc().player;
 		ItemStack worn = p.getItemBySlot(EquipmentSlot.CHEST);
-		boolean gliderOn = isGlider(worn);
+		boolean gliderOn = ItemInfo.isGlider(worn);
 		if (!gliderOn && !isChestArmor(worn)) return null;
-		Predicate<ItemStack> counterpart = gliderOn ? ChestSwap::isChestArmor : s -> isGlider(s) && chestEquippable(s);
+		Predicate<ItemStack> counterpart = gliderOn ? ChestSwap::isChestArmor : s -> ItemInfo.isGlider(s) && chestEquippable(s);
 		if (counterpart.test(p.getOffhandItem())) return new Pair(InteractionHand.OFF_HAND, -1);
 		var inv = p.getInventory();
 		if (counterpart.test(inv.getItem(inv.getSelectedSlot()))) return new Pair(InteractionHand.MAIN_HAND, inv.getSelectedSlot());
@@ -68,14 +67,14 @@ public final class ChestSwap {
 	/** Whether a swap can go now: something to swap with, and no Curse of Binding on either. */
 	public static boolean ready() {
 		Pair pair = pair();
-		return pair != null && !cursed(mc().player.getItemBySlot(EquipmentSlot.CHEST)) && !cursed(item(pair));
+		return pair != null && !ItemInfo.isBound(mc().player.getItemBySlot(EquipmentSlot.CHEST)) && !ItemInfo.isBound(item(pair));
 	}
 
 	/** Whether an elytra is worn, or one is ready to be swapped on. */
 	public static boolean hasGlider() {
 		if (elytraWorn()) return true;
 		Pair pair = pair();
-		return pair != null && isGlider(item(pair));
+		return pair != null && ItemInfo.isGlider(item(pair));
 	}
 
 	/**
@@ -126,7 +125,7 @@ public final class ChestSwap {
 	}
 
 	public static boolean elytraWorn() {
-		return isGlider(mc().player.getItemBySlot(EquipmentSlot.CHEST));
+		return ItemInfo.isGlider(mc().player.getItemBySlot(EquipmentSlot.CHEST));
 	}
 
 	/** Mutes the equip sounds the server plays for this swap (whichever of the two goes on). */
@@ -160,20 +159,12 @@ public final class ChestSwap {
 		return pair.hand() == InteractionHand.OFF_HAND ? mc().player.getOffhandItem() : mc().player.getInventory().getItem(pair.slot());
 	}
 
-	private static boolean isGlider(ItemStack stack) {
-		return stack.has(DataComponents.GLIDER);
-	}
-
 	private static boolean chestEquippable(ItemStack stack) {
 		Equippable equippable = stack.get(DataComponents.EQUIPPABLE);
 		return equippable != null && equippable.swappable() && equippable.slot() == EquipmentSlot.CHEST && stack.getCount() == 1;
 	}
 
 	private static boolean isChestArmor(ItemStack stack) {
-		return chestEquippable(stack) && !isGlider(stack);
-	}
-
-	private static boolean cursed(ItemStack stack) {
-		return EnchantmentHelper.has(stack, EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE);
+		return chestEquippable(stack) && !ItemInfo.isGlider(stack);
 	}
 }
