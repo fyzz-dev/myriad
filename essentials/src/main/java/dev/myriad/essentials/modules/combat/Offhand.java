@@ -2,7 +2,7 @@ package dev.myriad.essentials.modules.combat;
 
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Subscribe;
-import dev.myriad.api.event.events.PacketEvent;
+import dev.myriad.api.event.events.EntityEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
 import dev.myriad.api.module.Module;
@@ -13,9 +13,7 @@ import dev.myriad.api.setting.IntSetting;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.combat.Threats;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.EntityEvent;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.BlockHitResult;
@@ -49,22 +47,13 @@ public class Offhand extends Module {
 		.visible(() -> item.get() != Item.TOTEM).build();
 	private final EnumSetting<Gapple> gappleMode = sgGeneral.enumSetting("Gapple", Gapple.BOTH).description("Which golden apples count.").build();
 	private final BoolSetting swordGap = sgGeneral.bool("Sword Gap").description("A golden apple while you hold right click with a sword.").defaultValue(true).build();
-	private final BoolSetting useHotbar = sgGeneral.bool("Use Hotbar").description("Also take items from the hotbar.").defaultValue(true).build();
 	private final IntSetting delay = sgGeneral.intSetting("Delay").description("Ticks between swaps.").defaultValue(0).range(0, 20).build();
-	private final BoolSetting pauseInContainers = sgGeneral.bool("Pause In Containers").description("Don't swap while a chest or other container is open.").defaultValue(true).build();
 	private final BoolSetting mainHandTotem = sgGeneral.bool("Main Hand Totem").description("A totem you hold in your main hand counts: don't force another into the off hand.").build();
 	private final BoolSetting notify = sgGeneral.bool("Notify").description("Say when one of your totems pops.").build();
 
 	private final SettingGroup sgSafety = settings.group("Safety");
-	private final BoolSetting lethal = sgSafety.bool("Lethal").description("Force a totem when nearby danger could kill you.").defaultValue(true).build();
-	private final BoolSetting crystals = sgSafety.bool("Crystals").defaultValue(true).visible(lethal::get).build();
-	private final BoolSetting sumCrystals = sgSafety.bool("Sum Crystals").description("Add up every nearby crystal instead of taking the worst.").defaultValue(true)
-		.visible(() -> lethal.get() && crystals.get()).build();
-	private final BoolSetting beds = sgSafety.bool("Beds").description("Beds outside the Overworld.").defaultValue(true).visible(lethal::get).build();
-	private final BoolSetting anchors = sgSafety.bool("Anchors").description("Charged respawn anchors outside the Nether.").defaultValue(true).visible(lethal::get).build();
-	private final BoolSetting creepers = sgSafety.bool("Creepers").description("Creepers about to explode.").defaultValue(true).visible(lethal::get).build();
-	private final BoolSetting players = sgSafety.bool("Players").description("Players close enough to hit you.").defaultValue(true).visible(lethal::get).build();
-	private final BoolSetting falling = sgSafety.bool("Falling").defaultValue(true).visible(lethal::get).build();
+	private final BoolSetting lethal = sgSafety.bool("Lethal").description("Force a totem when something nearby could kill you: crystals (added up), "
+		+ "beds, anchors, creepers, players or a fall.").defaultValue(true).build();
 	private final DoubleSetting buffer = sgSafety.doubleSetting("Buffer").description("Extra health kept as a margin.").defaultValue(1).range(0, 6).decimals(1).visible(lethal::get).build();
 
 	private final SettingGroup sgHotbar = settings.group("Hotbar Totem");
@@ -73,7 +62,7 @@ public class Offhand extends Module {
 	private final IntSetting hotbarHealth = sgHotbar.intSetting("Health").description("Select it at or below this health.").defaultValue(6).range(0, 36).visible(hotbarTotem::get).build();
 
 	private int wait;
-	private volatile boolean popped;
+	private boolean popped;
 
 	public Offhand() {
 		super(Categories.COMBAT, "Offhand", "Keeps a totem, crystal, golden apple or shield in your off hand.");
@@ -86,11 +75,8 @@ public class Offhand extends Module {
 	}
 
 	@Subscribe
-	private void onReceive(PacketEvent.Receive e) {
-		if (e.packet() instanceof ClientboundEntityEventPacket p && p.getEventId() == EntityEvent.PROTECTED_FROM_DEATH && mc.level != null && mc.player != null
-			&& p.getEntity(mc.level) == mc.player) {
-			popped = true;
-		}
+	private void onPop(EntityEvent.TotemPopped e) {
+		if (e.entity() == mc.player) popped = true;
 	}
 
 	@Subscribe
@@ -102,7 +88,8 @@ public class Offhand extends Module {
 			wait = 0;
 			if (notify.get()) info("Popped a totem, " + Myriad.inventory().count(TOTEM) + " left");
 		}
-		if (pauseInContainers.get() && mc.gui.screen() != null && !(mc.gui.screen() instanceof InventoryScreen) && mc.player.containerMenu != mc.player.inventoryMenu) return;
+		// Clicks in an open container would land in it, so wait until it's closed.
+		if (mc.gui.screen() != null && !(mc.gui.screen() instanceof InventoryScreen) && mc.player.containerMenu != mc.player.inventoryMenu) return;
 		if (wait > 0) {
 			wait--;
 			return;
@@ -132,15 +119,7 @@ public class Offhand extends Module {
 		float hp = Threats.health();
 		if (item.get() != Item.TOTEM && hp <= health.get()) return true;
 		if (item.get() != Item.TOTEM && elytra.get() && mc.player.isFallFlying()) return true;
-		if (!lethal.get()) return false;
-		float worst = 0;
-		if (crystals.get()) worst = Math.max(worst, Threats.crystals(12, sumCrystals.get()));
-		if (beds.get()) worst = Math.max(worst, Threats.beds(8));
-		if (anchors.get()) worst = Math.max(worst, Threats.anchors(8));
-		if (creepers.get()) worst = Math.max(worst, Threats.creepers(8));
-		if (players.get()) worst = Math.max(worst, Threats.players(5));
-		if (falling.get()) worst = Math.max(worst, Threats.fall());
-		return worst > 0 && worst + buffer.get() >= hp;
+		return lethal.get() && Threats.isLethal(buffer.getFloat());
 	}
 
 	/** The off hand item when you're safe. */
@@ -183,7 +162,7 @@ public class Offhand extends Module {
 	/** Main inventory first (keeps the hotbar intact), then the hotbar if allowed; an inventory index or -1. */
 	private int find(Predicate<ItemStack> predicate) {
 		int slot = Myriad.inventory().findInInventory(predicate);
-		if (slot >= 0 || !useHotbar.get()) return slot;
+		if (slot >= 0) return slot;
 		int hotbar = Myriad.inventory().findInHotbar(predicate);
 		// Don't take the spare hotbar totem for the off hand while the inventory has none.
 		return hotbarTotem.get() && hotbar == hotbarSlot.get() - 1 && predicate == TOTEM && mc.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING) ? -1 : hotbar;

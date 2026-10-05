@@ -3,6 +3,7 @@ package dev.myriad.essentials.modules.movement;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
+import dev.myriad.api.event.Subscription;
 import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.InteractEvent;
 import dev.myriad.api.event.events.PacketEvent;
@@ -105,9 +106,22 @@ public class ElytraTweaks extends Module {
 
 	@Override
 	protected void onDisable() {
-		if (inGame()) finish();
-		engaged = false;
+		if (inGame()) {
+			finish();
+			// Turning off mid-swap can start the glide again, and this module no longer hears the input event that presses
+			// jump with it (Grim's ElytraB): press it from a listener of its own, for that one tick.
+			if (startNow) pressJumpOnce();
+		}
+		engaged = startNow = false;
 		GlideHold.disarm(this);
+	}
+
+	private static void pressJumpOnce() {
+		Subscription[] once = new Subscription[1];
+		once[0] = Myriad.events().listen(InputEvent.class, Priority.LOWEST, e -> {
+			e.jump = true;
+			once[0].unsubscribe();
+		});
 	}
 
 	/** Whether the elytra is being swapped (Auto Armor leaves the chest slot alone meanwhile). */

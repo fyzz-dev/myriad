@@ -30,7 +30,6 @@ public class AutoEat extends Module {
 	private final RegistryListSetting<Item> blacklist = sgGeneral.items("Blacklist").description("Foods never to eat.")
 		.defaultValue(Items.ROTTEN_FLESH, Items.SPIDER_EYE, Items.POISONOUS_POTATO, Items.PUFFERFISH, Items.CHORUS_FRUIT, Items.SUSPICIOUS_STEW)
 		.filter(i -> i.components().has(DataComponents.FOOD)).build();
-	private final BoolSetting pauseBaritone = sgGeneral.bool("Pause Baritone").description("Stop Baritone walking while you eat.").defaultValue(true).build();
 
 	private boolean eating;
 	private int previousSlot = -1, foodSlot = -1, ticks;
@@ -73,7 +72,7 @@ public class AutoEat extends Module {
 		if (p.isUsingItem()) {
 			mc.options.keyUse.setDown(true);
 			eating = true;
-			if (pauseBaritone.get()) Baritone.pause(this);
+			Baritone.pause(this);
 		} else {
 			finish();
 		}

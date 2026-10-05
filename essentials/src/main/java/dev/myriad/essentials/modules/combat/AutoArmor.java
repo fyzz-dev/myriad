@@ -16,13 +16,9 @@ import dev.myriad.api.setting.KeybindSetting;
 import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ItemInfo;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 
@@ -48,9 +44,7 @@ public class AutoArmor extends Module {
 	private final IntSetting delay = sgGeneral.intSetting("Delay").description("Ticks between equipping pieces.").defaultValue(2).range(0, 20).build();
 	private final EnumSetting<Protection> prefer = sgGeneral.enumSetting("Prefer", Protection.BLAST_LEGS)
 		.description("Protection enchantment to favour between otherwise equal pieces. Blast Legs: Protection, with Blast Protection on leggings.").build();
-	private final BoolSetting avoidBinding = sgGeneral.bool("Avoid Binding").description("Never put on armour with curse of binding.").defaultValue(true).build();
 	private final DoubleSetting preserve = sgGeneral.doubleSetting("Preserve").description("Skip pieces with less durability than this (%).").defaultValue(5).range(0, 50).decimals(0).build();
-	private final BoolSetting pauseInContainers = sgGeneral.bool("Pause In Containers").description("Don't swap while a chest or other container is open.").defaultValue(true).build();
 
 	private final SettingGroup sgChest = settings.group("Chest Swap");
 	private final EnumSetting<Chest> chest = sgChest.enumSetting("Chest", Chest.CHESTPLATE).description("What to wear in the chest slot.").build();
@@ -88,7 +82,7 @@ public class AutoArmor extends Module {
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
 		if (!inGame() || mc.player.isCreative()) return;
-		if (pauseInContainers.get() && mc.gui.screen() != null && !(mc.gui.screen() instanceof InventoryScreen) && mc.player.containerMenu != mc.player.inventoryMenu) return;
+		if (mc.gui.screen() != null && !(mc.gui.screen() instanceof InventoryScreen) && mc.player.containerMenu != mc.player.inventoryMenu) return;
 		if (wait > 0) {
 			wait--;
 			return;
@@ -107,7 +101,7 @@ public class AutoArmor extends Module {
 		if (slot == EquipmentSlot.CHEST && awaitLanding.get() && mc.player.isFallFlying() && ItemInfo.canGlide(worn)) return false;
 		// Elytra Tweaks takes the elytra off for a moment while you fly; it puts it back itself.
 		if (slot == EquipmentSlot.CHEST && ElytraTweaks.holdsChest()) return false;
-		if (avoidBinding.get() && ItemInfo.isBound(worn)) return false;
+		if (ItemInfo.isBound(worn)) return false;
 		double current = score(worn, slot);
 		int best = -1;
 		double bestScore = current;
@@ -126,7 +120,7 @@ public class AutoArmor extends Module {
 	/** Higher is better; 0 for nothing worth wearing. */
 	private double score(ItemStack s, EquipmentSlot slot) {
 		if (s.isEmpty()) return 0;
-		if (avoidBinding.get() && ItemInfo.isBound(s)) return 0;
+		if (ItemInfo.isBound(s)) return 0;
 		if (s.isDamageableItem() && ItemInfo.durabilityFraction(s) * 100 < preserve.get()) return 0.01;
 		if (slot == EquipmentSlot.CHEST) {
 			boolean elytra = ItemInfo.canGlide(s);
