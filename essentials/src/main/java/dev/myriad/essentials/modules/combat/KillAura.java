@@ -3,9 +3,7 @@ package dev.myriad.essentials.modules.combat;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.combat.TargetSettings;
 import dev.myriad.api.combat.Targets;
-import dev.myriad.api.event.Priority;
 import dev.myriad.api.event.Subscribe;
-import dev.myriad.api.event.events.MovementPacketsEvent;
 import dev.myriad.api.event.events.Render3DEvent;
 import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.module.Categories;
@@ -34,10 +32,15 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Attacks the best target in reach, the way Grim (2b2t) checks hits: it turns to face the target first (walking along
- * that yaw meanwhile, so movement still matches), and only hits once the rotation the server already has puts the
- * target under the crosshair within your entity reach, measured along the look as Grim does. Hits wait for a full
- * attack charge, go out before the tick's movement as a click would, and are followed by the swing, in vanilla's order.
+ * Attacks the best target in reach, the way Grim (2b2t) checks hits: it turns to face the target (walking along that
+ * yaw meanwhile, so movement still matches), and hits when the look puts the target under the crosshair within your
+ * entity reach, measured along the look from where you stand, as Grim does. Grim judges a hit by this tick's rotation
+ * or the one before it, so a hit can go out the same tick the turn does. Hits wait for a full attack charge, go out
+ * before the tick's movement as a click would, and are followed by the swing, in vanilla's order.
+ * <p>
+ * In Switch mode the weapon is held on the server only, as Packet Mine holds its pickaxe: your hotbar and hand stay as
+ * they are (a weapon from the inventory is borrowed and put back afterwards). It's held from a few blocks before a
+ * target comes into reach, so the charge, which starts over when the item in hand changes, is full by the time it does.
  * <p>
  * It pauses while you use an item (eating, blocking, drawing a bow), fly with an elytra (turning would steer you) or
  * have a container open, as vanilla can't attack then either.
@@ -46,14 +49,14 @@ public class KillAura extends Module {
 	public enum Weapon {
 		/** Only attack while holding a weapon. */
 		HOLDING,
-		/** Switch to the best weapon, bringing it into the hotbar from the inventory if that's where it is. */
+		/** Hold the best weapon on the server only, from the hotbar or the inventory, leaving your hand as it is. */
 		SWITCH,
 		/** Hit with whatever is in your hand. */
 		ANYTHING
 	}
 
 	private final EnumSetting<Weapon> weapon = sgGeneral.enumSetting("Weapon", Weapon.HOLDING)
-		.description("Holding: only attack while you hold a weapon. Switch: switch to your best weapon, from the inventory too. Anything: hit with whatever you hold.").build();
+		.description("Holding: only attack while you hold a weapon. Switch: attack with your best weapon, from the hotbar or inventory, without changing what you hold. Anything: hit with whatever you hold.").build();
 	private final IntSetting turnSpeed = sgGeneral.intSetting("Turn Speed")
 		.description("Most degrees to turn per tick towards a target; 0 turns at once (fine on Grim, some anti-cheats want it limited).")
 		.defaultValue(0).range(0, 180).build();
@@ -62,9 +65,12 @@ public class KillAura extends Module {
 
 	private final TargetSettings targets = new TargetSettings(settings, Targets.Type.PLAYERS, Targets.Type.HOSTILES);
 
+	/** Switch: blocks beyond reach a target may be when the weapon is taken in hand, so its charge is full on arrival. */
+	private static final double PRE_CHARGE = 8;
+	/** Switch: ticks the hold lasts without being renewed. */
+	private static final int HOLD_TICKS = 5;
+
 	private Entity target;
-	/** A weapon was switched in this tick. */
-	private boolean switched;
 
 	public KillAura() {
 		super(Categories.COMBAT, "Kill Aura", "Attacks targets in reach, facing them first.");
@@ -73,6 +79,7 @@ public class KillAura extends Module {
 	@Override
 	protected void onDisable() {
 		target = null;
+		if (inGame()) Myriad.inventory().release(this);
 	}
 
 	@Override
@@ -84,66 +91,71 @@ public class KillAura extends Module {
 	@Subscribe
 	private void onTick(TickEvent.Pre e) {
 		target = null;
-		if (!inGame() || paused()) return;
+		if (!inGame()) return;
 		double range = Reach.entityRange();
-		Entity t = targets.best(range);
-		if (t == null || !armed()) return;
+		Entity near = paused() ? null : targets.best(range + (weapon.get() == Weapon.SWITCH ? PRE_CHARGE : 0));
+		Entity t = near == null ? null : targets.best(range);
+		if (!armed(near != null, t != null) || t == null) return;
 		target = t;
 
-		// The server judges the hit by the rotation it already has: hit only once that lands on the target. The charge
-		// counts for the item you held last tick (switching resets it), so not the tick a weapon is switched in.
-		if (!switched && Interactions.attackCharge() >= 1 && lands(t, range)) Interactions.attack(t, true);
-
-		// Aimed from where your eyes will be once you've moved this tick: the server judges the hit from there.
-		Vec3 eyes = mc.player.getEyePosition().add(mc.player.getDeltaMovement());
+		// Aimed from where you stand: Grim measures the hit from there.
+		Vec3 eyes = mc.player.getEyePosition();
 		float[] r = MathUtil.anglesTo(eyes, aimPoint(t, eyes));
-		Myriad.rotations().request(this, r[0], r[1], Rotations.PRIORITY_NORMAL, options(), null);
+		Myriad.rotations().request(this, r[0], r[1], Rotations.PRIORITY_NORMAL, new Rotations.Options(turnSpeed.get(), true), null);
+
+		// The charge counts for the item the server holds (a held weapon's, not what you see).
+		if (Interactions.attackCharge() < 1) return;
+		if (lands(t, range, Myriad.rotations().serverYaw(), Myriad.rotations().serverPitch()) || landsThisTick(t, range, r)) {
+			Interactions.attack(t, true);
+		}
 	}
 
 	/**
-	 * Just before the rotation goes out, now that you've moved: the pitch is aimed again from where your eyes really are.
-	 * The yaw stays (your walking already follows it, which Grim checks).
+	 * Whether this tick's rotation lands, when the one asked for would: fixed for this tick's movement packet then
+	 * (Grim checks a hit against it once that packet arrives).
 	 */
-	@Subscribe(priority = Priority.HIGH)
-	private void onBeforeRotationSent(MovementPacketsEvent e) {
-		if (target == null || !inGame()) return;
-		Vec3 eyes = mc.player.getEyePosition();
-		float[] r = MathUtil.anglesTo(eyes, aimPoint(target, eyes));
-		Myriad.rotations().request(this, Float.NaN, r[1], Rotations.PRIORITY_NORMAL + 1, options(), null);
-	}
-
-	private Rotations.Options options() {
-		return new Rotations.Options(turnSpeed.get(), true);
+	private boolean landsThisTick(Entity t, double range, float[] wanted) {
+		if (!lands(t, range, wanted[0], wanted[1])) return false;
+		float[] sent = Myriad.rotations().rotationForAction();
+		return lands(t, range, sent[0], sent[1]);
 	}
 
 	private boolean paused() {
 		return mc.player.isSpectator() || mc.player.isFallFlying() || mc.player.isUsingItem() || mc.player.containerMenu != mc.player.inventoryMenu;
 	}
 
-	/** Whether the hand is ready to fight, switching to the best weapon in Switch mode. */
-	private boolean armed() {
-		switched = false;
+	/**
+	 * Whether the hand is ready to fight. In Switch mode the best weapon is held on the server while a target is near
+	 * ({@code near}), from a few blocks before it comes into reach; until then a module that needs the hand (Packet
+	 * Mine's pickaxe) has it first.
+	 */
+	private boolean armed(boolean near, boolean inReach) {
 		return switch (weapon.get()) {
-			case ANYTHING -> true;
-			case HOLDING -> weaponScore(mc.player.getMainHandItem()) > 0;
+			case ANYTHING -> near;
+			case HOLDING -> near && weaponScore(Myriad.inventory().serverItem()) > 0;
 			case SWITCH -> {
+				if (!near) {
+					Myriad.inventory().release(this);
+					yield false;
+				}
 				int best = Myriad.inventory().bestInHotbar(this::weaponScore);
 				int anywhere = Myriad.inventory().bestInInventory(this::weaponScore);
 				if (anywhere >= 9) {
 					// A better weapon in the inventory: borrowed into the hotbar (over a worse one if it's full), with your
 					// keys released for a tick first if you're moving, as Grim requires for the click. It goes back once
-					// the fight is over.
+					// the fight is over, and the hotbar keeps showing what was there meanwhile.
 					int pulled = Myriad.inventory().borrow(this, anywhere, s -> weaponScore(s) > 0);
 					if (pulled >= 0) best = pulled;
 				} else if (best >= 0) {
 					// Keep a borrowed weapon while fighting.
 					Myriad.inventory().borrow(this, best, null);
 				}
-				if (best >= 0 && best != mc.player.getInventory().getSelectedSlot()
-					&& weaponScore(mc.player.getInventory().getItem(best)) > weaponScore(mc.player.getMainHandItem())) {
-					// Switching resets the attack charge, so the hit comes once it's full again.
-					Myriad.inventory().select(best);
-					switched = true;
+				var inv = mc.player.getInventory();
+				if (best >= 0 && best != inv.getSelectedSlot() && weaponScore(inv.getItem(best)) > weaponScore(inv.getSelectedItem())) {
+					if (inReach) Myriad.inventory().hold(this, best, HOLD_TICKS);
+					else Myriad.inventory().holdWeakly(this, best, HOLD_TICKS);
+				} else {
+					Myriad.inventory().release(this);
 				}
 				yield true;
 			}
@@ -151,14 +163,14 @@ public class KillAura extends Module {
 	}
 
 	/**
-	 * Whether looking along the rotation the server has from your eyes meets the target's hitbox within reach: Grim's
+	 * Whether looking along {@code yaw}/{@code pitch} from your eyes meets the target's hitbox within reach: Grim's
 	 * Reach and Hitboxes checks.
 	 */
-	private boolean lands(Entity t, double range) {
+	private boolean lands(Entity t, double range, float yaw, float pitch) {
 		Vec3 eyes = mc.player.getEyePosition();
 		AABB box = t.getBoundingBox();
 		if (box.contains(eyes)) return true;
-		Vec3 look = MathUtil.direction(Myriad.rotations().serverYaw(), Myriad.rotations().serverPitch());
+		Vec3 look = MathUtil.direction(yaw, pitch);
 		return box.clip(eyes, eyes.add(look.scale(range))).isPresent();
 	}
 
