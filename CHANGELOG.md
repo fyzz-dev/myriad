@@ -6,7 +6,9 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
-## Unreleased
+## 0.1.1
+
+Fixes and the repository split; no API changes.
 
 - Dwindle is the default layout for the first workspace too (it already was for the others); the first-run desktop
   splits the largest window each time, so the stock windows come up as a grid rather than ever thinner slivers.
