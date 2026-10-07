@@ -4,11 +4,15 @@ Myriad follows [semantic versioning](https://semver.org) for the public API (`de
 version is 0, a **minor** release may change the API, and anything removed is deprecated for at least one minor
 release first with its replacement in the javadoc; a **patch** release never changes it. `dev.myriad.impl` is internal
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
-(`"depends": {"myriad": ">=0.2.0"}`) and can check `Myriad.isAtLeast("0.3.0")` for newer features.
+(`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
-## 0.2.0
+## 0.1.0
 
-The release that makes core something to build on. Everything here is in the README's *Writing an addon* section.
+First release: the window manager, modules and settings, the event bus, the services (rotations, inventory, placing,
+breaking, building, containers, tasks, packet limits, tick speed), themes, HUD, commands, profiles, Essentials and
+the example addon.
+
+Everything below is in the README's *Writing an addon* section.
 
 ### Boze bridge
 
@@ -81,9 +85,3 @@ The release that makes core something to build on. Everything here is in the REA
 
 - Simpler settings (Offhand, Auto Armor, Auto Eat), no Grim flag when turning No Durability off mid-flight, modules
   rebuilt on the events above.
-
-## 0.1.0
-
-First release: the window manager, modules and settings, the event bus, the services (rotations, inventory, placing,
-breaking, building, containers, tasks, packet limits, tick speed), themes, HUD, commands, profiles, Essentials and
-the example addon.
