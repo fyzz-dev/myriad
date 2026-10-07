@@ -35,6 +35,8 @@ Everything below is in the README's *Writing an addon* section.
 - Interfaces only core implements are `@ApiStatus.NonExtendable`; event constructors and lifecycle hooks are
   `@ApiStatus.Internal`. A build test fails if any public API signature exposes `dev.myriad.impl`.
 - `Myriad.version()` and `Myriad.isAtLeast(...)`.
+- Releases are published to a public maven, `https://fyzz-dev.github.io/myriad`, so addons build without
+  `publishToMavenLocal`.
 
 ### Anti-cheat profile
 

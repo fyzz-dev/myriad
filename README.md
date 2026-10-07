@@ -27,7 +27,7 @@ Requires JDK 25+.
 ./gradlew :example-addon:runClient -PquickPlay="New World"   # …or load straight into a singleplayer world
 ./gradlew :example-addon:runClient -PscreenshotEvery=10   # …saving a screenshot every 10 s (run/screenshots)
 ./gradlew :example-addon:runClient -PquickPlayServer=localhost:25565 -Pusername=GrimTester   # …or join a server
-./gradlew publishToMavenLocal            # publish dev.myriad:myriad(-essentials) for addons outside this repo
+./gradlew publishToMavenLocal            # dev.myriad:myriad(-essentials) in ~/.m2, to build an addon against unreleased changes
 ```
 
 To check a module against Grim (2b2t's anti-cheat) before trying it there, [`tools/grim-test/`](tools/grim-test)
@@ -184,15 +184,16 @@ An addon is an ordinary Fabric mod with a `myriad` entrypoint. Two projects get 
 
 ### Setting up
 
-1. In this repository, run `./gradlew publishToMavenLocal`. It publishes `dev.myriad:myriad` and
-   `dev.myriad:myriad-essentials` (with sources) to `~/.m2`. Run it again after pulling Myriad changes.
-2. Create your addon from the template repository (or clone it), then rename things: the mod id `my-addon` in
+1. Create your addon from the template repository (or clone it), then rename things: the mod id `my-addon` in
    `fabric.mod.json`, `settings.gradle` and the mixin config's file name, the package, and the `MyAddon` class.
-3. `./gradlew runClient` starts the game with Myriad, Essentials and your addon, with the menu open.
+2. `./gradlew runClient` starts the game with Myriad, Essentials and your addon, with the menu open.
    `./gradlew build` puts your jar in `build/libs/`.
 
-The template's `build.gradle` pulls Myriad from `mavenLocal()` with `implementation`. Essentials is on the dev
-runtime only (`localRuntime`), so you can test next to the stock modules without depending on them.
+Released versions of `dev.myriad:myriad` and `dev.myriad:myriad-essentials` (with sources and javadoc) are on
+Myriad's maven, `https://fyzz-dev.github.io/myriad`, which the template's `build.gradle` already uses. Myriad is
+`implementation`; Essentials is on the dev runtime only (`localRuntime`), so you can test next to the stock modules
+without depending on them. To build against changes that aren't released yet, run `./gradlew publishToMavenLocal`
+in this repository and add `mavenLocal()` to your repositories.
 `fabric.mod.json` declares `"entrypoints": { "myriad": [...] }` and `"depends": { "myriad": ">=0.1.0" }`.
 
 Inside this repository, `essentials` and `example-addon` are built the same way and may only use `dev.myriad.api`:

@@ -1,5 +1,6 @@
-# Builds a tagged version and attaches the jars (core, Essentials, the example addon, sources and javadoc) to a GitHub
-# release. Tag with the version in gradle.properties: `git tag v0.1.0 && git push --tags`.
+# Builds a tagged version, attaches the jars (core, Essentials, the example addon, sources and javadoc) to a GitHub
+# release, and publishes core and Essentials to the public maven: the `maven` branch, served by GitHub Pages at
+# https://fyzz-dev.github.io/myriad. Tag with the version in gradle.properties: `git tag v0.1.0 && git push --tags`.
 
 name: release
 on:
@@ -43,3 +44,13 @@ jobs:
             core/build/libs/*.jar
             essentials/build/libs/*.jar
             example-addon/build/libs/*.jar
+      - name: publish to the maven branch
+        run: |
+          ./gradlew publishAllPublicationsToSiteRepository
+          git fetch origin maven
+          git worktree add maven-branch origin/maven
+          cp -r build/maven/. maven-branch/
+          cd maven-branch
+          git add -A
+          git -c user.name=github-actions -c user.email=github-actions@github.com commit -m "Publish ${GITHUB_REF_NAME#v}"
+          git push origin HEAD:maven

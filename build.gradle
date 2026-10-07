@@ -58,12 +58,20 @@ subprojects {
 		}
 	}
 
-	// `./gradlew publishToMavenLocal` publishes dev.myriad:myriad and dev.myriad:myriad-essentials (with sources) so
-	// addons outside this repo can depend on them; see README → Writing an addon.
+	// dev.myriad:myriad and dev.myriad:myriad-essentials (with sources) for addons outside this repo. Releases publish
+	// them to the public maven at https://fyzz-dev.github.io/myriad (the `maven` branch, served by GitHub Pages):
+	// `./gradlew publishAllPublicationsToSiteRepository` writes the repository layout to build/maven, which the release
+	// workflow pushes there. `./gradlew publishToMavenLocal` is for building an addon against unreleased changes.
 	publishing {
 		publications {
 			create("mavenJava", MavenPublication) {
 				from components.java
+			}
+		}
+		repositories {
+			maven {
+				name = "site"
+				url = rootProject.layout.buildDirectory.dir("maven")
 			}
 		}
 	}
