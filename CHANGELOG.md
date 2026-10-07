@@ -8,6 +8,9 @@ and may change in any release. Addons declare the oldest core they support in `f
 
 ## Unreleased
 
+- Desktop shortcuts (`mod+1`, `mod+K`, `mod+W`, ...) work while the console window is focused; it only keeps the keys
+  it types with.
+
 - Windows of an addon that registers its modules after startup (the Boze bridge) come back where they were: a saved
   window whose modules aren't there yet at load is kept aside and revived, on its workspace and in its place in the
   tiling, once they arrive.

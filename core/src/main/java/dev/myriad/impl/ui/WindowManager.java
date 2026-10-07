@@ -1423,7 +1423,9 @@ public final class WindowManager implements Desktop {
 		WindowImpl focused = ws.focused;
 		boolean typing = focused != null && focused.panel.capturesKeyboard();
 
-		if ((mods & modMask()) != 0 && !typing) {
+		// A panel that's being typed in sees the key first; what it doesn't take (mod+key in the console) is the desktop's.
+		if (typing && panelKey(focused, key, scancode, mods)) return true;
+		if ((mods & modMask()) != 0) {
 			int rest = mods & ~modMask();
 			for (WmBind b : binds.values()) {
 				if (b.bind.code() == key && !b.bind.mouse() && (b.bind.modifiers() & ~GLFW.GLFW_MOD_NUM_LOCK & ~GLFW.GLFW_MOD_CAPS_LOCK) == (rest & ~GLFW.GLFW_MOD_NUM_LOCK & ~GLFW.GLFW_MOD_CAPS_LOCK)) {
@@ -1440,13 +1442,7 @@ public final class WindowManager implements Desktop {
 				return true;
 			}
 		}
-		if (focused != null) {
-			try {
-				if (focused.panel.keyPressed(key, scancode, mods)) return true;
-			} catch (Throwable t) {
-				LOG.error("Panel {} threw on key", focused.type.id(), t);
-			}
-		}
+		if (!typing && focused != null && panelKey(focused, key, scancode, mods)) return true;
 		if (key == GLFW.GLFW_KEY_ESCAPE) {
 			close();
 			return true;
@@ -1458,6 +1454,15 @@ public final class WindowManager implements Desktop {
 			}
 		}
 		return false;
+	}
+
+	private boolean panelKey(WindowImpl w, int key, int scancode, int mods) {
+		try {
+			return w.panel.keyPressed(key, scancode, mods);
+		} catch (Throwable t) {
+			LOG.error("Panel {} threw on key", w.type.id(), t);
+			return false;
+		}
 	}
 
 	boolean charTyped(char chr, int mods) {

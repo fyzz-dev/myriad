@@ -83,6 +83,8 @@ public final class ConsolePanel extends Panel {
 
 	@Override
 	public boolean keyPressed(int key, int scancode, int mods) {
+		// Alt/Super (and Ctrl, apart from the combos below) aren't typing: those keys are the desktop's shortcuts.
+		if ((mods & (GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER)) != 0) return false;
 		switch (key) {
 			case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
 				String line = input.trim();
@@ -123,6 +125,7 @@ public final class ConsolePanel extends Panel {
 				return false;
 			}
 			default -> {
+				if ((mods & GLFW.GLFW_MOD_CONTROL) != 0) return false;
 			}
 		}
 		updateSuggestion();
