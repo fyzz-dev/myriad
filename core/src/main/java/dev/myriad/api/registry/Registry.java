@@ -112,13 +112,13 @@ public class Registry<T extends Identified> implements Iterable<T> {
 	 * it bridges becomes ready. Calling this still makes {@link #register} throw, but nothing in core does. To be
 	 * removed in a later minor release.
 	 */
-	@Deprecated(since = "0.2.0", forRemoval = true)
+	@Deprecated(since = "0.1.0", forRemoval = true)
 	public synchronized void freeze() {
 		frozen = true;
 	}
 
 	/** @deprecated see {@link #freeze()}. */
-	@Deprecated(since = "0.2.0", forRemoval = true)
+	@Deprecated(since = "0.1.0", forRemoval = true)
 	public synchronized boolean isFrozen() {
 		return frozen;
 	}
