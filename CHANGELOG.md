@@ -6,6 +6,12 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## Unreleased
+
+- Windows of an addon that registers its modules after startup (the Boze bridge) come back where they were: a saved
+  window whose modules aren't there yet at load is kept aside and revived, on its workspace and in its place in the
+  tiling, once they arrive.
+
 ## 0.1.0
 
 First release: the window manager, modules and settings, the event bus, the services (rotations, inventory, placing,

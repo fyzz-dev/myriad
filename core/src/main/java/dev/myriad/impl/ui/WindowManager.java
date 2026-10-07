@@ -77,6 +77,8 @@ public final class WindowManager implements Desktop {
 	private JsonArray orphanWindows = new JsonArray();
 	/** Modules came or went since the desktop was last laid out: category windows need rebuilding, new groups placing. */
 	private boolean modulesChanged;
+	/** Each workspace's tiling as loaded, so a window revived later (its modules came late) can take its old place. */
+	private final JsonObject[] savedTiling = new JsonObject[WORKSPACES + 1];
 	/** Addon + category groups this desktop has already placed, so a group whose window you closed stays closed. */
 	private final Set<String> seenGroups = new LinkedHashSet<>();
 	private int active = 1, previous = 1;
@@ -132,8 +134,56 @@ public final class WindowManager implements Desktop {
 	public void refreshModules() {
 		if (!modulesChanged) return;
 		modulesChanged = false;
+		reviveOrphans();
 		for (WindowImpl w : windows) if (w.panel instanceof ModulesPanel p) safe(w, p::rebuild);
 		placeNewGroups(true);
+	}
+
+	/**
+	 * Brings back saved windows that couldn't be built at load because their modules weren't registered yet (an addon
+	 * that bridges another mod registers once that mod is up). Each goes to its saved workspace; a tiled one takes the
+	 * place it had in that workspace's saved tiling, so the layout comes back as it was.
+	 */
+	private void reviveOrphans() {
+		if (orphanWindows.isEmpty()) return;
+		JsonArray still = new JsonArray();
+		List<WindowImpl> revived = new ArrayList<>();
+		for (JsonElement e : orphanWindows) {
+			JsonObject j = e.getAsJsonObject();
+			WindowImpl w = null;
+			try {
+				w = loadWindow(j);
+			} catch (RuntimeException ex) {
+				LOG.error("Skipping broken window entry {}", j, ex);
+				continue;
+			}
+			if (w == null) still.add(j);
+			else revived.add(w);
+		}
+		orphanWindows = still;
+		if (revived.isEmpty()) return;
+		Set<Integer> touched = new HashSet<>();
+		for (WindowImpl w : revived) {
+			windows.add(w);
+			w.opacity.snap(1);
+			if (w.floating) workspaces[w.workspace].floating.add(w);
+			else touched.add(w.workspace);
+			safe(w, w.panel::onOpen);
+		}
+		for (int idx : touched) {
+			Workspace ws = workspaces[idx];
+			Map<String, WindowImpl> byUid = new LinkedHashMap<>();
+			for (WindowImpl w : windows) if (w.workspace == idx && !w.floating) byUid.put(String.valueOf(w.uid), w);
+			Set<WindowImpl> placed = new HashSet<>();
+			if (savedTiling[idx] != null) {
+				ws.tiling.load(savedTiling[idx], key -> {
+					WindowImpl w = byUid.get(key);
+					return w != null && placed.add(w) ? w : null;
+				});
+			}
+			for (WindowImpl w : byUid.values()) if (!placed.contains(w)) ws.tiling.add(w, null);
+		}
+		markDirty();
 	}
 
 	@Override
@@ -1634,7 +1684,10 @@ public final class WindowManager implements Desktop {
 		windows.clear();
 		closing.clear();
 		orphanWindows = new JsonArray();
-		for (int i = 0; i <= WORKSPACES; i++) workspaces[i] = new Workspace(i, defaultLayout());
+		for (int i = 0; i <= WORKSPACES; i++) {
+			workspaces[i] = new Workspace(i, defaultLayout());
+			savedTiling[i] = null;
+		}
 		themes.reload();
 		seenGroups.clear();
 		if (o == null) {
@@ -1672,6 +1725,7 @@ public final class WindowManager implements Desktop {
 				Layout layout = Myriad.layouts().get(MyriadId.parse(j.get("layout").getAsString())).orElse(defaultLayout());
 				ws.setLayout(layout);
 				if (j.has("tiling")) {
+					savedTiling[idx] = j.getAsJsonObject("tiling");
 					ws.tiling.load(j.getAsJsonObject("tiling"), key -> {
 						WindowImpl w = byUid.get(key);
 						return w != null && w.workspace == idx && !w.floating && placed.add(w) ? w : null;
