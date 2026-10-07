@@ -75,6 +75,8 @@ public final class WindowManager implements Desktop {
 	};
 
 	private JsonArray orphanWindows = new JsonArray();
+	/** Modules came or went since the desktop was last laid out: category windows need rebuilding, new groups placing. */
+	private boolean modulesChanged;
 	/** Addon + category groups this desktop has already placed, so a group whose window you closed stays closed. */
 	private final Set<String> seenGroups = new LinkedHashSet<>();
 	private int active = 1, previous = 1;
@@ -105,7 +107,21 @@ public final class WindowManager implements Desktop {
 
 	@Override
 	public void open() {
+		refreshModules();
 		if (!(mc.gui.screen() instanceof DesktopScreen)) mc.gui.setScreen(new DesktopScreen(this));
+	}
+
+	/** Called when a module is registered or removed; the next {@link #open} refreshes the category windows. */
+	public void modulesChanged() {
+		modulesChanged = true;
+	}
+
+	/** Before the desktop shows: rebuilds category windows and places new groups if modules came or went since. */
+	public void refreshModules() {
+		if (!modulesChanged) return;
+		modulesChanged = false;
+		for (WindowImpl w : windows) if (w.panel instanceof ModulesPanel p) safe(w, p::rebuild);
+		placeNewGroups(true);
 	}
 
 	@Override
@@ -1612,6 +1628,7 @@ public final class WindowManager implements Desktop {
 		if (o == null) {
 			firstRun();
 			placeNewGroups(false);
+			modulesChanged = false;
 			return;
 		}
 		if (o.has("seen_groups")) for (JsonElement e : o.getAsJsonArray("seen_groups")) seenGroups.add(e.getAsString());
@@ -1672,6 +1689,7 @@ public final class WindowManager implements Desktop {
 			defaultWorkspaces();
 		}
 		placeNewGroups(true);
+		modulesChanged = false;
 	}
 
 	/** The addon + category groups a window shows (empty for anything but a category window). */

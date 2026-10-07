@@ -43,6 +43,8 @@ public final class KeybindManager {
 	/** Returns true if a key action ran (its input is then consumed so nothing else sees it). */
 	private boolean handle(int code, boolean mouse, int mods, boolean press) {
 		for (Module m : Myriad.modules()) {
+			// A mirror's key is handled by the mod it mirrors; acting on it here too would toggle twice.
+			if (m.isMirror()) continue;
 			Keybind bind = m.keybind.get();
 			if (!bind.isSet() || bind.mouse() != mouse || bind.code() != code) continue;
 			if (m.holdMode.get()) {

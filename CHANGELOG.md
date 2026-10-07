@@ -10,6 +10,20 @@ and may change in any release. Addons declare the oldest core they support in `f
 
 The release that makes core something to build on. Everything here is in the README's *Writing an addon* section.
 
+### Boze bridge
+
+- [myriad-boze](https://github.com/fyzz-dev/myriad-boze), a separate addon: every module of the Boze client in
+  Myriad's menu, in the shared categories, with settings, keybinds and on/off state in sync both ways. Boze keeps its
+  config and handles the keys. The API changes below are for it.
+
+### API
+
+- `Module.isMirror()`: a module that stands in for another mod's feature. Myriad neither saves it with the profile nor
+  toggles it on its keybind. `Module.setEnabledSilently` is public API now (it was marked internal).
+- Registries are no longer frozen after startup, so an addon can register once something it waits for is ready; the
+  menu places windows for modules registered late when it next opens. `Registry.freeze()` and `isFrozen()` are
+  deprecated and unused.
+
 ### Compatibility and the API contract
 
 - Service options (`Placement.Options`, `Breaking.Options`, `Rotations.Options`, `Building.Options`) are built from

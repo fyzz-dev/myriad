@@ -117,6 +117,13 @@ The stock modules, in the standard categories (each module's settings explain it
 HUD elements: Watermark (with the logo), Module List, Coordinates, Armor, Binds, Chest Count, Direction, Effects,
 FPS, HP, Player Count, Speed, Totems, TPS. Baritone options do nothing when Baritone isn't installed.
 
+## Boze
+
+[**myriad-boze**](https://github.com/fyzz-dev/myriad-boze), a separate addon, puts every module of the
+[Boze](https://boze.dev) client in Myriad's menu, with Boze installed alongside: Boze's modules appear as Myriad
+modules in the shared categories (*Combat · Boze*), with their settings, keybinds and on/off state kept in sync both
+ways. Boze stays the owner of its config, profiles and keys; Myriad is a second front end.
+
 ## Commands
 
 Prefix `.` (change with `.prefix`). Commands autocomplete in chat and in the console panel.
@@ -211,6 +218,12 @@ public final class MyAddon implements MyriadAddon {
 Myriad runs each phase for every addon in turn: `registerCategories`, then `initialize`, then config load, then
 `postInitialize` (the place to look for optional integrations). If an addon throws, it is marked **failed**,
 everything it registered is removed, and the game keeps running. The Addons panel shows why it failed.
+
+Registering later is allowed too, for an addon that bridges another mod and has to wait for it: the menu picks up
+modules registered after startup the next time it opens. Such modules missed the config load, so they should mirror
+state kept elsewhere: a module whose `isMirror()` returns true is neither saved with the profile nor toggled on its
+keybind by Myriad (the other mod handles its key); `setEnabledSilently` follows the other side without chat feedback.
+[myriad-boze](https://github.com/fyzz-dev/myriad-boze) is one.
 
 ### Conventions
 

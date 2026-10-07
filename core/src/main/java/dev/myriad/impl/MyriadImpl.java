@@ -118,6 +118,9 @@ public final class MyriadImpl implements MyriadApi {
 		SettingColor.setPaletteProvider(windowManager.theme()::roleColor);
 		windowManager.setDirtyHook(config::markDirty);
 		modules.onRemove(m -> m.setEnabled(false));
+		// Modules registered after startup (a bridge whose other mod came up later) get their windows when the menu opens.
+		modules.onAdd(m -> windowManager.modulesChanged());
+		modules.onRemove(m -> windowManager.modulesChanged());
 
 		events.subscribe(dev.myriad.impl.network.ActionTiming.get());
 		events.subscribe(rotations);
@@ -138,7 +141,7 @@ public final class MyriadImpl implements MyriadApi {
 		addonLoader.initialize();
 		config.load();
 		addonLoader.postInitialize();
-		for (Registry<?> r : registries()) r.freeze();
+		// Registries stay open: an addon that bridges another mod registers once that mod is ready, which may be later.
 
 		LOG.info("Myriad ready: {} addons, {} modules, {} panels, {} commands in {} ms", addonLoader.addons().size(), modules.size(),
 			panels.size(), commands.size(), (System.nanoTime() - t0) / 1_000_000);
