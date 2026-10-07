@@ -179,10 +179,21 @@ public abstract class Module implements Identified {
 		if (enabled) start.run();
 	}
 
-	/** Restores state from config without side effects like chat feedback. */
-	@ApiStatus.Internal
+	/**
+	 * Sets the state without chat feedback, for state that comes from elsewhere rather than from the user: config
+	 * being restored, or a {@linkplain #isMirror mirror} following the mod it mirrors.
+	 */
 	public void setEnabledSilently(boolean enable) {
 		setEnabled(enable, false);
+	}
+
+	/**
+	 * True for a module that mirrors a feature of another mod (a bridge to another client, say): its on/off state,
+	 * settings and keybind belong to that mod, which saves them and handles the key. Myriad then neither saves the
+	 * module with the profile nor toggles it on its keybind, and only shows and edits it.
+	 */
+	public boolean isMirror() {
+		return false;
 	}
 
 	protected void onEnable() {

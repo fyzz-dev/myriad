@@ -126,6 +126,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 		Path dir = profileDir(name);
 		rawModules = java.util.Objects.requireNonNullElseGet(readObject(dir.resolve("modules.json")), JsonObject::new);
 		for (Module m : myriad.modules()) {
+			if (m.isMirror()) continue;
 			JsonElement e = savedEntry(m);
 			if (e == null || !e.isJsonObject()) {
 				m.settings.resetAll();
@@ -188,6 +189,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 		JsonObject modules = rawModules.deepCopy();
 		modules.addProperty(FORMAT_KEY, FORMAT);
 		for (Module m : myriad.modules()) {
+			if (m.isMirror()) continue;
 			JsonElement before = modules.get(m.id().toString());
 			JsonObject prev = before != null && before.isJsonObject() ? before.getAsJsonObject() : new JsonObject();
 			JsonObject prevSettings = prev.has("settings") && prev.get("settings").isJsonObject() ? prev.getAsJsonObject("settings") : null;

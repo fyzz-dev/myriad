@@ -21,7 +21,12 @@ public interface MyriadAddon {
 	/** Register modules, commands, panels, setting types, layouts, themes, keybinds and listeners. */
 	void initialize(AddonContext ctx);
 
-	/** All addons are initialised and config has been loaded. Registries are still open. */
+	/**
+	 * All addons are initialised and config has been loaded: the place for optional integrations. Registering is
+	 * still allowed here, and later too (from a tick handler, say) for an addon that bridges another mod and has to
+	 * wait for it, though modules registered after this point missed the config load and should
+	 * {@linkplain dev.myriad.api.module.Module#isMirror mirror} state kept elsewhere.
+	 */
 	default void postInitialize(AddonContext ctx) {
 	}
 }
