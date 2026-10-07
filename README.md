@@ -1,6 +1,7 @@
 <p align="center"><img src="core/src/main/resources/assets/myriad/icon.png" width="96" alt="Myriad"></p>
 <h1 align="center">Myriad</h1>
 <p align="center">An addon-first utility client for Minecraft 26.2, with a menu that works like a tiling window manager.</p>
+<p align="center"><a href="https://myriadclient.dev/"><b>myriadclient.dev</b></a></p>
 <p align="center">
   <a href="https://github.com/fyzz-dev/myriad/releases"><img src="https://img.shields.io/github/v/release/fyzz-dev/myriad?label=release" alt="Release"></a>
   <a href="https://github.com/fyzz-dev/myriad/actions/workflows/build.yml"><img src="https://github.com/fyzz-dev/myriad/actions/workflows/build.yml/badge.svg" alt="Build"></a>
