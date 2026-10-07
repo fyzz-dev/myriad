@@ -1,0 +1,103 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "dev.myriad",
+    "module": "myriad-essentials",
+    "version": "0.1.2",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 25,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "files": [
+        {
+          "name": "myriad-essentials-0.1.2.jar",
+          "url": "myriad-essentials-0.1.2.jar",
+          "size": 273208,
+          "sha512": "8cd4c18c1ad43dac15302c4ab8d007ab365f433e6f80250f5f51ca374a8d42866cc456235f713e9901b27e6ded327d07fdafdb9c4f64409942c17b15c34fdb48",
+          "sha256": "95c70c9cb7a8eb4dfefaa385d157947621004aba51c775b3de5574fccb526b26",
+          "sha1": "74af041aa98b3e6a1843458c372b3b9900275527",
+          "md5": "f3a0c7112af53da77ebc150ac53c88c6"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 25,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "net.fabricmc",
+          "module": "fabric-loader",
+          "version": {
+            "requires": "0.19.5"
+          }
+        },
+        {
+          "group": "net.fabricmc.fabric-api",
+          "module": "fabric-api",
+          "version": {
+            "requires": "0.161.0+26.2"
+          }
+        },
+        {
+          "group": "dev.myriad",
+          "module": "myriad",
+          "version": {
+            "requires": "0.1.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "myriad-essentials-0.1.2.jar",
+          "url": "myriad-essentials-0.1.2.jar",
+          "size": 273208,
+          "sha512": "8cd4c18c1ad43dac15302c4ab8d007ab365f433e6f80250f5f51ca374a8d42866cc456235f713e9901b27e6ded327d07fdafdb9c4f64409942c17b15c34fdb48",
+          "sha256": "95c70c9cb7a8eb4dfefaa385d157947621004aba51c775b3de5574fccb526b26",
+          "sha1": "74af041aa98b3e6a1843458c372b3b9900275527",
+          "md5": "f3a0c7112af53da77ebc150ac53c88c6"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "myriad-essentials-0.1.2-sources.jar",
+          "url": "myriad-essentials-0.1.2-sources.jar",
+          "size": 125823,
+          "sha512": "125c6514c8d7302bcbe289e6eb12fe476870ff2d7709a3e2b4cae97719ec5c669542c8fe0be0bbcc541836da32e341ab26aba07f6e2c07956635f0527af2ff60",
+          "sha256": "9cda9d2593bd8e2282ff357ab60a25e44fe049c450102819713ee3cffa241dd6",
+          "sha1": "1ac49e36021b743f5d9ed4b0c227980243e0a414",
+          "md5": "7efc5c5b12b1a8e564837785a4c5df90"
+        }
+      ]
+    }
+  ]
+}
