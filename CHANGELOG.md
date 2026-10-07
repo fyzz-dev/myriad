@@ -8,6 +8,8 @@ and may change in any release. Addons declare the oldest core they support in `f
 
 ## Unreleased
 
+- Dwindle is the default layout for the first workspace too (it already was for the others); the first-run desktop
+  splits the largest window each time, so the stock windows come up as a grid rather than ever thinner slivers.
 - Essentials has moved to its own repository, [myriad-essentials](https://github.com/fyzz-dev/myriad-essentials),
   with its own versions and releases; the Grim test server and suite went with it. This repository is core and the
   example addon, and `example-addon/` is a code sample now: it still builds and runs, but isn't released.

@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/license-CC0-3b7dd8" alt="CC0">
 </p>
 
-![The Myriad menu: one window per category, tiled side by side](docs/screenshots/menu-myriad.png)
+![The Myriad menu: Essentials' category windows tiled by the Dwindle layout](docs/screenshots/menu-dwindle.png)
 
 Myriad is built like a desktop, not a click-GUI. The menu is a window manager modelled on
 [Hyprland](https://hyprland.org): workspaces, tiled or floating windows, layouts, a launcher, and everything reachable
 from the keyboard. The core ships **no modules at all**. Every feature, including the stock set, is an addon written
 against the public API, so the client is whatever addons you put next to it.
 
-- **Workspaces and layouts.** Nine workspaces, each tiling its windows with Columns, Dwindle or Master. Lay out a
+- **Workspaces and layouts.** Nine workspaces, each tiling its windows with Dwindle, Columns or Master. Lay out a
   combat workspace and a base workspace, merge windows, float the ones you want on top.
 - **Launcher.** `Alt+Space` fuzzy-searches modules, panels, themes, profiles and workspaces. Enter toggles, Shift+Enter
   opens settings.
@@ -53,11 +53,13 @@ For writing your own: [myriad-addon-template](https://github.com/fyzz-dev/myriad
 | | |
 |---|---|
 | ![A module's settings in a window of its own](docs/screenshots/settings.png) | ![The launcher](docs/screenshots/launcher.png) |
-| A module's settings, inline under the module or in a window of their own. | The launcher: type a few letters, Enter toggles. |
-| ![In game: ESP, tracers, nametags and the HUD](docs/screenshots/hud.png) | ![Tokyo Night](docs/screenshots/menu-tokyo-night.png) |
-| In game: ESP, tracers and nametags from Essentials, the HUD drawn by the same window manager. | The Theme panel, on Tokyo Night. Every colour, gap and curve is a setting. |
-| ![Gruvbox](docs/screenshots/menu-gruvbox.png) | |
-| Gruvbox. Themes are files you can share. | |
+| A module's settings, inline under the module or in a window of their own, which Dwindle tiles in beside it. | The launcher: type a few letters, Enter toggles. |
+| ![In game: ESP, tracers, nametags and the HUD](docs/screenshots/hud.png) | ![Neon Blueprint, a user theme](docs/screenshots/menu-neon-blueprint.png) |
+| In game: ESP, tracers and nametags from Essentials, the HUD drawn by the same window manager. | A theme of your own: square corners, wide gaps, a thick gradient border, a mono font, dimmed inactive windows. It's one JSON file ([`docs/themes/neon_blueprint.json`](docs/themes/neon_blueprint.json), drop it in `.minecraft/myriad/themes/`). |
+| ![Tokyo Night](docs/screenshots/menu-tokyo-night.png) | ![Gruvbox](docs/screenshots/menu-gruvbox.png) |
+| The Theme panel, on the Tokyo Night preset. Every colour, gap and curve is a setting. | Gruvbox. Editing a preset saves your changes on top of it. |
+| ![The Columns layout](docs/screenshots/menu-columns.png) | |
+| The Columns layout, one category per column; `mod+L` cycles layouts per workspace. | |
 
 ## Building and running
 
@@ -93,9 +95,10 @@ release from their own repositories, to the same maven.
 
 Press **Right Shift** (rebindable) in game or on the title screen to open the Myriad menu.
 
-- **Workspaces 1–9** each tile their windows with a layout. **Columns** is the default: one window per module
-  category, side by side, with each module's settings unfolding inline. **Dwindle** (each new window splits the
-  focused one, Hyprland's default) and **Master** are also built in, and addons can register more layouts.
+- **Workspaces 1–9** each tile their windows with a layout. **Dwindle** is the default, as in Hyprland: each new
+  window splits the focused one, so a workspace grows into a grid. **Columns** (one window per module category, side
+  by side, with each module's settings unfolding inline) and **Master** are also built in, and addons can register
+  more layouts.
 - **Category windows** hold one addon's modules in one category: *Combat · Essentials*, *Combat · Crystal PvP*. Addons
   share the standard categories (same icon and colour) and can add their own. Lay them out however suits you, say a
   combat workspace and a base workspace; when you install an addon, its windows open on the workspace that already

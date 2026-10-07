@@ -1882,14 +1882,23 @@ public final class WindowManager implements Desktop {
 	/** Workspace 1: one window per addon + category group, side by side (a tiled click-GUI). */
 	private void defaultWorkspaces() {
 		active = 1;
-		workspaces[1].setLayout(Myriad.layouts().get(dev.myriad.impl.ui.layout.ColumnsLayout.ID).orElse(defaultLayout()));
+		Workspace ws = workspaces[1];
+		// Dwindle splits the focused window. Splitting the least recently split one each time gives an even grid, where
+		// splitting the newest every time would halve its way down to slivers.
+		java.util.ArrayDeque<WindowImpl> toSplit = new java.util.ArrayDeque<>();
 		WindowImpl first = null;
 		for (ModuleGroup g : ModuleGroup.all()) {
+			WindowImpl target = toSplit.poll();
+			if (target != null) ws.focused = target;
 			Optional<Window> w = openPanel(CorePanels.CATEGORY, ModuleGroup.args(List.of(g)), 1, false);
-			if (first == null && w.isPresent()) first = (WindowImpl) w.get();
+			if (w.isEmpty()) continue;
+			WindowImpl win = (WindowImpl) w.get();
+			if (first == null) first = win;
+			if (target != null) toSplit.add(target);
+			toSplit.add(win);
 		}
 		if (first == null) openPanel(dev.myriad.impl.ui.panels.CorePanels.MODULES, new JsonObject(), 1, false);
-		else workspaces[1].focused = first;
+		else ws.focused = first;
 		for (WindowImpl w : windows) w.opacity.snap(1);
 	}
 

@@ -1,0 +1,17 @@
+{
+  "name": "Neon Blueprint",
+  "author": "fyzz",
+  "settings": {
+    "general": {"font": "MONO", "font_size": 7.5, "gaps_in": 12, "gaps_out": 24, "border_size": 3, "title_bars": true},
+    "colors": {
+      "accent": "#FF39FF14", "secondary": "#FFFF2BD6",
+      "active_border": "#FFFF2BD6", "active_border_end": "#FF00E5FF", "border_angle": 20, "animate_border": true,
+      "inactive_border": "#FF1F3A4D",
+      "window_background": "#F4060B14", "title_background": "#FF0B1522", "surface": "#FF0F1E2E", "surface_hover": "#FF173049",
+      "text": "#FFD8FBFF", "text_dim": "#FF6C8FA3", "menu_tint": "#A0020409", "bar_background": "#FF060B14"
+    },
+    "palette": {"red": "#FFFF3B6B", "green": "#FF39FF14", "yellow": "#FFFFE14D", "blue": "#FF00E5FF", "magenta": "#FFFF2BD6", "cyan": "#FF4DF3FF"},
+    "decoration": {"rounding": 0, "blur": false, "shadow": true, "shadow_range": 24, "shadow_color": "#C0000000", "dim_inactive": 0.15},
+    "animations": {"curve": "EASE_OUT_QUINT", "window_speed": 4.0}
+  }
+}
