@@ -1,6 +1,8 @@
 # Builds a tagged version, attaches the core jar (with sources and javadoc) to a GitHub release, and publishes it to
 # the public maven: the `maven` branch, served by GitHub Pages at https://fyzz-dev.github.io/myriad. Essentials and
 # the other addons release from their own repositories; the example addon is a code sample and isn't released. Tag with the version in gradle.properties: `git tag v0.1.0 && git push --tags`.
+# Finally it asks Coolify to rebuild the website, so its download button shows the new version; that step is skipped
+# until the WEBSITE_DEPLOY_HOOK secret (the resource's deploy webhook URL) is set, with COOLIFY_TOKEN if the hook needs one.
 
 name: release
 on:
@@ -51,3 +53,10 @@ jobs:
           git add -A
           git -c user.name=github-actions -c user.email=github-actions@github.com commit -m "Publish ${GITHUB_REF_NAME#v}"
           git push origin HEAD:maven
+      - name: rebuild the website
+        env:
+          HOOK: ${{ secrets.WEBSITE_DEPLOY_HOOK }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          [ -n "$HOOK" ] || { echo "WEBSITE_DEPLOY_HOOK not set, skipping"; exit 0; }
+          curl -fsS ${TOKEN:+-H "Authorization: Bearer $TOKEN"} "$HOOK"
