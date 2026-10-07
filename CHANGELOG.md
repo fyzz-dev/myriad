@@ -4,11 +4,29 @@ Myriad follows [semantic versioning](https://semver.org) for the public API (`de
 version is 0, a **minor** release may change the API, and anything removed is deprecated for at least one minor
 release first with its replacement in the javadoc; a **patch** release never changes it. `dev.myriad.impl` is internal
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
-(`"depends": {"myriad": ">=0.2.0"}`) and can check `Myriad.isAtLeast("0.3.0")` for newer features.
+(`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
-## 0.2.0
+## 0.1.0
 
-The release that makes core something to build on. Everything here is in the README's *Writing an addon* section.
+First release: the window manager, modules and settings, the event bus, the services (rotations, inventory, placing,
+breaking, building, containers, tasks, packet limits, tick speed), themes, HUD, commands, profiles, Essentials and
+the example addon.
+
+Everything below is in the README's *Writing an addon* section.
+
+### Boze bridge
+
+- [myriad-boze](https://github.com/fyzz-dev/myriad-boze), a separate addon: every module of the Boze client in
+  Myriad's menu, in the shared categories, with settings, keybinds and on/off state in sync both ways. Boze keeps its
+  config and handles the keys. The API changes below are for it.
+
+### API
+
+- `Module.isMirror()`: a module that stands in for another mod's feature. Myriad neither saves it with the profile nor
+  toggles it on its keybind. `Module.setEnabledSilently` is public API now (it was marked internal).
+- Registries are no longer frozen after startup, so an addon can register once something it waits for is ready; the
+  menu places windows for modules registered late when it next opens. `Registry.freeze()` and `isFrozen()` are
+  deprecated and unused.
 
 ### Compatibility and the API contract
 
@@ -67,9 +85,3 @@ The release that makes core something to build on. Everything here is in the REA
 
 - Simpler settings (Offhand, Auto Armor, Auto Eat), no Grim flag when turning No Durability off mid-flight, modules
   rebuilt on the events above.
-
-## 0.1.0
-
-First release: the window manager, modules and settings, the event bus, the services (rotations, inventory, placing,
-breaking, building, containers, tasks, packet limits, tick speed), themes, HUD, commands, profiles, Essentials and
-the example addon.

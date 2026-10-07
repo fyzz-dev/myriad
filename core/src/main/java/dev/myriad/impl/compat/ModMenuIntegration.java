@@ -10,6 +10,10 @@ import dev.myriad.impl.ui.WindowManager;
 public final class ModMenuIntegration implements ModMenuApi {
 	@Override
 	public ConfigScreenFactory<?> getModConfigScreenFactory() {
-		return parent -> new DesktopScreen((WindowManager) Myriad.ui());
+		return parent -> {
+			WindowManager wm = (WindowManager) Myriad.ui();
+			wm.refreshModules();
+			return new DesktopScreen(wm);
+		};
 	}
 }

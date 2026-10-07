@@ -38,7 +38,7 @@ public class Registry<T extends Identified> implements Iterable<T> {
 	 * registrars on {@code AddonContext}, which fill this in.
 	 */
 	public synchronized T register(T entry, String owner) {
-		if (frozen) throw new IllegalStateException("Registry '" + name + "' is frozen; register during addon initialization");
+		if (frozen) throw new IllegalStateException("Registry '" + name + "' is frozen");
 		MyriadId id = entry.id();
 		if (entries.containsKey(id)) throw new IllegalArgumentException("Duplicate " + name + " id: " + id);
 		entries.put(id, entry);
@@ -107,10 +107,18 @@ public class Registry<T extends Identified> implements Iterable<T> {
 		removeListeners.add(listener);
 	}
 
+	/**
+	 * @deprecated Myriad no longer freezes its registries after startup: an addon may register later, when something
+	 * it bridges becomes ready. Calling this still makes {@link #register} throw, but nothing in core does. To be
+	 * removed in a later minor release.
+	 */
+	@Deprecated(since = "0.1.0", forRemoval = true)
 	public synchronized void freeze() {
 		frozen = true;
 	}
 
+	/** @deprecated see {@link #freeze()}. */
+	@Deprecated(since = "0.1.0", forRemoval = true)
 	public synchronized boolean isFrozen() {
 		return frozen;
 	}
