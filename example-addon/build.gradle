@@ -2,19 +2,29 @@ base {
 	archivesName = "myriad-example-addon"
 }
 
+repositories {
+	// Essentials for the dev runtime comes from Myriad's maven.
+	maven {
+		name = "Myriad"
+		url = "https://fyzz-dev.github.io/myriad"
+	}
+}
+
 dependencies {
 	implementation project(":core")
-	// Only so `:example-addon:runClient` also boots the stock modules; the addon does not depend on them.
-	runtimeOnly project(":essentials")
+	// Only so `:example-addon:runClient` also boots the stock modules; the addon does not depend on them. With
+	// -PessentialsDir=../myriad-essentials the jar built in that checkout is used instead of the released one.
+	if (project.hasProperty("essentialsDir")) {
+		localRuntime fileTree(dir: "${project.essentialsDir}/build/libs", include: "myriad-essentials-*.jar", exclude: ["*-sources.jar"])
+	} else {
+		localRuntime "dev.myriad:myriad-essentials:${rootProject.essentials_version}"
+	}
 }
 
 loom {
 	mods {
 		"myriad" {
 			sourceSet("main", ":core")
-		}
-		"myriad-essentials" {
-			sourceSet("main", ":essentials")
 		}
 		"myriad-example" {
 			sourceSet sourceSets.main
@@ -31,12 +41,12 @@ loom {
 			if (project.hasProperty("screenshotEvery")) property("myriad.screenshotEvery", project.property("screenshotEvery").toString())
 			// -PauditMixins applies every mixin at startup, so a broken one fails straight away instead of when its class loads.
 			property("myriad.auditMixins", project.hasProperty("auditMixins").toString())
-			// Lines appended to run/myriad-dev-inbox are run in game (Myriad commands, server commands, held keys...), so
-			// tests can be scripted from outside; tools/grim-test/client writes there.
+			// Lines appended to run/myriad-dev-inbox are run in game (Myriad commands, server commands, held keys, the menu,
+			// screenshots), so tests can be scripted from outside; Essentials' tools/grim-test/client writes there.
 			property("myriad.devConsole", "myriad-dev-inbox")
 			// -PquickPlay="World name" loads straight into a singleplayer world.
 			if (project.hasProperty("quickPlay")) programArgs("--quickPlaySingleplayer", project.property("quickPlay").toString())
-			// -PquickPlayServer=localhost:25565 joins a server instead (the Grim test server in tools/grim-test, say).
+			// -PquickPlayServer=localhost:25565 joins a server instead (the Grim test server in myriad-essentials, say).
 			if (project.hasProperty("quickPlayServer")) programArgs("--quickPlayMultiplayer", project.property("quickPlayServer").toString())
 			// -Pusername=Name plays as that name (offline servers), so a test server can op it once and keep it.
 			if (project.hasProperty("username")) programArgs("--username", project.property("username").toString())
@@ -44,5 +54,5 @@ loom {
 	}
 }
 
-// The example is for reading, not depending on.
+// The example is for reading and running, not depending on: it isn't published or released.
 tasks.withType(AbstractPublishToMaven).configureEach { enabled = false }

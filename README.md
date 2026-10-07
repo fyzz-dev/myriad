@@ -32,15 +32,16 @@ against the public API, so the client is whatever addons you put next to it.
 ## Install
 
 1. [Fabric Loader](https://fabricmc.net/use/) for Minecraft 26.2, and [Fabric API](https://modrinth.com/mod/fabric-api).
-2. From the [latest release](https://github.com/fyzz-dev/myriad/releases/latest), put `myriad-<v>.jar` and
-   `myriad-essentials-<v>.jar` in `mods/`, plus any other addons.
+2. Put `myriad-<v>.jar` from the [latest release](https://github.com/fyzz-dev/myriad/releases/latest) in `mods/`,
+   with `myriad-essentials-<v>.jar` from [its releases](https://github.com/fyzz-dev/myriad-essentials/releases/latest)
+   and any other addons.
 3. In game, press **Right Shift**.
 
 ## Official addons
 
 | Addon | What it adds | Where |
 |---|---|---|
-| **Myriad Essentials** | The stock modules: Offhand, Kill Aura, Elytra Fly, Packet Mine, Scaffold, ESP, Nametags and the rest, with the HUD elements. Built like any other addon, on the public API; remove it and Myriad boots with an empty module list. | [Releases](https://github.com/fyzz-dev/myriad/releases) |
+| **Myriad Essentials** | The stock modules: Offhand, Kill Aura, Elytra Fly, Packet Mine, Scaffold, ESP, Nametags and the rest, with the HUD elements. Built like any other addon, on the public API, versioned on its own; remove it and Myriad boots with an empty module list. | [fyzz-dev/myriad-essentials](https://github.com/fyzz-dev/myriad-essentials) |
 | **Myriad Boze** | Every module of the [Boze](https://boze.dev) client in Myriad's menu, with Boze installed alongside: Boze's modules appear in the shared categories (*Combat · Boze*) with their settings, keybinds and on/off state in sync both ways, and the two friend lists kept the same. Boze stays the owner of its config and keys; Myriad is a second front end. | [fyzz-dev/myriad-boze](https://github.com/fyzz-dev/myriad-boze) |
 | **Myriad Omarchy** | A theme that follows your [Omarchy](https://omarchy.org) system theme: switch themes on the desktop and the menu follows. | [fyzz-dev/myriad-omarchy](https://github.com/fyzz-dev/myriad-omarchy) |
 
@@ -63,33 +64,30 @@ For writing your own: [myriad-addon-template](https://github.com/fyzz-dev/myriad
 Requires JDK 25+.
 
 ```bash
-./gradlew build                          # core/, essentials/, example-addon/ → */build/libs/*.jar
+./gradlew build                          # core/ and example-addon/ → */build/libs/*.jar
 ./gradlew :core:test                     # unit tests: event bus, settings, config, layout, the API surface
 ./gradlew :core:runClient                # core only (no modules)
-./gradlew :essentials:runClient          # core + essentials
-./gradlew :example-addon:runClient       # everything
+./gradlew :example-addon:runClient       # core + the released Essentials + the example addon
+./gradlew :example-addon:runClient -PessentialsDir=../myriad-essentials   # …with the Essentials jar built in that checkout
 ./gradlew :example-addon:runClient -PopenDesktop   # …and open the menu on the title screen
 ./gradlew :example-addon:runClient -PquickPlay="New World"   # …or load straight into a singleplayer world
 ./gradlew :example-addon:runClient -PscreenshotEvery=10   # …saving a screenshot every 10 s (run/screenshots)
 ./gradlew :example-addon:runClient -PquickPlayServer=localhost:25565 -Pusername=GrimTester   # …or join a server
-./gradlew publishToMavenLocal            # dev.myriad:myriad(-essentials) in ~/.m2, to build an addon against unreleased changes
+./gradlew publishToMavenLocal            # dev.myriad:myriad in ~/.m2, to build an addon against unreleased changes
 ```
 
 ```
 core/           mod id "myriad"             the platform: API, event bus, config, commands, renderer, menu
-essentials/     mod id "myriad-essentials"  the stock modules + HUD elements (an ordinary addon)
-example-addon/  mod id "myriad-example"     the reference addon: a complete feature set, written to be read
+example-addon/  mod id "myriad-example"     the reference addon: a complete feature set, written to be read (not released)
 ```
 
-To check a module against Grim (2b2t's anti-cheat) before trying it there, [`tools/grim-test/`](tools/grim-test)
-runs a local 2b2t-like server with Grim, with scripts to run server commands, drive the dev client and read Grim's
-flags. `tools/grim-test/suite` runs the Essentials test suite there: every module switched on and off (`selftest`),
-then each main module in a scene of its own, checked on the server and against Grim's flags. The dev client also
-takes script steps from `run/myriad-dev-inbox` (commands, movement, the menu, screenshots); the README's pictures
-are taken that way.
+The stock modules live in [myriad-essentials](https://github.com/fyzz-dev/myriad-essentials), with the Grim test
+server and suite that check them against 2b2t's anti-cheat. The dev client takes script steps from
+`run/myriad-dev-inbox` (commands, movement, the menu, screenshots); the README's pictures are taken that way.
 
-Releases are tagged: `git tag v0.1.0 && git push origin v0.1.0` builds, tests, attaches the jars to a GitHub
-release and publishes core and Essentials to the maven at `https://fyzz-dev.github.io/myriad`.
+Releases are tagged: `git tag v0.1.0 && git push origin v0.1.0` builds, tests, attaches the core jar to a GitHub
+release and publishes it to the maven at `https://fyzz-dev.github.io/myriad`. Essentials and the other addons
+release from their own repositories, to the same maven.
 
 ## The menu
 
@@ -157,7 +155,8 @@ Every binding can be changed in the Keybinds panel.
 
 ## Essentials
 
-The stock modules, in the standard categories (each module's settings explain its options):
+The stock modules are the [myriad-essentials](https://github.com/fyzz-dev/myriad-essentials) addon, released on its
+own. In the standard categories (each module's settings explain its options):
 
 | | |
 |---|---|
@@ -235,14 +234,14 @@ An addon is an ordinary Fabric mod with a `myriad` entrypoint. Two projects get 
 2. `./gradlew runClient` starts the game with Myriad, Essentials and your addon, with the menu open.
    `./gradlew build` puts your jar in `build/libs/`.
 
-Released versions of `dev.myriad:myriad` and `dev.myriad:myriad-essentials` (with sources and javadoc) are on
+Released versions of `dev.myriad:myriad` (with sources and javadoc) and `dev.myriad:myriad-essentials` are on
 Myriad's maven, `https://fyzz-dev.github.io/myriad`, which the template's `build.gradle` already uses. Myriad is
 `implementation`; Essentials is on the dev runtime only (`localRuntime`), so you can test next to the stock modules
 without depending on them. To build against changes that aren't released yet, run `./gradlew publishToMavenLocal`
 in this repository and add `mavenLocal()` to your repositories.
 `fabric.mod.json` declares `"entrypoints": { "myriad": [...] }` and `"depends": { "myriad": ">=0.1.0" }`.
 
-Inside this repository, `essentials` and `example-addon` are built the same way and may only use `dev.myriad.api`:
+`example-addon` here and Essentials in its repository are built the same way and may only use `dev.myriad.api`:
 the build fails if either references `dev.myriad.impl` (`./gradlew checkApiOnly`).
 
 ### The entrypoint
@@ -292,7 +291,7 @@ Following these keeps addons consistent with each other and with the stock modul
 - **Timing.** Act (click, place, break, attack, switch slots) in `TickEvent.Pre`, before the player moves, as vanilla
   does: Grim (2b2t) flags actions sent after the tick's movement packet. Myriad holds any that come later to the start
   of the next tick, so they're still safe, just a tick late. The services already act at the right time.
-  `tools/grim-test/` checks a module against Grim.
+  Essentials' `tools/grim-test/` checks a module against Grim.
 - **Mixins** stay thin. Put the logic in a static method on the module that starts with `Modules.active(...)`, and
   have the mixin call it. Prefix handler names with your mod id. Prefer an event over a mixin when one exists. For
   hooks into other mods (Sodium, Iris), set `"plugin": "dev.myriad.api.mixin.CompatMixinPlugin"` in your mixin config
