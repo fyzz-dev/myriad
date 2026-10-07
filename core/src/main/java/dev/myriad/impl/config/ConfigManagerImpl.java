@@ -106,6 +106,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 						// An unknown value (from a newer version) keeps the default.
 					}
 				}
+				if (o.has("checkUpdates")) myriad.updates().setCheckEnabled(o.get("checkUpdates").getAsBoolean());
 				if (o.has("keyActions") && o.get("keyActions").isJsonObject()) rawKeyActions = o.getAsJsonObject("keyActions");
 				// "Open Desktop" was renamed to "Open Menu"; keep the user's bind.
 				if (rawKeyActions.has("myriad:open_desktop") && !rawKeyActions.has("myriad:open_menu")) {
@@ -182,6 +183,7 @@ public final class ConfigManagerImpl implements ConfigManager {
 		com.google.gson.JsonArray known = new com.google.gson.JsonArray();
 		for (String h : myriad.antiCheat().knownServers()) known.add(h);
 		global.add("knownGrimServers", known);
+		global.addProperty("checkUpdates", myriad.updates().checkEnabled());
 		JsonObject keys = rawKeyActions.deepCopy();
 		for (KeyAction a : myriad.keyActions()) keys.addProperty(a.id().toString(), a.bind().serialize());
 		global.add("keyActions", keys);

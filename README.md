@@ -37,6 +37,15 @@ against the public API, so the client is whatever addons you put next to it.
    and any other addons.
 3. In game, press **Right Shift**.
 
+### Updates
+
+Myriad checks GitHub for new releases of itself and of each addon when the game starts. When there is one, a pill
+with the new version shows on the addon's card in the **Addons** window (and a count in the bar); open the card and
+click **Update**, or **Update all**, or use `.update`. The jar is downloaded and checked (the right mod and version,
+and that it supports your Minecraft and Myriad), then swapped into `mods/` when you quit, so the next launch runs it.
+The jar it replaced is kept in `.minecraft/myriad/updates/old/`. Turn the check off with the toggle at the top of
+the Addons window.
+
 ## Official addons
 
 | Addon | What it adds | Where |
@@ -176,7 +185,7 @@ FPS, HP, Player Count, Speed, Totems, TPS. Baritone options do nothing when Bari
 
 Prefix `.` (change with `.prefix`). Commands autocomplete in chat and in the console panel.
 `.toggle <module> [on|off]`, `.bind <module> <key|none>`, `.set <module> [setting] [value]`, `.reset <module>`,
-`.profile [load|delete|save]`, `.friend add|remove|list`, `.theme <preset>`, `.addons`, `.diagnostics` (copies versions,
+`.profile [load|delete|save]`, `.friend add|remove|list`, `.theme <preset>`, `.addons`, `.update [check|all|<addon>]`, `.diagnostics` (copies versions,
 addons, mods and enabled modules' changed settings for a bug report), `.panic`, `.help`, `.menu`,
 `.modules` (click one to toggle it), `.binds`, `.say <message>` (sends text starting with the prefix as chat),
 `.reload` (re-read the profile from disk), `.anticheat [auto|grim|vanilla]` and `.anticheat known add|remove <host>` (what the
@@ -330,6 +339,11 @@ An addon built against one version of Myriad keeps working on the next. What tha
   versioning rule (while the major version is 0, minor releases may change the API, patch releases never do).
 - **Versions.** Declare the oldest core you support in `fabric.mod.json` (`"depends": {"myriad": ">=0.1.0"}`). To use
   something newer while supporting older cores, check `Myriad.isAtLeast("0.2.0")` (`Myriad.version()` is the running one).
+- **Updates.** Myriad updates your addon from its GitHub releases when `contact.sources` in `fabric.mod.json` is
+  its repository (`https://github.com/you/my-addon`). Release with tags `v<version>` and attach the jar; it's
+  recognised by its name (the installed jar's name with the new version) or by being the release's only jar besides
+  `-sources` and `-javadoc`. Releases come from somewhere else with `"custom": {"myriad": {"updates": "owner/repo"}}`,
+  and `"updates": false` turns updating off.
 - **Your own data** belongs in `ctx.storage()`. Write it with a version (`writeJson(name, json, 2)`) and read it with
   `readJson(name, 2, (from, data) -> ...)`, which upgrades older data one step at a time.
 

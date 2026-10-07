@@ -9,12 +9,18 @@ import dev.myriad.api.ui.Desktop;
 import dev.myriad.api.ui.ThemeSettings;
 import dev.myriad.api.util.ColorUtil;
 import dev.myriad.api.render.MyriadLogo;
+import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.ui.WindowManager;
+import dev.myriad.impl.ui.panels.CorePanels;
+import dev.myriad.impl.update.UpdateManager;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import net.minecraft.client.Minecraft;
 
-/** The stock bar: launcher button and workspaces on the left, focused window in the middle, clock on the right. */
+/**
+ * The stock bar: launcher button and workspaces on the left, focused window in the middle, clock on the right (with a
+ * count of available updates when there are any).
+ */
 public final class CoreBarWidgets {
 	private CoreBarWidgets() {
 	}
@@ -141,6 +147,35 @@ public final class CoreBarWidgets {
 				float ty = y + (h - c.textHeight()) / 2;
 				c.text(FontFamily.MONO, c.defaultFontSize(), "", x, ty, theme().accent.argb());
 				c.text(FontFamily.SANS_BOLD, c.defaultFontSize(), LocalTime.now().format(fmt), x + 11, ty, theme().text.argb());
+			}
+		});
+
+		ctx.registerBarWidget(new BarWidget(ctx.id("updates"), "Updates", BarWidget.Side.RIGHT, 80) {
+			private final UpdateManager updates = MyriadImpl.get().updates();
+
+			private String text() {
+				int n = updates.updatable().size();
+				return n == 0 ? "" : String.valueOf(n);
+			}
+
+			@Override
+			public float width(Canvas c, float h) {
+				String t = text();
+				return t.isEmpty() ? 0 : c.textWidth(FontFamily.SANS_BOLD, c.defaultFontSize(), t) + 12;
+			}
+
+			@Override
+			public void render(Canvas c, float x, float y, float w, float h, float mx, float my) {
+				boolean hover = mx >= x && mx < x + w && my >= y && my < y + h;
+				float ty = y + (h - c.textHeight()) / 2;
+				c.text(FontFamily.MONO, c.defaultFontSize(), "", x, ty, hover ? theme().text.argb() : theme().accent.argb());
+				c.text(FontFamily.SANS_BOLD, c.defaultFontSize(), text(), x + 11, ty, theme().text.argb());
+			}
+
+			@Override
+			public boolean mouseClicked(float mx, float my, int button) {
+				wm.openPanel(CorePanels.ADDONS);
+				return true;
 			}
 		});
 

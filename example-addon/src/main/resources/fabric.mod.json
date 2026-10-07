@@ -15,6 +15,9 @@
 		"myriad": ["com.example.myriadaddon.ExampleAddon"]
 	},
 	"mixins": ["myriad-example.mixins.json"],
+	"custom": {
+		"myriad": {"updates": false}
+	},
 	"depends": {
 		"myriad": ">=${version}",
 		"minecraft": "~${minecraft_version}"

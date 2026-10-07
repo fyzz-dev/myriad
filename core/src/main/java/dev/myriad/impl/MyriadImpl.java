@@ -44,6 +44,7 @@ import dev.myriad.impl.service.RotationManager;
 import dev.myriad.impl.service.TaskScheduler;
 import dev.myriad.impl.service.TickSpeedManager;
 import dev.myriad.impl.ui.WindowManager;
+import dev.myriad.impl.update.UpdateManager;
 import dev.myriad.impl.ui.panels.ConsoleLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,6 +90,7 @@ public final class MyriadImpl implements MyriadApi {
 	private final CommandManager commandManager = new CommandManager(commands);
 	private final KeybindManager keybindManager = new KeybindManager();
 	private final AddonLoader addonLoader = new AddonLoader(this);
+	private final UpdateManager updates = new UpdateManager(config.root());
 
 	private MyriadImpl() {
 	}
@@ -141,6 +143,7 @@ public final class MyriadImpl implements MyriadApi {
 		addonLoader.initialize();
 		config.load();
 		addonLoader.postInitialize();
+		updates.start(events);
 		// Registries stay open: an addon that bridges another mod registers once that mod is ready, which may be later.
 
 		LOG.info("Myriad ready: {} addons, {} modules, {} panels, {} commands in {} ms", addonLoader.addons().size(), modules.size(),
@@ -161,6 +164,10 @@ public final class MyriadImpl implements MyriadApi {
 
 	public CommandManager commandManager() {
 		return commandManager;
+	}
+
+	public UpdateManager updates() {
+		return updates;
 	}
 
 	@Override

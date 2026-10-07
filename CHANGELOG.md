@@ -6,6 +6,19 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.1.2
+
+No API changes.
+
+- Updates: Myriad checks GitHub for new releases of itself and every addon whose `contact.sources` is its GitHub
+  repository (or that names one with `"custom": {"myriad": {"updates": "owner/repo"}}`). The Addons window shows the
+  new version on the card, with **Update** and **Update all**, the bar shows a count, and a toast says so once per
+  launch; `.update` does the same from chat. The download is checked (size and SHA-256 against GitHub, mod id,
+  version, and its Minecraft and Myriad dependencies) and swapped into `mods/` when the game exits, keeping the jar
+  it replaced in `myriad/updates/old/`; the next launch confirms it went in. Turn the launch check off at the top
+  of the Addons window. On Windows, where a running jar can't be moved, a hidden PowerShell does the swap once the
+  game has exited; that path has not been tried on a Windows install yet.
+
 ## 0.1.1
 
 Fixes and the repository split; no API changes.

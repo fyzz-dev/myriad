@@ -24,6 +24,7 @@ import dev.myriad.impl.event.Profiler;
 import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.ui.ThemeManager;
 import dev.myriad.impl.ui.WindowManager;
+import dev.myriad.impl.update.UpdateManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -186,6 +187,60 @@ public final class CoreCommands {
 					}
 					return SINGLE_SUCCESS;
 				});
+			}
+		});
+
+		ctx.registerCommand(new Command("update", "Updates Myriad and addons from GitHub: .update lists, .update check, .update all, .update <addon>.") {
+			@Override
+			public void build(LiteralArgumentBuilder<SharedSuggestionProvider> b) {
+				UpdateManager updates = MyriadImpl.get().updates();
+				b.executes(c -> {
+					boolean any = false;
+					for (Addon a : Myriad.addons()) {
+						UpdateManager.State s = updates.state(a.id());
+						if (s == null) continue;
+						any = true;
+						String what = switch (s.kind()) {
+							case CHECKING -> "checking…";
+							case UP_TO_DATE -> "up to date";
+							case AVAILABLE -> s.version() + " available";
+							case DOWNLOADING -> "downloading " + s.version() + "…";
+							case STAGED -> s.version() + " installs when you quit";
+							case FAILED -> "update to " + s.version() + " failed: " + s.message();
+							case UNKNOWN, DEV_BUILD -> s.message();
+						};
+						ChatFormatting f = s.kind() == UpdateManager.Kind.AVAILABLE ? ChatFormatting.AQUA
+							: s.kind() == UpdateManager.Kind.FAILED ? ChatFormatting.RED : ChatFormatting.GRAY;
+						info(Component.literal(a.name() + " " + a.version() + "  ").append(Component.literal(what).withStyle(f)));
+					}
+					if (!any) info("Not checked yet: .update check");
+					else if (!updates.updatable().isEmpty()) info("Install with .update all or .update <addon>; they go in when you quit");
+					return SINGLE_SUCCESS;
+				});
+				b.then(literal("check").executes(c -> {
+					updates.check(true);
+					info("Checking GitHub for updates…");
+					return SINGLE_SUCCESS;
+				}));
+				b.then(literal("all").executes(c -> {
+					if (updates.updatable().isEmpty()) {
+						info("Nothing to update");
+						return SINGLE_SUCCESS;
+					}
+					updates.updateAll();
+					info("Downloading " + updates.updatable().size() + " update(s)…");
+					return SINGLE_SUCCESS;
+				}));
+				b.then(argument("addon", Arguments.choice(updates::updatable)).executes(c -> {
+					String id = StringArgumentType.getString(c, "addon");
+					if (!updates.updatable().contains(id)) {
+						error("No update for " + id + ". .update lists what's available");
+						return 0;
+					}
+					updates.update(id);
+					info("Downloading " + id + "…");
+					return SINGLE_SUCCESS;
+				}));
 			}
 		});
 

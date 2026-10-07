@@ -10,7 +10,10 @@ import dev.myriad.api.ui.widget.HBox;
 import dev.myriad.api.addon.AddonSettings;
 import dev.myriad.api.ui.widget.Label;
 import dev.myriad.api.ui.widget.SettingsView;
+import dev.myriad.api.ui.widget.Toggle;
 import dev.myriad.api.ui.widget.VBox;
+import dev.myriad.impl.MyriadImpl;
+import dev.myriad.impl.update.UpdateManager;
 import java.util.HashSet;
 import java.util.Set;
 import net.minecraft.util.Util;
@@ -18,6 +21,7 @@ import net.minecraft.util.Util;
 /** Every addon Myriad found, as cards: what it adds, who made it, where to find it, and why it failed if it did. */
 public final class AddonsPanel extends WidgetPanel {
 	private final Set<String> unfolded = new HashSet<>();
+	private final UpdateManager updates = MyriadImpl.get().updates();
 
 	@Override
 	public String title() {
@@ -34,6 +38,14 @@ public final class AddonsPanel extends WidgetPanel {
 		long failed = Myriad.addons().stream().filter(a -> a.state() == AddonState.FAILED).count();
 		content.add(new Label(Myriad.addons().size() + " addons" + (failed > 0 ? ", " + failed + " failed" : "")
 			+ ". Myriad core ships no modules; everything here plugs in through the addon API.").dim());
+		HBox row = new HBox(4);
+		row.addFixed(new Toggle(updates::checkEnabled, updates::setCheckEnabled), 24);
+		row.addWeighted(new Label("Check for updates"), 1);
+		row.addFixed(new Button(() -> updates.isChecking() ? "Checking…" : "Check now", () -> updates.check(true)), 56)
+			.tooltip("Asks GitHub for newer releases of Myriad and every addon that names its repository");
+		row.addFixed(new Button("Update all", updates::updateAll).accent(), 56).visible(() -> updates.updatable().size() > 1)
+			.tooltip("Downloads every update; they install when you quit");
+		content.add(row);
 		for (Addon a : Myriad.addons()) content.add(new AddonEntry(a));
 	}
 
@@ -78,13 +90,41 @@ public final class AddonsPanel extends WidgetPanel {
 		@Override
 		protected float drawBadges(Canvas c, float right, float cy) {
 			if (failed()) right = badge(c, " Failed", right, cy, theme().red.argb(), true) - 4;
-			return badge(c, addon.version(), right, cy, theme().textDim.argb(), false) - 4;
+			right = badge(c, addon.version(), right, cy, theme().textDim.argb(), false) - 4;
+			UpdateManager.State u = updates.state(addon.id());
+			if (u == null) return right;
+			return switch (u.kind()) {
+				case AVAILABLE -> badge(c, " " + u.version(), right, cy, theme().accent.argb(), true) - 4;
+				case DOWNLOADING -> badge(c, " " + u.version(), right, cy, theme().textDim.argb(), false) - 4;
+				case STAGED -> badge(c, " Restart to apply", right, cy, theme().green.argb(), true) - 4;
+				case FAILED -> badge(c, " Update failed", right, cy, theme().red.argb(), true) - 4;
+				default -> right;
+			};
 		}
 
 		@Override
 		protected String tooltipText() {
 			String d = addon.description();
-			return d == null || d.isEmpty() ? null : d;
+			String update = updateLine(updates.state(addon.id()));
+			if (update == null) return d == null || d.isEmpty() ? null : d;
+			return d == null || d.isEmpty() ? update : d + "\n" + update;
+		}
+
+		/** What the header's update pill means, for its tooltip. */
+		private static String updateLine(UpdateManager.State u) {
+			if (u == null) return null;
+			return switch (u.kind()) {
+				case AVAILABLE -> "Version " + u.version() + " is available. Open the card to update.";
+				case DOWNLOADING -> "Downloading " + u.version() + "…";
+				case STAGED -> u.version() + " installs when you quit.";
+				case FAILED -> "Updating to " + u.version() + " failed: " + u.message();
+				default -> null;
+			};
+		}
+
+		@Override
+		protected Object bodyKey() {
+			return updates.state(addon.id());
 		}
 
 		@Override
@@ -100,9 +140,30 @@ public final class AddonsPanel extends WidgetPanel {
 			addon.sources().ifPresent(url -> links.add(new Button(" Source", () -> Util.getPlatform().openUri(url))).tooltip(url));
 			addon.issues().ifPresent(url -> links.add(new Button(" Issues", () -> Util.getPlatform().openUri(url))).tooltip(url));
 			if (!links.children().isEmpty()) body.add(links);
+			buildUpdate(body, updates.state(id));
 			for (AddonSettings s : Myriad.addonSettings().ownedBy(id)) {
 				body.add(new Label(s.name()).bold());
 				body.add(SettingsView.build(s.settings()));
+			}
+		}
+
+		private void buildUpdate(VBox body, UpdateManager.State u) {
+			if (u == null) return;
+			String id = addon.id();
+			switch (u.kind()) {
+				case AVAILABLE, FAILED -> {
+					if (u.kind() == UpdateManager.Kind.FAILED) body.add(new Label("Updating to " + u.version() + " failed: " + u.message()).color(() -> theme().red.argb()));
+					HBox row = new HBox(4);
+					row.add(new Button(" Update to " + u.version(), () -> updates.update(id)).accent()).tooltip("Downloads it now; it installs when you quit");
+					if (u.releaseUrl() != null) row.add(new Button(" Release notes", () -> Util.getPlatform().openUri(u.releaseUrl()))).tooltip(u.releaseUrl());
+					body.add(row);
+				}
+				case CHECKING -> body.add(new Label("Checking for updates…").dim());
+				case DOWNLOADING -> body.add(new Label("Downloading " + u.version() + "…").dim());
+				case STAGED -> body.add(new Label(u.version() + " is downloaded and installs when you quit."
+					+ (u.message() != null ? " " + u.message() + "." : "")).color(() -> theme().green.argb()));
+				case UP_TO_DATE -> body.add(new Label("Up to date.").dim());
+				case UNKNOWN, DEV_BUILD -> body.add(new Label(u.message() + ".").dim());
 			}
 		}
 
