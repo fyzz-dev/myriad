@@ -53,8 +53,13 @@ final class Launcher {
 	}
 
 	void show() {
+		show("");
+	}
+
+	/** Opens with the query already typed (the dev console uses it). */
+	void show(String query) {
 		visible = true;
-		query = "";
+		this.query = query;
 		selected = 0;
 		refresh();
 	}

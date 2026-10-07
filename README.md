@@ -1,17 +1,62 @@
-# Myriad
+<p align="center"><img src="core/src/main/resources/assets/myriad/icon.png" width="96" alt="Myriad"></p>
+<h1 align="center">Myriad</h1>
+<p align="center">An addon-first utility client for Minecraft 26.2, with a menu that works like a tiling window manager.</p>
+<p align="center">
+  <a href="https://github.com/fyzz-dev/myriad/releases"><img src="https://img.shields.io/github/v/release/fyzz-dev/myriad?label=release" alt="Release"></a>
+  <a href="https://github.com/fyzz-dev/myriad/actions/workflows/build.yml"><img src="https://github.com/fyzz-dev/myriad/actions/workflows/build.yml/badge.svg" alt="Build"></a>
+  <img src="https://img.shields.io/badge/Minecraft-26.2-5c9e4f" alt="Minecraft 26.2">
+  <img src="https://img.shields.io/badge/Fabric-Mojang%20names-8e6fd6" alt="Fabric, Mojang names">
+  <img src="https://img.shields.io/badge/license-CC0-3b7dd8" alt="CC0">
+</p>
 
-An addon-first utility client for Minecraft **26.2** (Fabric, Mojang names), with a UI modelled on the
-[Hyprland](https://hyprland.org) tiling window manager.
+![The Myriad menu: one window per category, tiled side by side](docs/screenshots/menu-myriad.png)
 
-The core of Myriad is the *system*, not the features. The core jar ships **no modules at all**. Every stock module
-lives in `myriad-essentials`, which is built exactly like a third-party addon and uses only the public API. Remove
-that jar and Myriad still boots, with an empty module list.
+Myriad is built like a desktop, not a click-GUI. The menu is a window manager modelled on
+[Hyprland](https://hyprland.org): workspaces, tiled or floating windows, layouts, a launcher, and everything reachable
+from the keyboard. The core ships **no modules at all**. Every feature, including the stock set, is an addon written
+against the public API, so the client is whatever addons you put next to it.
 
-```
-core/           mod id "myriad"             the platform: API, event bus, config, commands, renderer, menu
-essentials/     mod id "myriad-essentials"  the stock modules + HUD elements (an ordinary addon)
-example-addon/  mod id "myriad-example"     the reference addon: a complete feature set, written to be read
-```
+- **Workspaces and layouts.** Nine workspaces, each tiling its windows with Columns, Dwindle or Master. Lay out a
+  combat workspace and a base workspace, merge windows, float the ones you want on top.
+- **Launcher.** `Alt+Space` fuzzy-searches modules, panels, themes, profiles and workspaces. Enter toggles, Shift+Enter
+  opens settings.
+- **Themes.** Gaps, borders, rounding, blur, shadows, animations, fonts and every colour. Presets, your own, and a
+  palette that modules follow, so ESP, tracers and the HUD match whatever you pick.
+- **Made for 2b2t.** The stock modules pass Grim by default; the services every addon builds on (placing, breaking,
+  rotating, inventory) are timed and ordered for it, and switch to faster behaviour on servers that don't check.
+- **Cheap by design.** A module costs nothing until it does something, and the built-in profiler shows what each one
+  costs.
+- **Addon-first.** One API, a template, a reference addon, and a compatibility promise, so an addon built today keeps
+  working on the next release.
+
+## Install
+
+1. [Fabric Loader](https://fabricmc.net/use/) for Minecraft 26.2, and [Fabric API](https://modrinth.com/mod/fabric-api).
+2. From the [latest release](https://github.com/fyzz-dev/myriad/releases/latest), put `myriad-<v>.jar` and
+   `myriad-essentials-<v>.jar` in `mods/`, plus any other addons.
+3. In game, press **Right Shift**.
+
+## Official addons
+
+| Addon | What it adds | Where |
+|---|---|---|
+| **Myriad Essentials** | The stock modules: Offhand, Kill Aura, Elytra Fly, Packet Mine, Scaffold, ESP, Nametags and the rest, with the HUD elements. Built like any other addon, on the public API; remove it and Myriad boots with an empty module list. | [Releases](https://github.com/fyzz-dev/myriad/releases) |
+| **Myriad Boze** | Every module of the [Boze](https://boze.dev) client in Myriad's menu, with Boze installed alongside: Boze's modules appear in the shared categories (*Combat · Boze*) with their settings, keybinds and on/off state in sync both ways, and the two friend lists kept the same. Boze stays the owner of its config and keys; Myriad is a second front end. | [fyzz-dev/myriad-boze](https://github.com/fyzz-dev/myriad-boze) |
+| **Myriad Omarchy** | A theme that follows your [Omarchy](https://omarchy.org) system theme: switch themes on the desktop and the menu follows. | [fyzz-dev/myriad-omarchy](https://github.com/fyzz-dev/myriad-omarchy) |
+
+For writing your own: [myriad-addon-template](https://github.com/fyzz-dev/myriad-addon-template) to start from and
+[`example-addon/`](example-addon) to read. See [Writing an addon](#writing-an-addon).
+
+## A look around
+
+| | |
+|---|---|
+| ![A module's settings in a window of its own](docs/screenshots/settings.png) | ![The launcher](docs/screenshots/launcher.png) |
+| A module's settings, inline under the module or in a window of their own. | The launcher: type a few letters, Enter toggles. |
+| ![In game: ESP, tracers, nametags and the HUD](docs/screenshots/hud.png) | ![Tokyo Night](docs/screenshots/menu-tokyo-night.png) |
+| In game: ESP, tracers and nametags from Essentials, the HUD drawn by the same window manager. | The Theme panel, on Tokyo Night. Every colour, gap and curve is a setting. |
+| ![Gruvbox](docs/screenshots/menu-gruvbox.png) | |
+| Gruvbox. Themes are files you can share. | |
 
 ## Building and running
 
@@ -30,13 +75,21 @@ Requires JDK 25+.
 ./gradlew publishToMavenLocal            # dev.myriad:myriad(-essentials) in ~/.m2, to build an addon against unreleased changes
 ```
 
+```
+core/           mod id "myriad"             the platform: API, event bus, config, commands, renderer, menu
+essentials/     mod id "myriad-essentials"  the stock modules + HUD elements (an ordinary addon)
+example-addon/  mod id "myriad-example"     the reference addon: a complete feature set, written to be read
+```
+
 To check a module against Grim (2b2t's anti-cheat) before trying it there, [`tools/grim-test/`](tools/grim-test)
 runs a local 2b2t-like server with Grim, with scripts to run server commands, drive the dev client and read Grim's
 flags. `tools/grim-test/suite` runs the Essentials test suite there: every module switched on and off (`selftest`),
-then each main module in a scene of its own, checked on the server and against Grim's flags.
+then each main module in a scene of its own, checked on the server and against Grim's flags. The dev client also
+takes script steps from `run/myriad-dev-inbox` (commands, movement, the menu, screenshots); the README's pictures
+are taken that way.
 
-To install, put `myriad-<v>.jar` in `mods/` (with Fabric API), then add `myriad-essentials-<v>.jar` and any other
-addons next to it.
+Releases are tagged: `git tag v0.1.0 && git push origin v0.1.0` builds, tests, attaches the jars to a GitHub
+release and publishes core and Essentials to the maven at `https://fyzz-dev.github.io/myriad`.
 
 ## The menu
 
@@ -116,13 +169,6 @@ The stock modules, in the standard categories (each module's settings explain it
 
 HUD elements: Watermark (with the logo), Module List, Coordinates, Armor, Binds, Chest Count, Direction, Effects,
 FPS, HP, Player Count, Speed, Totems, TPS. Baritone options do nothing when Baritone isn't installed.
-
-## Boze
-
-[**myriad-boze**](https://github.com/fyzz-dev/myriad-boze), a separate addon, puts every module of the
-[Boze](https://boze.dev) client in Myriad's menu, with Boze installed alongside: Boze's modules appear as Myriad
-modules in the shared categories (*Combat · Boze*), with their settings, keybinds and on/off state kept in sync both
-ways. Boze stays the owner of its config, profiles and keys; Myriad is a second front end.
 
 ## Commands
 

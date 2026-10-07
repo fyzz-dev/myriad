@@ -111,6 +111,18 @@ public final class WindowManager implements Desktop {
 		if (!(mc.gui.screen() instanceof DesktopScreen)) mc.gui.setScreen(new DesktopScreen(this));
 	}
 
+	/** Runs one of the desktop's own bindings by id ("launcher", "layout", "close", ...), for the dev console. */
+	public void runBind(String id) {
+		WmBind b = binds.get(id);
+		if (b == null) throw new IllegalArgumentException("no desktop binding '" + id + "'; one of " + binds.keySet());
+		b.action.accept(this);
+	}
+
+	/** Opens the launcher with a query typed, for the dev console. */
+	public void showLauncher(String query) {
+		launcher.show(query);
+	}
+
 	/** Called when a module is registered or removed; the next {@link #open} refreshes the category windows. */
 	public void modulesChanged() {
 		modulesChanged = true;

@@ -6,9 +6,13 @@ import dev.myriad.api.event.Subscribe;
 import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.MouseButtonEvent;
 import dev.myriad.api.event.events.TickEvent;
+import dev.myriad.api.util.MyriadId;
 import dev.myriad.impl.command.CommandManager;
 import dev.myriad.impl.service.InventoryManager;
+import dev.myriad.impl.ui.WindowManager;
+import dev.myriad.impl.ui.panels.CorePanels;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -47,6 +51,10 @@ import java.util.Set;
  *                              script waits for it. -module skips one (e.g. -auto_disconnect)
  * status                       log position, motion, rotation and state
  * echo text                    log the text (scripts use it to know they're done)
+ * screenshot name              save screenshots/name.png (README pictures are taken this way)
+ * menu open|close              the Myriad menu; workspace 3 switches; panel myriad:theme opens a panel
+ * launcher [query]             the launcher with the query typed; wm launcher|layout|close|... runs a desktop binding
+ * settings kill_aura           a module's settings in a window of its own
  * </pre>
  */
 public final class DevConsole {
@@ -180,6 +188,18 @@ public final class DevConsole {
 				}
 				case "status" -> status();
 				case "echo" -> LOG.info("[dev] echo {}", line.substring(4).strip());
+				case "screenshot" -> Screenshot.grab(mc.gameDirectory, a[1] + ".png", mc.gameRenderer.mainRenderTarget(), 1, message -> {
+				});
+				case "menu" -> {
+					if (a[1].equalsIgnoreCase("open")) Myriad.ui().open();
+					else Myriad.ui().close();
+				}
+				case "workspace" -> Myriad.ui().switchWorkspace(Integer.parseInt(a[1]));
+				case "panel" -> Myriad.ui().openPanel(MyriadId.parse(a[1]));
+				case "launcher" -> ((WindowManager) Myriad.ui()).showLauncher(line.length() > 8 ? line.substring(8).strip() : "");
+				case "wm" -> ((WindowManager) Myriad.ui()).runBind(a[1]);
+				case "settings" -> Myriad.modules().byName(a[1]).ifPresentOrElse(m -> CorePanels.openModuleSettings(m, true),
+					() -> LOG.warn("[dev] no module {}", a[1]));
 				default -> LOG.warn("[dev] unknown: {}", line);
 			}
 		} catch (RuntimeException ex) {
