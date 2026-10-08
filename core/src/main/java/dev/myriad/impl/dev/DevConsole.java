@@ -12,6 +12,10 @@ import dev.myriad.impl.service.InventoryManager;
 import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.ui.panels.CorePanels;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.MouseHandler;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.input.MouseButtonInfo;
@@ -53,6 +57,7 @@ import java.util.Set;
  * scroll 1                     the wheel, notches up (negative for down), the same way
  * wait 20                      pause the script for that many ticks
  * respawn                      respawn if dead (the death screen is closed)
+ * connect localhost:25565      join a server (from a disconnect screen too: steps run outside a world)
  * selftest [ticks] [-module]   every module on for that many ticks (20) and off again, reporting failures; the
  *                              script waits for it. -module skips one (e.g. -auto_disconnect)
  * status                       log position, motion, rotation and state
@@ -183,6 +188,11 @@ public final class DevConsole {
 				}
 				case "scroll" -> invokeMouse("onScroll", new Class<?>[]{long.class, double.class, double.class},
 					mc.getWindow().handle(), 0.0, Double.parseDouble(a[1]));
+				case "connect" -> {
+					if (mc.level != null) return;
+					ServerData data = new ServerData("Dev", a[1], ServerData.Type.OTHER);
+					ConnectScreen.startConnecting(new TitleScreen(), mc, ServerAddress.parseString(a[1]), data, false, null);
+				}
 				case "wait" -> waitTicks = Integer.parseInt(a[1]);
 				case "respawn" -> {
 					if (mc.player != null && mc.player.isDeadOrDying()) {

@@ -6,6 +6,17 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.6
+
+No API changes.
+
+- Bed and respawn anchor damage (`Damage.bed`, `Damage.anchor`, and so `Threats.beds`, `Threats.anchors`,
+  `Threats.worst`) count the exploding block as gone, as it is when it goes off. The blast was traced from inside the
+  block, which blocked every line to you: a charged anchor 3 blocks away came out at 1 damage, not the 30-odd it does.
+  Auto Disconnect's Beds and Anchors never left, and Offhand's switch to a totem when something could kill you didn't
+  count them.
+- Dev console: `connect <host:port>` joins a server, from a disconnect screen too.
+
 ## 0.2.5
 
 An addition to the highlight API; addons built for 0.2.x keep working.

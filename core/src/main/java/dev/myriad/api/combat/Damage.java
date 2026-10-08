@@ -20,6 +20,7 @@ import net.minecraft.world.level.ServerExplosion;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.phys.Vec3;
 import java.util.function.Predicate;
 
@@ -75,12 +76,20 @@ public final class Damage {
 
 	/** A bed exploding at {@code bed} (in the Nether or End). */
 	public static float bed(LivingEntity target, BlockPos bed) {
-		return explosion(target, Vec3.atCenterOf(bed), 5);
+		// The bed (both halves) is gone by the time it explodes: its own blocks don't shield anyone.
+		BlockPos other = bed;
+		if (mc().level != null) {
+			BlockState state = mc().level.getBlockState(bed);
+			if (state.getBlock() instanceof BedBlock) other = bed.relative(BedBlock.getConnectedDirection(state));
+		}
+		BlockPos half = other;
+		return explosion(target, target.position(), target.getBoundingBox(), Vec3.atCenterOf(bed), 5, p -> p.equals(bed) || p.equals(half));
 	}
 
 	/** A respawn anchor exploding at {@code anchor} (outside the Nether). */
 	public static float anchor(LivingEntity target, BlockPos anchor) {
-		return explosion(target, Vec3.atCenterOf(anchor), 5);
+		// The anchor is gone by the time it explodes: it doesn't shield anyone from itself.
+		return explosion(target, target.position(), target.getBoundingBox(), Vec3.atCenterOf(anchor), 5, p -> p.equals(anchor));
 	}
 
 	private static final Predicate<BlockPos> NO_OVERRIDES = p -> false;
