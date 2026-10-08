@@ -20,6 +20,7 @@ import dev.myriad.api.render.HighlightStyle;
 import dev.myriad.impl.compat.EntityCullingCompat;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
@@ -47,15 +48,18 @@ import java.util.OptionalDouble;
  * <p>
  * Silhouettes come from vanilla's entity outline target, the one the glowing effect uses. Every entity layer (armour,
  * held items, capes) already passes the entity's outline colour along and is drawn into that target with its texture's
- * cut-outs, so a highlighted entity's whole shape costs no extra work: its outline colour is set to a highlight id
- * (RGB, 24 bits) and vanilla draws the mask. Shapes are drawn into the same target. While Myriad owns the target in a
+ * cut-outs, so a highlighted entity's whole shape costs no extra work: its outline colour is set to a highlight id and
+ * merge group ({@link #encode}) and vanilla draws the mask. Highlights that look alike (same style and colour) share a
+ * group and connect: touching ones get one outline around them all. Where different groups touch, the highlight added
+ * later outlines itself across the boundary. Shapes are drawn into the same target. While Myriad owns the target in a
  * frame, vanilla's own outline post effect is skipped and glowing entities become highlights in a vanilla-like style.
  * <p>
  * Then, only over the screen area the highlights cover (scissored):
  * <ol>
  * <li>Resolve (only if some highlight isn't through walls): drop mask pixels hidden behind the world, comparing the
  * mask's depth with the scene's before translucent terrain is drawn (so water doesn't hide what's under it).</li>
- * <li>Spread: per pixel, the nearest mask pixel in its row within the reach (early-out from the centre).</li>
+ * <li>Spread: per pixel, the nearest mask pixel in its row within the reach (early-out from the centre), and for mask
+ * pixels the nearest one of another group within the outline width.</li>
  * <li>Composite, after the world and before the hand: the nearest mask pixel in its column of row results, which is the
  * exact Euclidean distance; outline, glow and fill from that distance and the highlight's data.</li>
  * </ol>
@@ -83,7 +87,12 @@ public final class HighlightRenderer {
 	private float[] data = new float[FLOATS * 64];
 	/** Per highlight: the box the gradient spans, then a box sure to contain the whole silhouette (12 doubles). */
 	private double[] bounds = new double[12 * 64];
-	private float maxReach;
+	private float maxReach, maxOutline;
+	/** This frame's merge groups: highlights that look alike (same style and colour) share one, and connect. */
+	private final Object2IntOpenHashMap<GroupKey> groups = new Object2IntOpenHashMap<>();
+
+	private record GroupKey(HighlightStyle style, int rgb) {
+	}
 	private boolean anyDepthTested;
 	/** Shape geometry relative to the camera (min x/y/z, max x/y/z per box) and each box's encoded id. */
 	private FloatArrayList shapeBoxes = new FloatArrayList();
@@ -126,6 +135,8 @@ public final class HighlightRenderer {
 		frame++;
 		count = 0;
 		maxReach = 0;
+		maxOutline = 0;
+		groups.clear();
 		anyDepthTested = false;
 		prepared = false;
 		shapeBoxes.clear();
@@ -188,8 +199,8 @@ public final class HighlightRenderer {
 		double dx = pos.x - entity.getX(), dy = pos.y - entity.getY(), dz = pos.z - entity.getZ();
 		AABB hitbox = entity.getBoundingBox().move(dx, dy, dz);
 		AABB around = cullingBox.move(dx, dy, dz).inflate(1);
-		int id = add(style, color, hitbox, around);
-		if (id >= 0) state.outlineColor = encode(id);
+		int encoded = add(style, color, hitbox, around);
+		if (encoded != 0) state.outlineColor = encoded;
 	}
 
 	/** Posts {@link HighlightEvent.Shapes} and submits the shapes' silhouettes to the outline target. */
@@ -228,8 +239,8 @@ public final class HighlightRenderer {
 	/** {@link HighlightEvent.Shapes#box}. Off-screen shapes are skipped, so callers can pass everything in range. */
 	public void box(AABB box, HighlightStyle style, int color) {
 		if (!armed || style == null || (color >>> 24) == 0 || (frustum != null && !frustum.isVisible(box))) return;
-		int id = add(style, color, box, box);
-		if (id >= 0) shapeBox(box, 0, 0, 0, encode(id));
+		int encoded = add(style, color, box, box);
+		if (encoded != 0) shapeBox(box, 0, 0, 0, encoded);
 	}
 
 	/** {@link HighlightEvent.Shapes#block}. */
@@ -240,9 +251,8 @@ public final class HighlightRenderer {
 		VoxelShape shape = level.getBlockState(pos).getShape(level, pos);
 		AABB bounds = shape.isEmpty() ? new AABB(pos) : shape.bounds().move(pos);
 		if (frustum != null && !frustum.isVisible(bounds)) return;
-		int id = add(style, color, bounds, bounds);
-		if (id < 0) return;
-		int c = encode(id);
+		int c = add(style, color, bounds, bounds);
+		if (c == 0) return;
 		if (shape.isEmpty()) shapeBox(new AABB(0, 0, 0, 1, 1, 1), pos.getX(), pos.getY(), pos.getZ(), c);
 		else shape.forAllBoxes((x0, y0, z0, x1, y1, z1) -> shapeBox(new AABB(x0, y0, z0, x1, y1, z1), pos.getX(), pos.getY(), pos.getZ(), c));
 	}
@@ -258,10 +268,13 @@ public final class HighlightRenderer {
 		shapeIds.add(encoded);
 	}
 
-	/** Records a highlight; returns its id, or -1 when there are too many to encode. */
+	/** Records a highlight; returns the outline colour that marks it in the mask, or 0 when there are too many. */
 	private int add(HighlightStyle style, int color, AABB gradientBox, AABB around) {
-		if (count >= 1 << 24) return -1;
+		if (count >= MAX_HIGHLIGHTS) return 0;
 		int id = count++;
+		GroupKey key = new GroupKey(style, color & 0xFFFFFF);
+		int group = groups.getInt(key);
+		if (group == 0) groups.put(key, group = groups.size() % 255 + 1);
 		if (data.length < count * FLOATS) {
 			data = Arrays.copyOf(data, data.length * 2);
 			bounds = Arrays.copyOf(bounds, bounds.length * 2);
@@ -287,11 +300,12 @@ public final class HighlightRenderer {
 		data[i + 18] = style.dotSize() * scale * 0.5f;
 		data[i + 19] = style.throughWalls() ? 0 : 1;
 		maxReach = Math.max(maxReach, outline + glow);
+		maxOutline = Math.max(maxOutline, outline);
 		anyDepthTested |= !style.throughWalls();
 		int b = id * 12;
 		putBox(b, gradientBox);
 		putBox(b + 6, around);
-		return id;
+		return encode(id, group);
 	}
 
 	private void putColor(int i, int argb, float alpha) {
@@ -310,14 +324,25 @@ public final class HighlightRenderer {
 		bounds[b + 5] = box.maxZ;
 	}
 
-	/** A highlight id as an opaque outline colour: the outline shader writes it to the mask's RGB unchanged. */
-	public static int encode(int id) {
-		return 0xFF000000 | (id & 0xFF) << 16 | (id >> 8 & 0xFF) << 8 | id >> 16 & 0xFF;
+	/** Highlights per frame: their ids take 16 bits of the mask, the merge group the other 8. */
+	static final int MAX_HIGHLIGHTS = 1 << 16;
+
+	/**
+	 * A highlight id and merge group as an opaque outline colour: the outline shader writes it to the mask's RGB
+	 * unchanged (id low byte in red, high byte in green, group in blue).
+	 */
+	public static int encode(int id, int group) {
+		return 0xFF000000 | (id & 0xFF) << 16 | (id >> 8 & 0xFF) << 8 | group & 0xFF;
 	}
 
-	/** The id {@link #encode} packed into an outline colour's RGB. */
-	public static int decode(int argb) {
-		return (argb >> 16 & 0xFF) | (argb >> 8 & 0xFF) << 8 | (argb & 0xFF) << 16;
+	/** The id {@link #encode} packed into an outline colour. */
+	public static int decodeId(int argb) {
+		return (argb >> 16 & 0xFF) | (argb >> 8 & 0xFF) << 8;
+	}
+
+	/** The merge group {@link #encode} packed into an outline colour. */
+	public static int decodeGroup(int argb) {
+		return argb & 0xFF;
 	}
 
 	/** The level camera, at the start of {@code LevelRenderer.render}. */
@@ -351,10 +376,11 @@ public final class HighlightRenderer {
 		if (mask == null || mask.getColorTextureView() == null || main.getDepthTextureView() == null) return;
 		int w = mask.width, h = mask.height;
 		int radius = Math.min(MAX_RADIUS, (int) Math.ceil(maxReach) + 1);
+		int boundary = Math.min(radius, (int) Math.ceil(maxOutline) + 1);
 		int[] area = screenArea(w, h);
 		if (area == null) return;
 		resize(w, h);
-		GpuBuffer gpuData = upload(radius);
+		GpuBuffer gpuData = upload(radius, boundary);
 
 		CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
 		GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
@@ -466,7 +492,7 @@ public final class HighlightRenderer {
 	}
 
 	/** Writes the header and every highlight to this frame's slot of the data buffer. */
-	private GpuBuffer upload(int radius) {
+	private GpuBuffer upload(int radius, int boundary) {
 		int bytes = (1 + count * TEXELS) * 16;
 		if (buffer == null || buffer.size() < bytes) {
 			if (buffer != null) GpuGarbage.close(buffer);
@@ -478,7 +504,7 @@ public final class HighlightRenderer {
 		GpuBuffer gpu = buffer.currentBuffer();
 		try (GpuBufferSlice.MappedView view = gpu.map(false, true)) {
 			FloatBuffer out = view.data().order(ByteOrder.nativeOrder()).asFloatBuffer();
-			out.put(radius).put((float) Minecraft.getInstance().getWindow().getGuiScale()).put(count).put(0);
+			out.put(radius).put((float) Minecraft.getInstance().getWindow().getGuiScale()).put(count).put(boundary);
 			out.put(data, 0, count * FLOATS);
 		}
 		return gpu;
@@ -487,7 +513,7 @@ public final class HighlightRenderer {
 	private void resize(int w, int h) {
 		if (spread == null) {
 			resolved = new TextureTarget("Myriad highlights resolved", w, h, false, GpuFormat.RGBA8_UNORM);
-			spread = new TextureTarget("Myriad highlights spread", w, h, false, GpuFormat.RGBA8_UNORM);
+			spread = new TextureTarget("Myriad highlights spread", w, h, false, GpuFormat.RGBA16_UNORM);
 		} else if (spread.width != w || spread.height != h) {
 			resolved.resize(w, h);
 			spread.resize(w, h);

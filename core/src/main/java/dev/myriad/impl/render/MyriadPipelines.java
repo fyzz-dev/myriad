@@ -111,7 +111,7 @@ public final class MyriadPipelines {
 	public static final RenderPipeline HIGHLIGHT_RESOLVE = RenderPipelines.register(highlight("highlight_resolve",
 		BindGroupLayout.builder().withSampler("Mask").withSampler("MaskDepth").withSampler("SceneDepth").build(), ColorTargetState.DEFAULT));
 	public static final RenderPipeline HIGHLIGHT_SPREAD = RenderPipelines.register(highlight("highlight_spread",
-		BindGroupLayout.builder().withSampler("InSampler").build(), ColorTargetState.DEFAULT));
+		BindGroupLayout.builder().withSampler("InSampler").build(), new ColorTargetState(Optional.empty(), GpuFormat.RGBA16_UNORM, ColorTargetState.WRITE_ALL)));
 	public static final RenderPipeline HIGHLIGHT_COMPOSITE = RenderPipelines.register(highlight("highlight_composite",
 		BindGroupLayout.builder().withSampler("SpreadSampler").build(), new ColorTargetState(BlendFunction.TRANSLUCENT)));
 

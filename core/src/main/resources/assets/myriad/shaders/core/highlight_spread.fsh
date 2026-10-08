@@ -2,8 +2,10 @@
 
 #moj_import <myriad:highlight.glsl>
 
-// First half of the distance search: the nearest mask pixel in this row, within the reach, searched outwards so it
-// stops at the first hit. Out: R = its distance / 255 (1 when none), GBA = its highlight id.
+// First half of the distance search, searched outwards along the row so it stops at the first hit:
+//  - the nearest mask pixel within the reach (outline and glow);
+//  - for a mask pixel, the nearest pixel of another group within the outline width (where highlights that look
+//    different meet).
 uniform sampler2D InSampler;
 
 out vec4 fragColor;
@@ -11,27 +13,36 @@ out vec4 fragColor;
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
     vec4 here = texelFetch(InSampler, p, 0);
-    if (here.a > 0.0) {
-        fragColor = vec4(0.0, here.rgb);
-        return;
+    bool inside = here.a > 0.0;
+    int group = inside ? highlightGroup(here.rgb) : 0;
+    int nearD = NONE, nearId = 0, nearG = 0;
+    int otherD = NONE, otherId = 0, otherG = 0;
+    if (inside) {
+        nearD = 0;
+        nearId = highlightId(here.rgb);
+        nearG = group;
     }
-    int radius = highlightRadius();
+    int reach = inside ? highlightBoundaryRadius() : highlightRadius();
     int width = textureSize(InSampler, 0).x;
-    for (int d = 1; d <= radius; d++) {
-        if (p.x - d >= 0) {
-            vec4 left = texelFetch(InSampler, ivec2(p.x - d, p.y), 0);
-            if (left.a > 0.0) {
-                fragColor = vec4(float(d) / 255.0, left.rgb);
-                return;
+    for (int d = 1; d <= reach; d++) {
+        if (inside ? otherD != NONE : nearD != NONE) break;
+        for (int s = -1; s <= 1; s += 2) {
+            int x = p.x + s * d;
+            if (x < 0 || x >= width) continue;
+            vec4 c = texelFetch(InSampler, ivec2(x, p.y), 0);
+            if (c.a == 0.0) continue;
+            int g = highlightGroup(c.rgb);
+            if (nearD == NONE) {
+                nearD = d;
+                nearId = highlightId(c.rgb);
+                nearG = g;
             }
-        }
-        if (p.x + d < width) {
-            vec4 right = texelFetch(InSampler, ivec2(p.x + d, p.y), 0);
-            if (right.a > 0.0) {
-                fragColor = vec4(float(d) / 255.0, right.rgb);
-                return;
+            if (inside && otherD == NONE && g != group) {
+                otherD = d;
+                otherId = highlightId(c.rgb);
+                otherG = g;
             }
         }
     }
-    fragColor = vec4(1.0, 0.0, 0.0, 0.0);
+    fragColor = vec4(pack16(nearD + 256 * nearG), pack16(nearId), pack16(otherD + 256 * otherG), pack16(otherId));
 }

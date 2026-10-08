@@ -12,6 +12,11 @@ import org.jetbrains.annotations.Nullable;
  * screen-space shader after the world. Listen for these events while your module wants to highlight something; while
  * nothing listens, highlighting costs nothing. Both are posted on the render thread, every frame.
  * <p>
+ * Highlights that look alike (the same {@link HighlightStyle} and colour) connect: touching ones get one outline around
+ * them all, so a vein of ores or a double chest is one shape. Where highlights that look different touch, the one added
+ * later outlines itself across the boundary; a low-priority listener runs later, so its highlights draw over others
+ * (as a highlight of the block under the crosshair should).
+ * <p>
  * Colours are ARGB; the alpha fades the whole highlight (handy for fade-ins). The look comes from a
  * {@link HighlightStyle}; {@link dev.myriad.api.render.HighlightSettings} gives modules the standard options for one.
  *
@@ -85,8 +90,8 @@ public abstract class HighlightEvent {
 
 	/**
 	 * Once per frame, after {@link Render3DEvent}: highlight shapes in the world (containers, blocks, areas). Shapes
-	 * added by one call form one silhouette, and touching silhouettes in the same frame share an outline, so a double
-	 * chest or a cluster of ores is outlined as one shape.
+	 * added by one call form one silhouette; touching ones that look alike share an outline, so a double chest or a
+	 * cluster of ores is outlined as one shape.
 	 * <p>
 	 * One instance is reused every frame: don't keep it past the handler.
 	 */
