@@ -6,6 +6,37 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.0
+
+Adds highlights to the API (a minor release: addons built for 0.1.x keep working).
+
+- Highlights (new API): `HighlightEvent.Entity` and `HighlightEvent.Shapes` outline the exact silhouette of entities
+  (armour, held items and cut-outs included) and of boxes or block shapes, with an optional glow, a solid or dotted
+  fill, a gradient, and through walls or only where visible; `HighlightStyle` describes the look and
+  `HighlightSettings` adds the standard settings for one. Silhouettes come from vanilla's entity outline target, so
+  they cost no extra geometry, and the shader runs only over the screen area the highlights cover, in two passes whose
+  work grows with the width in pixels. Measured with 20 creepers on screen (1261×1030, uncapped): ~1130 FPS without,
+  ~1230 with a 2 px outline (no difference within noise), ~1025 with a 24 px glow and dot fill (about +0.09 ms a frame).
+  Nothing runs while nothing listens. While highlights are in use, vanilla's glowing effect is drawn by the same shader,
+  and vanilla's entity outlines now depth-test against each other (the nearest wins where two overlap).
+- Highlight outlines and glows get thinner with distance (`HighlightStyle.distanceScaling()`, on by default): full
+  width within 10 blocks, down to half width at 40 blocks and beyond, never below a pixel.
+- Through-walls highlights work with occlusion culling: entities that Sodium (hidden chunk sections) or EntityCulling
+  (traced as hidden) would skip are still drawn while a through-walls highlight wants them, and only those. Tested with
+  Sodium 0.9.2, Iris 1.11.4 and EntityCulling 1.11.2 together, with and without the Complementary Unbound shader
+  pack (through walls and depth-tested both draw correctly under it; Iris logs once that it has no program for the
+  highlight passes, which is what lets them run unchanged).
+- `EntityRenderEvent.Nametag` now fires for players and mobs: it hooked `shouldShowName`, which living entities
+  override without calling up, so cancelling it only ever hid tags on non-living entities. Cancelling also hides the
+  score line under the name.
+- `BoxStyle` takes a visibility condition, for modules that only show box options in some modes.
+- The Master layout is gone; Dwindle and Columns cover it. Workspaces saved with Master open as Dwindle.
+- Updates: an addon whose `contact.sources` names Myriad's own repository is now looked for in a repository named
+  after its mod id under the same owner, so Essentials 0.1.0 (which shipped pointing at Myriad's repository) finds
+  its releases at `fyzz-dev/myriad-essentials`. Before, it was silently skipped.
+- Check now only says "Up to date" for what it actually checked, and names any addon it couldn't check and why;
+  an addon with no GitHub repository says so on its card.
+
 ## 0.1.2
 
 No API changes.

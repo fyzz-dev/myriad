@@ -17,7 +17,7 @@ Myriad is built like a desktop, not a click-GUI. The menu is a window manager mo
 from the keyboard. The core ships **no modules at all**. Every feature, including the stock set, is an addon written
 against the public API, so the client is whatever addons you put next to it.
 
-- **Workspaces and layouts.** Nine workspaces, each tiling its windows with Dwindle, Columns or Master. Lay out a
+- **Workspaces and layouts.** Nine workspaces, each tiling its windows with Dwindle or Columns. Lay out a
   combat workspace and a base workspace, merge windows, float the ones you want on top.
 - **Launcher.** `Alt+Space` fuzzy-searches modules, panels, themes, profiles and workspaces. Enter toggles, Shift+Enter
   opens settings.
@@ -107,7 +107,7 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
 
 - **Workspaces 1–9** each tile their windows with a layout. **Dwindle** is the default, as in Hyprland: each new
   window splits the focused one, so a workspace grows into a grid. **Columns** (one window per module category, side
-  by side, with each module's settings unfolding inline) and **Master** are also built in, and addons can register
+  by side, with each module's settings unfolding inline) is also built in, and addons can register
   more layouts.
 - **Category windows** hold one addon's modules in one category: *Combat · Essentials*, *Combat · Crystal PvP*. Addons
   share the standard categories (same icon and colour) and can add their own. Lay them out however suits you, say a
@@ -148,7 +148,7 @@ Hyprland keeps for itself, and defaults to **Alt** (change it in Theme → Prefe
 | `mod+Space` | launcher (Ctrl+j/k to move, Enter to run, Shift+Enter for the alternate action) |
 | `mod+Return` / `mod+K` | console / keybindings |
 | `mod+W` / `mod+T` / `mod+F` | close / toggle floating / full screen |
-| `mod+J` / `mod+L` | toggle split / toggle workspace layout (Columns, Dwindle, Master) |
+| `mod+J` / `mod+L` | toggle split / toggle workspace layout (Columns, Dwindle) |
 | `mod+1..9` / `mod+Shift+1..9` | switch workspace / move window there |
 | `mod+Tab`, `mod+Shift+Tab`, `mod+Ctrl+Tab`, `mod+scroll` | next / previous / former workspace |
 | `mod+S` / `mod+Shift+S` | toggle the HUD workspace (Omarchy's scratchpad) / move window to the HUD |
@@ -402,6 +402,7 @@ Core events: `TickEvent.Pre/Post`, `Render2DEvent` (with a `canvas()` in GUI pix
 `HealthEvent` (your health and food from the server, with the damage taken), `DisconnectEvent` (the reason, and the
 address, for `Myriad.server().reconnect()`), `BlockRenderEvent` (leave a block out of the chunk mesh: X-ray, hiding),
 `EntityRenderEvent.Visible/Nametag/Model` (hide an entity, replace its name tag, draw its model again for chams),
+`HighlightEvent.Entity/Shapes` (shader outlines, glows and fills around entities and shapes; see Highlights below),
 `ContainerScreenEvent.SlotDrawn/Tooltip/Click` (icons on slots, content previews, taking over inventory clicks),
 `BlockBreakEvent.Start/Progress` (take over block breaking), `BlockBrokenEvent` (you broke a block),
 `InteractEvent.Block/Item/EntityTarget` (cancellable right-clicks), `ItemUseEvent.Finished/Stopped`, `AttackEvent`
@@ -465,6 +466,7 @@ Helpers, so addons don't each re-derive them (`dev.myriad.api.*`):
 | `render.Renderer3D` / `ShapeBuilder` | boxes, real block shapes, single faces, lines, circles, tracers (this frame) |
 | `render.WorldMesh` | the same shapes kept on the GPU and drawn every frame until rebuilt |
 | `world.ChunkCache`, `world.BlockScan` | work out something per chunk once, redo it only when the chunk changes, optionally drawn as a mesh; block searches that skip sections by palette |
+| `render.HighlightStyle`, `render.HighlightSettings` | how a highlight looks (outline width, glow, fill: none, solid or dots, gradient, through walls) and the standard settings for one |
 | `render.BoxStyle`, `render.EntityGroups` | the standard box options (outline, fill, opacity, width, through walls) and entity picker (players, friends, monsters, crystals, pearls, ... each with a theme colour), so every ESP-like module offers the same choices |
 | `render.WorldLabel`, `render.FadeMap`, `render.RenderStates`, `render.PlayerHeads` | labels on world positions (text and item icons); highlights that fade in and out; the entity behind a render state in renderer mixins; players' faces |
 | `ui.ThemePalette`, `ui.Theme` | build a theme from a terminal palette; themes that follow something live, explain problems, or replace old ids |
@@ -568,6 +570,36 @@ reads almost nothing. The example addon's Block Search, the stock Storage module
 
 Meshes are stored relative to a nearby origin (the chunk corner), so they stay exact far from spawn. Their colours are
 fixed when built, and translucent fills aren't re-sorted per frame (which only shows where several overlap).
+
+### Highlights
+
+Highlights are outlines traced by a shader around the exact silhouette of what's highlighted: an entity with its
+armour, held items and cut-outs, or a set of boxes. A highlight can add a soft glow beyond the outline, a fill inside
+(solid, or a dot grid that moves with it), and a top-to-bottom gradient; each is drawn through walls or only where
+visible. Ask for them by listening to `HighlightEvent`:
+
+```java
+private final HighlightSettings look = new HighlightSettings(settings.group("Outline"));
+
+@Subscribe(inGame = true)
+private void onHighlight(HighlightEvent.Entity e) {             // each entity as it's prepared for drawing
+    if (e.entity() instanceof Player) e.highlight(look.style(), 0xFFFF5555);
+}
+
+@Subscribe(inGame = true)
+private void onHighlightShapes(HighlightEvent.Shapes e) {       // once a frame: boxes and block shapes
+    for (BlockPos pos : chests) e.block(pos, look.style(), 0xFFFFCC00);
+}
+```
+
+`HighlightStyle` is an immutable value (`HighlightStyle.OUTLINE.withGlow(6).withFill(HighlightStyle.Fill.DOTS)`); lengths are in GUI
+pixels, so styles look the same at every GUI scale. The first listener to highlight an entity wins. Touching
+silhouettes share one outline, so a double chest or a wall of chests is one shape, and off-screen shapes are skipped.
+
+Cost: nothing while nothing listens. With highlights, entities' silhouettes come free from vanilla's outline target
+(the glowing effect's: every layer of an entity is already drawn into it), and the shader runs only over the screen
+area the highlights cover, with work that grows with the outline and glow width in pixels, not its square. While
+anything listens, entities with vanilla's glowing effect are drawn by the same shader in their team colour.
 
 For labels over the world, use `WorldLabel` or `Projection.toScreen(pos)` in a `Render2DEvent` handler and draw on
 `event.canvas()`. To draw with the canvas inside any vanilla screen or tooltip, call
