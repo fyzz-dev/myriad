@@ -27,11 +27,13 @@
 		"HudMixin",
 		"ItemStackMixin",
 		"KeyboardMixin",
+		"LevelRendererMixin",
 		"LivingEntityMixin",
 		"LivingEntityRendererMixin",
 		"MinecraftClientMixin",
 		"MouseMixin",
 		"PlayerMixin",
+		"RenderPipelinesMixin",
 		"ScreenMixin",
 		"SoundManagerMixin",
 		"WorldRendererMixin"

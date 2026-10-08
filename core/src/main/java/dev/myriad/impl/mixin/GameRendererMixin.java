@@ -5,7 +5,10 @@ import dev.myriad.api.event.events.CameraEvent;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import org.joml.Matrix4fc;
+import dev.myriad.impl.render.HighlightRenderer;
 import dev.myriad.impl.render.WorldRenderQueue;
+import net.minecraft.client.DeltaTracker;
+import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
@@ -25,5 +28,18 @@ public abstract class GameRendererMixin {
 	private Matrix4fc myriad$viewBob(Matrix4fc bob) {
 		WorldRenderQueue.INSTANCE.viewBob(bob);
 		return bob;
+	}
+
+	/** The level projection as drawn (view bobbing and nausea included), so highlights know where things land on screen. */
+	@ModifyArg(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/ProjectionMatrixBuffer;getBuffer(Lorg/joml/Matrix4f;)Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"))
+	private Matrix4f myriad$levelProjection(Matrix4f projection) {
+		HighlightRenderer.INSTANCE.projection(projection);
+		return projection;
+	}
+
+	/** Highlights go over the finished world and under the hand, while the world's depth is still there. */
+	@Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;render(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;Lnet/minecraft/client/DeltaTracker;ZLnet/minecraft/client/renderer/state/level/CameraRenderState;Lorg/joml/Matrix4fc;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;Lorg/joml/Vector4f;Z)V", shift = At.Shift.AFTER))
+	private void myriad$highlights(DeltaTracker deltaTracker, CallbackInfo ci) {
+		HighlightRenderer.INSTANCE.composite();
 	}
 }

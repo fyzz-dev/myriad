@@ -4,6 +4,7 @@ import dev.myriad.api.event.events.GameReadyEvent;
 import dev.myriad.api.event.events.Render2DEvent;
 import dev.myriad.api.event.events.Render3DEvent;
 import dev.myriad.api.render.Projection;
+import dev.myriad.impl.render.HighlightRenderer;
 import dev.myriad.impl.render.MeshRenderer;
 import dev.myriad.impl.render.MyriadPipelines;
 import dev.myriad.impl.render.WorldRenderQueue;
@@ -57,12 +58,13 @@ public class MyriadClient implements ClientModInitializer {
 			Minecraft mc = Minecraft.getInstance();
 			var camera = mc.gameRenderer.mainCamera();
 			WorldRenderQueue.INSTANCE.begin(ctx.levelState().cameraRenderState.pos);
+			// Same tick delta the entities were drawn with this frame.
+			float tickDelta = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
 			if (bus.hasListeners(Render3DEvent.class)) {
-				// Same tick delta the entities were drawn with this frame.
-				float tickDelta = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
 				bus.post(new Render3DEvent(ctx.poseStack(), camera, tickDelta, ctx.submitNodeCollector()));
 			}
 			WorldRenderQueue.INSTANCE.submit(ctx.submitNodeCollector(), ctx.poseStack(), camera);
+			HighlightRenderer.INSTANCE.collectShapes(ctx.submitNodeCollector(), ctx.poseStack(), tickDelta);
 		});
 
 		// Retained meshes (WorldMesh, ChunkCache) draw straight after the per-frame shapes, in the same place in the frame.

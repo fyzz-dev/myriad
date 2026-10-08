@@ -9,6 +9,8 @@ import dev.myriad.api.setting.SettingGroup;
 import dev.myriad.api.util.ColorUtil;
 import net.minecraft.world.phys.AABB;
 
+import java.util.function.Supplier;
+
 /**
  * The standard options for drawing boxes, so every highlight (entities, storage, blocks, holes) offers the same
  * ones: outline, fill or both, fill opacity, line width, and whether to draw through walls.
@@ -28,12 +30,17 @@ public final class BoxStyle {
 
 	/** Adds the options to {@code group}. */
 	public BoxStyle(SettingGroup group) {
-		shape = group.enumSetting("Shape", Renderer3D.ShapeMode.BOTH).description("Outline, fill, or both.").build();
+		this(group, () -> true);
+	}
+
+	/** Adds the options to {@code group}, shown only while {@code visible} says so (e.g. in some modes of a module). */
+	public BoxStyle(SettingGroup group, Supplier<Boolean> visible) {
+		shape = group.enumSetting("Shape", Renderer3D.ShapeMode.BOTH).description("Outline, fill, or both.").visible(visible).build();
 		fillOpacity = group.doubleSetting("Fill Opacity").defaultValue(0.2).range(0, 1).decimals(2)
-			.visible(() -> shape.get() != Renderer3D.ShapeMode.LINES).build();
+			.visible(() -> visible.get() && shape.get() != Renderer3D.ShapeMode.LINES).build();
 		lineWidth = group.doubleSetting("Line Width").defaultValue(1.5).range(0.5, 5).decimals(1)
-			.visible(() -> shape.get() != Renderer3D.ShapeMode.FILL).build();
-		throughWalls = group.bool("Through Walls").defaultValue(true).build();
+			.visible(() -> visible.get() && shape.get() != Renderer3D.ShapeMode.FILL).build();
+		throughWalls = group.bool("Through Walls").defaultValue(true).visible(visible).build();
 	}
 
 	/** {@code color} as a fill, at the fill opacity times {@code fade}. */

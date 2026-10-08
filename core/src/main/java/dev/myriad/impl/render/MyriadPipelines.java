@@ -13,6 +13,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.rendertype.OutputTarget;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
@@ -89,6 +90,31 @@ public final class MyriadPipelines {
 	public static final RenderPipeline MODEL_FILL_XRAY = RenderPipelines.register(RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
 		.withLocation(id("pipeline/model_fill_xray")).withVertexBinding(0, DefaultVertexFormat.ENTITY).withDepthStencilState(THROUGH_WALLS).build());
 
+	// Highlights (see HighlightRenderer). Shapes draw their highlight id into vanilla's entity outline target, like
+	// glowing entities do, nearest first; the passes after read it back as a mask.
+	public static final RenderPipeline HIGHLIGHT_SHAPES_PIPELINE = RenderPipelines.register(RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+		.withLocation(id("pipeline/highlight_shapes"))
+		.withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
+		.withVertexShader("core/position_color")
+		.withFragmentShader("core/position_color")
+		.withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
+		.withPrimitiveTopology(PrimitiveTopology.QUADS)
+		.withCull(false)
+		.withDepthStencilState(DepthStencilState.DEFAULT)
+		.build());
+	public static final RenderType HIGHLIGHT_SHAPES = RenderType.create("myriad_highlight_shapes", RenderSetup.builder(HIGHLIGHT_SHAPES_PIPELINE)
+		.setOutputTarget(OutputTarget.OUTLINE_TARGET).setOutline(RenderSetup.OutlineProperty.IS_OUTLINE).createRenderSetup());
+
+	private static final BindGroupLayout HIGHLIGHT_DATA = BindGroupLayout.builder()
+		.withUniform("Highlights", UniformType.TEXEL_BUFFER, GpuFormat.RGBA32_FLOAT)
+		.build();
+	public static final RenderPipeline HIGHLIGHT_RESOLVE = RenderPipelines.register(highlight("highlight_resolve",
+		BindGroupLayout.builder().withSampler("Mask").withSampler("MaskDepth").withSampler("SceneDepth").build(), ColorTargetState.DEFAULT));
+	public static final RenderPipeline HIGHLIGHT_SPREAD = RenderPipelines.register(highlight("highlight_spread",
+		BindGroupLayout.builder().withSampler("InSampler").build(), ColorTargetState.DEFAULT));
+	public static final RenderPipeline HIGHLIGHT_COMPOSITE = RenderPipelines.register(highlight("highlight_composite",
+		BindGroupLayout.builder().withSampler("SpreadSampler").build(), new ColorTargetState(BlendFunction.TRANSLUCENT)));
+
 	public static final RenderType QUADS = RenderType.create("myriad_quads", RenderSetup.builder(WORLD_QUADS).sortOnUpload().createRenderSetup());
 	public static final RenderType QUADS_XRAY = RenderType.create("myriad_quads_xray", RenderSetup.builder(WORLD_QUADS_XRAY).sortOnUpload().createRenderSetup());
 	public static final RenderType LINES = RenderType.create("myriad_lines", RenderSetup.builder(WORLD_LINES).createRenderSetup());
@@ -110,6 +136,19 @@ public final class MyriadPipelines {
 			.withFragmentShader(id("core/" + name))
 			.withBindGroupLayout(BLUR_LAYOUT)
 			.withColorTargetState(new ColorTargetState(Optional.empty(), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL))
+			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
+			.build();
+	}
+
+	/** A full-screen pass over a highlight mask (scissored to the highlights by the caller). */
+	private static RenderPipeline highlight(String name, BindGroupLayout samplers, ColorTargetState target) {
+		return RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+			.withLocation(id("pipeline/" + name))
+			.withVertexShader(id("core/blur"))
+			.withFragmentShader(id("core/" + name))
+			.withBindGroupLayout(samplers)
+			.withBindGroupLayout(HIGHLIGHT_DATA)
+			.withColorTargetState(target)
 			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
 			.build();
 	}

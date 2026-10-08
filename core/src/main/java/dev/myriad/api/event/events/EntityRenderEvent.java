@@ -24,7 +24,7 @@ public abstract class EntityRenderEvent {
 		}
 	}
 
-	/** {@code entity}'s vanilla name tag is about to be drawn: cancel to draw your own instead. */
+	/** {@code entity}'s vanilla name tag is about to be drawn: cancel to draw your own instead (hides the score line under it too). */
 	public static final class Nametag extends Cancellable {
 		private final Entity entity;
 
