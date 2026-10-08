@@ -398,6 +398,7 @@ public final class WindowManager implements Desktop {
 		Workspace ws = workspaces[w.workspace];
 		ws.focused = w;
 		if (w.floating && ws.floating.remove(w)) ws.floating.add(w);
+		else if (!w.floating) ws.tiling.reveal(w);
 	}
 
 	void setFloating(WindowImpl w, boolean floating) {
@@ -1092,6 +1093,11 @@ public final class WindowManager implements Desktop {
 		};
 	}
 
+	private boolean shiftHeld() {
+		long handle = mc.getWindow().handle();
+		return down(handle, GLFW.GLFW_KEY_LEFT_SHIFT) || down(handle, GLFW.GLFW_KEY_RIGHT_SHIFT);
+	}
+
 	private boolean modHeld() {
 		long handle = mc.getWindow().handle();
 		return switch (theme.modKey.get()) {
@@ -1407,6 +1413,8 @@ public final class WindowManager implements Desktop {
 			return true;
 		}
 		WindowImpl w = topWindowAt(mx, my);
+		// Sideways through a row of columns wider than the screen: Shift + wheel anywhere, or the wheel over a gap.
+		if ((shiftHeld() || w == null) && active != HUD_WORKSPACE && workspaces[active].tiling.scroll((float) amount)) return true;
 		if (w == null || w.isHudElement()) return false;
 		Rect content = contentRect(w, w.current());
 		try {
@@ -1768,35 +1776,102 @@ public final class WindowManager implements Desktop {
 		return w.panel instanceof ModulesPanel p ? p.groups() : List.of();
 	}
 
+	/** Narrowest a tiled window is readable at (a category window's module names fit); see {@link #capacity()}. */
+	static final float MIN_TILE_WIDTH = dev.myriad.impl.ui.layout.ColumnsLayout.MIN_WIDTH;
+
+	/** How many tiled windows a workspace takes before new addons go elsewhere: as many as fit side by side. */
+	private int capacity() {
+		Rect area = workArea().inset(theme.gapsOut.get());
+		float gap = theme.gapsIn.get();
+		return Math.max(2, (int) ((area.w() + gap) / (MIN_TILE_WIDTH + gap)));
+	}
+
 	/**
-	 * Gives each addon + category group the desktop hasn't seen yet a window: on the workspace that already has that
-	 * category (so a new addon's Combat modules land beside your other Combat windows), otherwise on workspace 1.
-	 * Groups already on screen, or placed before and since closed, are left alone.
+	 * Gives each addon + category group the desktop hasn't seen yet a window, one addon at a time, by
+	 * {@link GroupPlacement}: beside its categories' windows when they have room, otherwise together on a workspace of
+	 * its own (spilling onto the next empty one when there are more than fit). Groups already on screen, or placed
+	 * before and since closed or moved, are left alone.
 	 */
 	private void placeNewGroups(boolean announce) {
 		Set<ModuleGroup> shown = new HashSet<>();
 		for (WindowImpl w : windows) shown.addAll(groupsOf(w));
+		Map<String, List<ModuleGroup>> byAddon = new LinkedHashMap<>();
+		for (dev.myriad.api.addon.Addon a : Myriad.addons()) byAddon.put(a.id(), new ArrayList<>());
 		for (ModuleGroup g : ModuleGroup.all()) {
 			if (!seenGroups.add(g.key()) || shown.contains(g)) continue;
-			WindowImpl sibling = null;
-			for (WindowImpl w : windows) {
-				if (w.workspace == HUD_WORKSPACE) continue;
-				for (ModuleGroup other : groupsOf(w)) if (other.category().equals(g.category())) sibling = w;
+			byAddon.computeIfAbsent(g.addon(), k -> new ArrayList<>()).add(g);
+		}
+		int capacity = capacity();
+		for (List<ModuleGroup> groups : byAddon.values()) {
+			if (groups.isEmpty()) continue;
+			int[] counts = new int[WORKSPACES + 1];
+			for (int i = 1; i <= WORKSPACES; i++) counts[i] = workspaces[i].tiling.windows().size();
+			int[] siblings = new int[groups.size()];
+			for (int i = 0; i < groups.size(); i++) {
+				WindowImpl s = sibling(groups.get(i), -1);
+				siblings[i] = s == null ? -1 : s.workspace;
 			}
-			int target = sibling != null ? sibling.workspace : 1;
-			Workspace ws = workspaces[target];
-			WindowImpl keepFocus = ws.focused;
-			// New tiles go after the focused one: put it right after its category's window.
-			if (sibling != null && !sibling.floating) ws.focused = sibling;
-			Optional<Window> opened = openPanel(CorePanels.CATEGORY, ModuleGroup.args(List.of(g)), target, false);
-			ws.focused = keepFocus;
-			opened.ifPresent(w -> ((WindowImpl) w).opacity.snap(1));
-			if (announce && opened.isPresent()) {
-				Myriad.notifications().send("Menu", g.addonName() + " added " + g.category().name() + " modules to workspace " + target,
+			int[] targets = GroupPlacement.place(siblings, counts, capacity);
+			java.util.TreeSet<Integer> used = new java.util.TreeSet<>();
+			for (int ws : targets) used.add(ws);
+			for (int ws : used) {
+				List<ModuleGroup> batch = new ArrayList<>();
+				for (int i = 0; i < groups.size(); i++) if (targets[i] == ws) batch.add(groups.get(i));
+				openGroups(ws, batch);
+			}
+			if (announce) {
+				ModuleGroup first = groups.getFirst();
+				String what = groups.size() == 1 ? first.category().name() + " modules" : groups.size() + " windows";
+				Myriad.notifications().send("Menu", first.addonName() + " added " + what + " to " + workspacesText(used),
 					dev.myriad.api.service.Notifications.Level.INFO, 5000, "groups");
 			}
 		}
 		markDirty();
+	}
+
+	/** "workspace 2", "workspaces 2 and 3", "workspaces 2, 3 and 5". */
+	private static String workspacesText(java.util.SortedSet<Integer> used) {
+		if (used.size() == 1) return "workspace " + used.first();
+		List<String> names = new ArrayList<>();
+		for (int ws : used) names.add(String.valueOf(ws));
+		return "workspaces " + String.join(", ", names.subList(0, names.size() - 1)) + " and " + names.getLast();
+	}
+
+	/** The last window (on {@code workspace}, or any if it's -1) showing a group of {@code g}'s category. */
+	private WindowImpl sibling(ModuleGroup g, int workspace) {
+		WindowImpl found = null;
+		for (WindowImpl w : windows) {
+			if (w.workspace == HUD_WORKSPACE || (workspace >= 0 && w.workspace != workspace)) continue;
+			for (ModuleGroup other : groupsOf(w)) if (other.category().equals(g.category())) found = w;
+		}
+		return found;
+	}
+
+	/**
+	 * Opens a window for each group on {@code workspace}. Each goes right after its category's window there, if it has
+	 * one. On an empty workspace, Dwindle splits the least recently split window each time, for an even grid rather
+	 * than ever thinner slivers.
+	 */
+	private void openGroups(int workspace, List<ModuleGroup> groups) {
+		Workspace ws = workspaces[workspace];
+		WindowImpl keepFocus = ws.focused;
+		boolean grid = ws.tiling.windows().isEmpty() && ws.layout instanceof dev.myriad.impl.ui.layout.DwindleLayout;
+		java.util.ArrayDeque<WindowImpl> toSplit = new java.util.ArrayDeque<>();
+		WindowImpl last = null;
+		for (ModuleGroup g : groups) {
+			WindowImpl target = grid ? toSplit.poll() : sibling(g, workspace);
+			if (target == null && !grid) target = last;
+			ws.focused = target != null && !target.floating ? target : null;
+			Optional<Window> opened = openPanel(CorePanels.CATEGORY, ModuleGroup.args(List.of(g)), workspace, false);
+			if (opened.isEmpty()) continue;
+			WindowImpl w = (WindowImpl) opened.get();
+			w.opacity.snap(1);
+			last = w;
+			if (grid && target != null) toSplit.add(target);
+			if (grid) toSplit.add(w);
+			if (keepFocus == null) keepFocus = w;
+		}
+		ws.focused = keepFocus;
 	}
 
 	/** Shows the window holding {@code group}, opening one (on the current workspace) if none does. */
@@ -1879,26 +1954,16 @@ public final class WindowManager implements Desktop {
 		for (WindowImpl w : windows) w.opacity.snap(1);
 	}
 
-	/** Workspace 1: one window per addon + category group, side by side (a tiled click-GUI). */
+	/**
+	 * The first-run desktop: one window per addon + category group, a tiled click-GUI, laid out like addons that arrive
+	 * later ({@link #placeNewGroups}): the first addon on workspace 1, the others beside it while there's room, then on
+	 * workspaces of their own.
+	 */
 	private void defaultWorkspaces() {
 		active = 1;
-		Workspace ws = workspaces[1];
-		// Dwindle splits the focused window. Splitting the least recently split one each time gives an even grid, where
-		// splitting the newest every time would halve its way down to slivers.
-		java.util.ArrayDeque<WindowImpl> toSplit = new java.util.ArrayDeque<>();
-		WindowImpl first = null;
-		for (ModuleGroup g : ModuleGroup.all()) {
-			WindowImpl target = toSplit.poll();
-			if (target != null) ws.focused = target;
-			Optional<Window> w = openPanel(CorePanels.CATEGORY, ModuleGroup.args(List.of(g)), 1, false);
-			if (w.isEmpty()) continue;
-			WindowImpl win = (WindowImpl) w.get();
-			if (first == null) first = win;
-			if (target != null) toSplit.add(target);
-			toSplit.add(win);
-		}
-		if (first == null) openPanel(dev.myriad.impl.ui.panels.CorePanels.MODULES, new JsonObject(), 1, false);
-		else ws.focused = first;
+		seenGroups.clear();
+		placeNewGroups(false);
+		if (workspaces[1].isEmpty()) openPanel(dev.myriad.impl.ui.panels.CorePanels.MODULES, new JsonObject(), 1, false);
 		for (WindowImpl w : windows) w.opacity.snap(1);
 	}
 
