@@ -6,6 +6,16 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.2
+
+No API changes.
+
+- Highlights only connect when they look alike (same style and colour): touching ones still share one outline (a vein
+  of ores, a double chest, a portal), but where highlights that look different touch, the one added later outlines
+  itself across the boundary. Before, any two touching highlights merged, so a block highlight next to a Blocks or
+  Storage highlight lost the edge they shared, and two touching ESP targets in different colours had no line between
+  them. A highlight added by a low-priority listener draws over the others. Up to 65,536 highlights a frame.
+
 ## 0.2.1
 
 Desktop placement for many addons, and sideways scrolling. The API only gains additions: two default methods and two
