@@ -6,6 +6,28 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.3
+
+Additions to the highlight API only; addons built for 0.2.x keep working.
+
+- Addons can bring their own highlight fills: `HighlightStyle.Fill.custom(shader)` takes a fragment shader from the
+  addon's assets that imports `myriad:highlight_fill.glsl` and defines `customFill`, which returns the colour of a pixel
+  inside a highlight (it gets the pixel's position in the highlight, the highlight's colour with any gradient, the
+  style's opacity and dot settings as a scale, the GUI scale and time). Outlines, glow and shared edges are drawn
+  around it as for the built-in fills; each custom fill in use adds one pass over its highlights' insides. The
+  example addon's Logo ESP fills entities with a drifting grid of Myriad logos this way.
+- Highlights come in two layers, each with its own silhouette mask: shapes first, entities drawn over them. Before,
+  one mask held only the nearest thing per pixel, so a wall of highlighted chests hid the highlighted entities behind
+  it.
+- Shapes that look alike share one highlight per frame, however many there are, and retained meshes can be
+  highlighted without re-sending them: `HighlightEvent.Shapes.mesh(mesh, style, palette...)` draws a `WorldMesh`'s
+  faces into the mask with the highlight id applied at draw time, each vertex picking its colour from the palette
+  (`Shapes.paletteColor(i)`). `ChunkCache.highlight(event, style, palette...)` does that for every chunk mesh, and
+  `ChunkCache.setMeshesVisible(false)` keeps them from being drawn as boxes. Measured: ~590,000 highlighted stone blocks
+  at about 1,000 FPS, the same as with nothing highlighted.
+- `HighlightEvent.Shapes.block(pos, style, color, grow)` grows the shape a little, so a highlight of the block under the
+  crosshair sits in front of other highlights of the same block instead of flickering against them.
+
 ## 0.2.2
 
 No API changes.

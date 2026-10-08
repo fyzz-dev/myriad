@@ -600,6 +600,29 @@ private void onHighlightShapes(HighlightEvent.Shapes e) {       // once a frame:
 pixels, so styles look the same at every GUI scale. The first listener to highlight an entity wins. Touching
 silhouettes share one outline, so a double chest or a wall of chests is one shape, and off-screen shapes are skipped.
 
+**Your own fills.** A fill is a fragment shader: put one in your addon's assets, import Myriad's highlight composite and
+define `customFill`, which gets a pixel inside a highlight (its position, the highlight's colour, the style's opacity
+and dot settings as a scale, time) and returns its colour. Outlines and glow are drawn around it as for any fill.
+
+```java
+public static final HighlightStyle.Fill LOGO = HighlightStyle.Fill.custom(Identifier.fromNamespaceAndPath("myaddon", "fill/logo"));
+HighlightStyle style = HighlightStyle.OUTLINE.withFill(LOGO);
+```
+
+```glsl
+// assets/myaddon/shaders/fill/logo.fsh
+#version 330
+#moj_import <myriad:highlight_fill.glsl>
+
+vec4 customFill(HighlightFill f) {
+    float stripe = step(0.5, fract((f.local.x + f.local.y) / f.spacing));
+    return vec4(f.color.rgb, f.color.a * f.opacity * stripe);
+}
+```
+
+The example addon's Logo ESP fills entities with a grid of Myriad logos drawn this way
+(`example-addon/src/main/resources/assets/myriad-example/shaders/fill/logo_grid.fsh`).
+
 Cost: nothing while nothing listens. With highlights, entities' silhouettes come free from vanilla's outline target
 (the glowing effect's: every layer of an entity is already drawn into it), and the shader runs only over the screen
 area the highlights cover, with work that grows with the outline and glow width in pixels, not its square. While
