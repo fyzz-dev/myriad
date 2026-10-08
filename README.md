@@ -108,11 +108,15 @@ Press **Right Shift** (rebindable) in game or on the title screen to open the My
 - **Workspaces 1–9** each tile their windows with a layout. **Dwindle** is the default, as in Hyprland: each new
   window splits the focused one, so a workspace grows into a grid. **Columns** (one window per module category, side
   by side, with each module's settings unfolding inline) is also built in, and addons can register
-  more layouts.
+  more layouts. Columns never get too narrow to read: when they don't all fit, the row scrolls sideways
+  (Shift + mouse wheel, or the wheel over a gap), and focusing a window scrolls it into view.
 - **Category windows** hold one addon's modules in one category: *Combat · Essentials*, *Combat · Crystal PvP*. Addons
   share the standard categories (same icon and colour) and can add their own. Lay them out however suits you, say a
-  combat workspace and a base workspace; when you install an addon, its windows open on the workspace that already
-  has that category, and a notification says where. A window you close stays closed (the launcher reopens it).
+  combat workspace and a base workspace. When you install an addon, its windows open beside the ones of the same
+  categories if that workspace has room; an addon that doesn't fit gets a workspace of its own (continuing onto the
+  next empty one if it has more windows than fit), and a notification says where. A workspace holds as many windows
+  as fit side by side at a readable width, so a fresh install with many addons comes up as one tidy workspace per
+  addon rather than one crowded one. Only windows the desktop hasn't seen are placed: what you've arranged stays put. A window you close stays closed (the launcher reopens it).
   **Merge** windows by dragging one by its title bar onto another's title bar: each addon becomes a section, and the
   icon on a section's header moves it back out to its own window.
 - Windows can be **tiled**, **floating** or **fullscreen**. Drag the gaps between tiles to resize them.

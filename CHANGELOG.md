@@ -6,6 +6,22 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.1
+
+Desktop placement for many addons, and sideways scrolling. The API only gains additions: two default methods and two
+constructors, so addons built for 0.2.0 keep working.
+
+- New addons no longer crowd one workspace. A workspace holds as many windows as fit side by side at a readable
+  width; an addon's windows go beside the ones of the same categories while there's room, and otherwise onto a
+  workspace of their own (continuing onto the next empty one), with one notification per addon ("Boze added 7
+  windows to workspaces 2 and 3"). The first-run desktop is laid out the same way. Only windows the desktop hasn't
+  seen are placed, so your arrangement is never moved.
+- Columns never get narrower than a readable width: when they don't all fit, the row scrolls sideways (Shift + mouse
+  wheel, or the wheel over a gap), and focusing or opening a window scrolls it into view.
+- `LayoutState` has `scroll(amount)` and `reveal(window)` (default methods: layouts that don't scroll ignore them).
+- `HighlightSettings` and `BoxStyle` take whether Through Walls starts on, for highlighting things you can already see
+  (like the block you're looking at).
+
 ## 0.2.0
 
 Adds highlights to the API (a minor release: addons built for 0.1.x keep working).
