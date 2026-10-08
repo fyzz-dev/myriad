@@ -13,7 +13,8 @@ import org.jetbrains.annotations.Nullable;
  * screen-space shader after the world. Listen for these events while your module wants to highlight something; while
  * nothing listens, highlighting costs nothing. Both are posted on the render thread, every frame.
  * <p>
- * Entities are drawn over shapes, so a wall of highlighted chests doesn't hide the highlighted players behind it.
+ * Entities are drawn over shapes, so a wall of highlighted chests doesn't hide the highlighted players behind it, and
+ * shapes added through {@link Shapes#below()} are drawn under the other shapes.
  * Highlights that look alike (the same {@link HighlightStyle} and colour) connect: touching ones get one outline around
  * them all, so a vein of ores or a double chest is one shape. Where highlights that look different touch, the one added
  * later outlines itself across the boundary; a low-priority listener runs later, so its highlights draw over others
@@ -98,10 +99,17 @@ public abstract class HighlightEvent {
 	 * One instance is reused every frame: don't keep it past the handler.
 	 */
 	public static final class Shapes extends HighlightEvent {
+		private final boolean below;
 		private float tickDelta;
+		private @Nullable Shapes belowView;
 
 		@ApiStatus.Internal
 		public Shapes() {
+			this(false);
+		}
+
+		private Shapes(boolean below) {
+			this.below = below;
 		}
 
 		@ApiStatus.Internal
@@ -114,9 +122,22 @@ public abstract class HighlightEvent {
 			return tickDelta;
 		}
 
+		/**
+		 * The same event for shapes on a layer of their own, drawn under everyone else's: for a highlight that mustn't
+		 * hide the others where it overlaps them on screen (a highlight of the block you're looking at, in front of
+		 * highlighted chests behind it). Shapes there connect only with each other. The layer costs nothing while
+		 * nothing is added to it.
+		 */
+		public Shapes below() {
+			if (below) return this;
+			if (belowView == null) belowView = new Shapes(true);
+			belowView.tickDelta = tickDelta;
+			return belowView;
+		}
+
 		/** Highlights a box (world coordinates) in {@code color} (ARGB). Boxes off screen are skipped cheaply. */
 		public void box(AABB box, HighlightStyle style, int color) {
-			HighlightRenderer.INSTANCE.box(box, style, color);
+			HighlightRenderer.INSTANCE.box(box, style, color, below);
 		}
 
 		/**
@@ -124,7 +145,7 @@ public abstract class HighlightEvent {
 		 * or the full block if it has no shape.
 		 */
 		public void block(BlockPos pos, HighlightStyle style, int color) {
-			HighlightRenderer.INSTANCE.block(pos, style, color, 0);
+			HighlightRenderer.INSTANCE.block(pos, style, color, 0, below);
 		}
 
 		/**
@@ -133,7 +154,7 @@ public abstract class HighlightEvent {
 		 * crosshair wants, instead of flickering against them where their faces meet.
 		 */
 		public void block(BlockPos pos, HighlightStyle style, int color, double grow) {
-			HighlightRenderer.INSTANCE.block(pos, style, color, grow);
+			HighlightRenderer.INSTANCE.block(pos, style, color, grow, below);
 		}
 
 		/**
@@ -144,7 +165,7 @@ public abstract class HighlightEvent {
 		 * {@link #paletteColor}{@code (i)}. Up to 256 colours.
 		 */
 		public void mesh(WorldMesh mesh, HighlightStyle style, int... palette) {
-			HighlightRenderer.INSTANCE.mesh(mesh, style, palette);
+			HighlightRenderer.INSTANCE.mesh(mesh, style, palette, below);
 		}
 
 		/** The vertex colour that picks {@code index} from a mesh's palette (see {@link #mesh}). */

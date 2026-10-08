@@ -6,6 +6,15 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.5
+
+An addition to the highlight API; addons built for 0.2.x keep working.
+
+- `HighlightEvent.Shapes#below()`: shapes on a layer of their own, drawn under everyone else's shapes (entities stay
+  on top of both). For a highlight that mustn't hide others where it overlaps them on screen, like the block you're
+  looking at in front of highlighted chests. The layer has its own mask and passes, only over the area its shapes
+  cover, and costs nothing while unused.
+
 ## 0.2.4
 
 No API changes.
