@@ -123,18 +123,4 @@ class LayoutTest {
 		assertEquals(List.of("a", "c"), loaded.windows());
 		assertEquals(2, arrange(loaded, 0).size());
 	}
-
-	@Test
-	void masterPutsFirstWindowLeftAndStacksTheRest() {
-		LayoutState<String> s = new MasterLayout().createState();
-		s.add("a", null);
-		s.add("b", null);
-		s.add("c", null);
-		Map<String, Rect> r = arrange(s, 0);
-		assertEquals(550, r.get("a").w(), 1e-3);
-		assertEquals(250, r.get("b").h(), 1e-3);
-		assertEquals(250, r.get("c").y(), 1e-3);
-		s.swap("a", "c");
-		assertEquals("c", s.windows().getFirst());
-	}
 }

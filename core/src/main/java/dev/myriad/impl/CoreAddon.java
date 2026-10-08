@@ -44,7 +44,6 @@ import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.ui.bar.CoreBarWidgets;
 import dev.myriad.impl.ui.layout.ColumnsLayout;
 import dev.myriad.impl.ui.layout.DwindleLayout;
-import dev.myriad.impl.ui.layout.MasterLayout;
 import dev.myriad.impl.ui.panels.CorePanels;
 import org.lwjgl.glfw.GLFW;
 
@@ -68,7 +67,6 @@ public final class CoreAddon implements MyriadAddon {
 		WindowManager wm = (WindowManager) Myriad.ui();
 		registerSettingWidgets(ctx.settingWidgets());
 		ctx.registerLayout(new DwindleLayout());
-		ctx.registerLayout(new MasterLayout());
 		ctx.registerLayout(new ColumnsLayout());
 		CoreThemes.register(ctx);
 		CorePanels.register(ctx, wm);
