@@ -54,6 +54,14 @@ public final class HighlightSettings {
 
 	/** Adds the options to {@code group}, shown only while {@code visible} says so (e.g. in one mode of a module). */
 	public HighlightSettings(SettingGroup group, Supplier<Boolean> visible) {
+		this(group, visible, true);
+	}
+
+	/**
+	 * Adds the options to {@code group}, shown only while {@code visible} says so, with Through Walls on or off by
+	 * default (off suits highlighting something you can see, like the block you're looking at).
+	 */
+	public HighlightSettings(SettingGroup group, Supplier<Boolean> visible, boolean throughWallsByDefault) {
 		outlineWidth = group.doubleSetting("Outline Width").description("In pixels; 0 for no outline.")
 			.defaultValue(2).range(0, 6).decimals(1).visible(visible).build();
 		glow = group.doubleSetting("Glow").description("A soft glow beyond the outline, in pixels; 0 for none.")
@@ -68,7 +76,7 @@ public final class HighlightSettings {
 		gradient = group.bool("Gradient").description("Fade to a second colour towards the bottom.").visible(visible).build();
 		gradientColor = group.color("Gradient Color").defaultValue(SettingColor.role(SettingColor.Mode.SECONDARY))
 			.visible(() -> visible.get() && gradient.get()).build();
-		throughWalls = group.bool("Through Walls").defaultValue(true).visible(visible).build();
+		throughWalls = group.bool("Through Walls").defaultValue(throughWallsByDefault).visible(visible).build();
 	}
 
 	/** The style these settings describe; rebuilt at most once a frame (theme and rainbow colours change over time). */
