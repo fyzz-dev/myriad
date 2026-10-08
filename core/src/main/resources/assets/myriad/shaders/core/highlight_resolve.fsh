@@ -17,7 +17,7 @@ void main() {
         fragColor = vec4(0.0);
         return;
     }
-    if (highlightData(highlightId(mask.rgb), 4).w > 0.5) {
+    if ((int(highlightData(highlightId(mask.rgb), 4).w + 0.5) & 1) != 0) {
         float depth = texelFetch(MaskDepth, p, 0).r;
         if (depth * 1.002 + 1e-6 < texelFetch(SceneDepth, p, 0).r) {
             fragColor = vec4(0.0);

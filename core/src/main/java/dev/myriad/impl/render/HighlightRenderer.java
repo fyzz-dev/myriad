@@ -1,5 +1,7 @@
 package dev.myriad.impl.render;
 
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -12,15 +14,16 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.GpuFormat;
 import dev.myriad.api.Myriad;
 import dev.myriad.api.event.ListenerFlag;
 import dev.myriad.api.event.events.HighlightEvent;
 import dev.myriad.api.render.HighlightStyle;
+import dev.myriad.api.render.WorldMesh;
 import dev.myriad.impl.compat.EntityCullingCompat;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
@@ -35,26 +38,36 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
 
 /**
  * Draws {@link HighlightEvent} highlights: outlines, glows and fills around exact silhouettes.
  * <p>
- * Silhouettes come from vanilla's entity outline target, the one the glowing effect uses. Every entity layer (armour,
- * held items, capes) already passes the entity's outline colour along and is drawn into that target with its texture's
+ * Two layers, each with its own silhouette mask, so a wall of highlighted chests can't hide the highlighted entities
+ * behind it: shapes first, entities drawn over them.
+ * <ul>
+ * <li>Entities: vanilla's entity outline target, the one the glowing effect uses. Every entity layer (armour, held
+ * items, capes) already passes the entity's outline colour along and is drawn into that target with its texture's
  * cut-outs, so a highlighted entity's whole shape costs no extra work: its outline colour is set to a highlight id and
- * merge group ({@link #encode}) and vanilla draws the mask. Highlights that look alike (same style and colour) share a
- * group and connect: touching ones get one outline around them all. Where different groups touch, the highlight added
- * later outlines itself across the boundary. Shapes are drawn into the same target. While Myriad owns the target in a
- * frame, vanilla's own outline post effect is skipped and glowing entities become highlights in a vanilla-like style.
+ * merge group ({@link #encode}) and vanilla draws the mask. While Myriad owns the target in a frame, vanilla's own
+ * outline post effect is skipped and glowing entities become highlights in a vanilla-like style.</li>
+ * <li>Shapes: a mask of Myriad's own. Boxes and block shapes are drawn into it per frame; retained meshes
+ * ({@link HighlightEvent.Shapes#mesh}) stay on the GPU and are drawn with their highlight id applied at draw time,
+ * so a module highlighting thousands of blocks uploads nothing per frame.</li>
+ * </ul>
+ * Highlights that look alike (same style and colour) share a merge group and connect: touching ones get one outline
+ * around them all. Shapes that look alike also share one highlight entry per frame, however many there are. Where
+ * different groups touch, the highlight added later outlines itself across the boundary.
  * <p>
- * Then, only over the screen area the highlights cover (scissored):
+ * Then, per layer, only over the screen area its highlights cover (scissored):
  * <ol>
  * <li>Resolve (only if some highlight isn't through walls): drop mask pixels hidden behind the world, comparing the
  * mask's depth with the scene's before translucent terrain is drawn (so water doesn't hide what's under it).</li>
@@ -63,43 +76,67 @@ import java.util.OptionalDouble;
  * <li>Composite, after the world and before the hand: the nearest mask pixel in its column of row results, which is the
  * exact Euclidean distance; outline, glow and fill from that distance and the highlight's data.</li>
  * </ol>
- * Two texture reads per tap at most, and the work scales with the reach in pixels, not its square. Per-highlight data
- * (colours, gradient rectangle, style) lives in a texel buffer, so there's no limit on how many there are.
+ * Work scales with the reach in pixels, not its square. Per-highlight data (colours, gradient rectangle, style) lives
+ * in a texel buffer.
  */
 public final class HighlightRenderer {
 	public static final HighlightRenderer INSTANCE = new HighlightRenderer();
 
 	/** vec4s per highlight in the data buffer: top colour, bottom colour, gradient rectangle, shape, fill. */
 	private static final int TEXELS = 5;
+	/** vec4s before the first highlight: (radius, GUI scale, count, boundary radius), (seconds, 0, 0, 0). */
+	private static final int HEADER = 2;
 	private static final int FLOATS = TEXELS * 4;
 	private static final int MAX_RADIUS = 64;
+	/** Highlights per frame: their ids take 16 bits of the mask, the merge group the other 8. */
+	static final int MAX_HIGHLIGHTS = 1 << 16;
+	private static final int ENTITIES = 0, SHAPES = 1;
 	/** Glowing entities while Myriad owns the outline target: close to vanilla's soft outline. */
 	private static final HighlightStyle VANILLA_GLOW = HighlightStyle.OUTLINE.withOutlineWidth(1).withGlow(3).withGlowStrength(0.7f);
+	private static final Matrix4f IDENTITY = new Matrix4f();
 
 	private final HighlightEvent.Entity entityEvent = new HighlightEvent.Entity();
 	private final HighlightEvent.Shapes shapesEvent = new HighlightEvent.Shapes();
 	private ListenerFlag entityListeners, shapeListeners;
 
-	// This frame's highlights.
+	// This frame's highlights, by id.
 	private long frame;
 	private boolean armed;
 	private int count;
-	private float[] data = new float[FLOATS * 64];
+	private HighlightStyle[] styles = new HighlightStyle[64];
+	private int[] colors = new int[64];
+	private int[] groupOf = new int[64];
+	private byte[] layerOf = new byte[64];
 	/** Per highlight: the box the gradient spans, then a box sure to contain the whole silhouette (12 doubles). */
 	private double[] bounds = new double[12 * 64];
-	private float maxReach, maxOutline;
+	/** Per highlight: distance from the camera to its nearest part, for distance scaling. */
+	private double[] nearest = new double[64];
+	private float[] data = new float[FLOATS * 64];
 	/** This frame's merge groups: highlights that look alike (same style and colour) share one, and connect. */
 	private final Object2IntOpenHashMap<GroupKey> groups = new Object2IntOpenHashMap<>();
+	/** Shapes that look alike share one highlight per frame. */
+	private final Object2IntOpenHashMap<GroupKey> shapeIds = new Object2IntOpenHashMap<>();
+	/** Meshes sharing a style and palette share one run of consecutive ids (one per palette colour). */
+	private final Object2IntOpenHashMap<PaletteKey> paletteIds = new Object2IntOpenHashMap<>();
 
 	private record GroupKey(HighlightStyle style, int rgb) {
 	}
-	private boolean anyDepthTested;
+
+	private record PaletteKey(HighlightStyle style, List<Integer> palette) {
+	}
+
+	/** A retained mesh to draw into the shapes mask, with the first id of its palette. */
+	private record MeshDraw(WorldMesh mesh, int baseId) {
+	}
+
 	/** Shape geometry relative to the camera (min x/y/z, max x/y/z per box) and each box's encoded id. */
 	private FloatArrayList shapeBoxes = new FloatArrayList();
+	private IntArrayList shapeColors = new IntArrayList();
+	private final ObjectArrayList<MeshDraw> meshes = new ObjectArrayList<>();
+	private boolean shapesMasked;
 	/** Entities already asked about this frame (while deciding whether to keep them from being culled). */
 	private final Reference2ObjectOpenHashMap<Entity, HighlightStyle> asked = new Reference2ObjectOpenHashMap<>();
 	private final Reference2IntOpenHashMap<Entity> askedColor = new Reference2IntOpenHashMap<>();
-	private IntArrayList shapeIds = new IntArrayList();
 
 	// This frame's camera, captured before the level is drawn.
 	private final Matrix4f projection = new Matrix4f();
@@ -111,11 +148,42 @@ public final class HighlightRenderer {
 	private Frustum frustum;
 
 	// GPU state.
-	private TextureTarget resolved;
-	private TextureTarget spread;
+	private final Layer[] layers = {new Layer("entities"), new Layer("shapes")};
+	private TextureTarget shapeMask;
 	private MappableRingBuffer buffer;
-	private boolean prepared;
-	private final int[] compositeRect = new int[4];
+
+	/** Addons' fills: shader id number to its composite pass. */
+	private static final it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<RenderPipeline> FILLS = new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>();
+	private static final long START = System.nanoTime();
+
+	/** Registers an addon's fill (see {@link HighlightStyle.Fill#custom}): its shader becomes one more composite pass. */
+	public static void registerFill(int shaderId, net.minecraft.resources.Identifier shader) {
+		FILLS.put(shaderId, MyriadPipelines.highlightFill(shaderId, shader));
+	}
+
+	/** One mask's passes and results. */
+	private static final class Layer {
+		final String name;
+		TextureTarget resolved, spread;
+		/** Addons' fills used by this layer's highlights this frame. */
+		final it.unimi.dsi.fastutil.ints.IntRBTreeSet customFills = new it.unimi.dsi.fastutil.ints.IntRBTreeSet();
+		int count;
+		boolean anyDepthTested, prepared;
+		int[] area;
+		final int[] compositeRect = new int[4];
+
+		Layer(String name) {
+			this.name = name;
+		}
+
+		void reset() {
+			customFills.clear();
+			count = 0;
+			anyDepthTested = false;
+			prepared = false;
+			area = null;
+		}
+	}
 
 	private HighlightRenderer() {
 	}
@@ -134,15 +202,16 @@ public final class HighlightRenderer {
 	public void beginFrame() {
 		frame++;
 		count = 0;
-		maxReach = 0;
-		maxOutline = 0;
 		groups.clear();
-		anyDepthTested = false;
-		prepared = false;
-		shapeBoxes.clear();
 		shapeIds.clear();
+		paletteIds.clear();
+		shapeBoxes.clear();
+		shapeColors.clear();
+		meshes.clear();
+		shapesMasked = false;
 		asked.clear();
 		askedColor.clear();
+		for (Layer l : layers) l.reset();
 		if (!Myriad.isReady()) {
 			armed = false;
 			return;
@@ -198,21 +267,27 @@ public final class HighlightRenderer {
 		Vec3 pos = entity.getPosition(tickDelta);
 		double dx = pos.x - entity.getX(), dy = pos.y - entity.getY(), dz = pos.z - entity.getZ();
 		AABB hitbox = entity.getBoundingBox().move(dx, dy, dz);
-		AABB around = cullingBox.move(dx, dy, dz).inflate(1);
-		int encoded = add(style, color, hitbox, around);
-		if (encoded != 0) state.outlineColor = encoded;
+		int id = add(ENTITIES, style, color, hitbox, cullingBox.move(dx, dy, dz).inflate(1));
+		if (id >= 0) state.outlineColor = encode(id, groupOf[id]);
 	}
 
-	/** Posts {@link HighlightEvent.Shapes} and submits the shapes' silhouettes to the outline target. */
+	/** Posts {@link HighlightEvent.Shapes} and submits the frame's boxes to the shapes mask. */
 	public void collectShapes(SubmitNodeCollector collector, PoseStack poseStack, float tickDelta) {
 		if (!armed || !shapeListeners.isSet()) return;
 		Myriad.events().post(shapesEvent.reset(tickDelta));
-		if (shapeIds.isEmpty()) return;
+		if (layers[SHAPES].count == 0) return;
+		// Clear the mask now: the boxes are drawn into it during the frame's outline pass, the meshes after.
+		RenderTarget main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
+		if (shapeMask == null) shapeMask = new TextureTarget("Myriad highlight shapes", main.width, main.height, true, GpuFormat.RGBA8_UNORM);
+		else if (shapeMask.width != main.width || shapeMask.height != main.height) shapeMask.resize(main.width, main.height);
+		RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(shapeMask.getColorTexture(), new Vector4f(0), shapeMask.getDepthTexture(), 0.0);
+		shapesMasked = true;
+		if (shapeColors.isEmpty()) return;
 		FloatArrayList boxes = shapeBoxes;
-		IntArrayList ids = shapeIds;
+		IntArrayList ids = shapeColors;
 		// Drawn later in the frame: hand the lists over and start new ones.
 		shapeBoxes = new FloatArrayList(boxes.size());
-		shapeIds = new IntArrayList(ids.size());
+		shapeColors = new IntArrayList(ids.size());
 		collector.submitCustomGeometry(poseStack, MyriadPipelines.HIGHLIGHT_SHAPES, (pose, buf) -> {
 			for (int n = 0; n < ids.size(); n++) {
 				int i = n * 6, c = ids.getInt(n);
@@ -228,6 +303,11 @@ public final class HighlightRenderer {
 		});
 	}
 
+	/** The shapes mask, for the shapes render type's output target. */
+	public RenderTarget shapeMask() {
+		return shapeMask;
+	}
+
 	private static void quad(com.mojang.blaze3d.vertex.VertexConsumer buf, PoseStack.Pose pose, int c, float ax, float ay, float az, float bx, float by, float bz,
 							 float cx, float cy, float cz, float dx, float dy, float dz) {
 		buf.addVertex(pose, ax, ay, az).setColor(c);
@@ -239,22 +319,55 @@ public final class HighlightRenderer {
 	/** {@link HighlightEvent.Shapes#box}. Off-screen shapes are skipped, so callers can pass everything in range. */
 	public void box(AABB box, HighlightStyle style, int color) {
 		if (!armed || style == null || (color >>> 24) == 0 || (frustum != null && !frustum.isVisible(box))) return;
-		int encoded = add(style, color, box, box);
-		if (encoded != 0) shapeBox(box, 0, 0, 0, encoded);
+		int id = shape(style, color, box);
+		if (id >= 0) shapeBox(box, 0, 0, 0, encode(id, groupOf[id]));
 	}
 
 	/** {@link HighlightEvent.Shapes#block}. */
-	public void block(BlockPos pos, HighlightStyle style, int color) {
+	public void block(BlockPos pos, HighlightStyle style, int color, double inflate) {
 		if (!armed || style == null || (color >>> 24) == 0) return;
 		var level = Minecraft.getInstance().level;
 		if (level == null) return;
 		VoxelShape shape = level.getBlockState(pos).getShape(level, pos);
-		AABB bounds = shape.isEmpty() ? new AABB(pos) : shape.bounds().move(pos);
+		AABB bounds = (shape.isEmpty() ? new AABB(pos) : shape.bounds().move(pos)).inflate(inflate);
 		if (frustum != null && !frustum.isVisible(bounds)) return;
-		int c = add(style, color, bounds, bounds);
-		if (c == 0) return;
-		if (shape.isEmpty()) shapeBox(new AABB(0, 0, 0, 1, 1, 1), pos.getX(), pos.getY(), pos.getZ(), c);
-		else shape.forAllBoxes((x0, y0, z0, x1, y1, z1) -> shapeBox(new AABB(x0, y0, z0, x1, y1, z1), pos.getX(), pos.getY(), pos.getZ(), c));
+		int id = shape(style, color, bounds);
+		if (id < 0) return;
+		int c = encode(id, groupOf[id]);
+		if (shape.isEmpty()) shapeBox(new AABB(0, 0, 0, 1, 1, 1).inflate(inflate), pos.getX(), pos.getY(), pos.getZ(), c);
+		else shape.forAllBoxes((x0, y0, z0, x1, y1, z1) -> shapeBox(new AABB(x0, y0, z0, x1, y1, z1).inflate(inflate), pos.getX(), pos.getY(), pos.getZ(), c));
+	}
+
+	/** {@link HighlightEvent.Shapes#mesh}. */
+	public void mesh(WorldMesh mesh, HighlightStyle style, int[] palette) {
+		if (!armed || style == null || palette.length == 0 || mesh == null || mesh.isEmpty()) return;
+		if (frustum != null && !frustum.isVisible(mesh.bounds())) return;
+		List<Integer> key = new java.util.ArrayList<>(palette.length);
+		for (int c : palette) key.add(c);
+		PaletteKey pk = new PaletteKey(style, key);
+		int base = paletteIds.getOrDefault(pk, -1);
+		if (base < 0) {
+			if (count + palette.length > MAX_HIGHLIGHTS || palette.length > 256) return;
+			base = count;
+			for (int c : palette) add(SHAPES, style, c, mesh.bounds(), mesh.bounds());
+			paletteIds.put(pk, base);
+		} else {
+			for (int i = 0; i < palette.length; i++) grow(base + i, mesh.bounds());
+		}
+		meshes.add(new MeshDraw(mesh, base));
+	}
+
+	/** The highlight shapes of this look use this frame (one per style and colour), grown to cover {@code box}. */
+	private int shape(HighlightStyle style, int color, AABB box) {
+		GroupKey key = new GroupKey(style, color);
+		int id = shapeIds.getOrDefault(key, -1);
+		if (id >= 0) {
+			grow(id, box);
+			return id;
+		}
+		id = add(SHAPES, style, color, box, box);
+		if (id >= 0) shapeIds.put(key, id);
+		return id;
 	}
 
 	private void shapeBox(AABB b, double ox, double oy, double oz, int encoded) {
@@ -265,54 +378,56 @@ public final class HighlightRenderer {
 		shapeBoxes.add((float) (b.maxX + ox - camX));
 		shapeBoxes.add((float) (b.maxY + oy - camY));
 		shapeBoxes.add((float) (b.maxZ + oz - camZ));
-		shapeIds.add(encoded);
+		shapeColors.add(encoded);
 	}
 
-	/** Records a highlight; returns the outline colour that marks it in the mask, or 0 when there are too many. */
-	private int add(HighlightStyle style, int color, AABB gradientBox, AABB around) {
-		if (count >= MAX_HIGHLIGHTS) return 0;
+	/** Records a highlight in {@code layer}; returns its id, or -1 when there are too many. */
+	private int add(int layer, HighlightStyle style, int color, AABB gradientBox, AABB around) {
+		if (count >= MAX_HIGHLIGHTS) return -1;
 		int id = count++;
+		if (styles.length < count) {
+			int n = styles.length * 2;
+			styles = Arrays.copyOf(styles, n);
+			colors = Arrays.copyOf(colors, n);
+			groupOf = Arrays.copyOf(groupOf, n);
+			layerOf = Arrays.copyOf(layerOf, n);
+			nearest = Arrays.copyOf(nearest, n);
+			bounds = Arrays.copyOf(bounds, n * 12);
+			data = Arrays.copyOf(data, n * FLOATS);
+		}
 		GroupKey key = new GroupKey(style, color & 0xFFFFFF);
 		int group = groups.getInt(key);
 		if (group == 0) groups.put(key, group = groups.size() % 255 + 1);
-		if (data.length < count * FLOATS) {
-			data = Arrays.copyOf(data, data.length * 2);
-			bounds = Arrays.copyOf(bounds, bounds.length * 2);
-		}
-		float scale = (float) Minecraft.getInstance().getWindow().getGuiScale();
-		float alpha = (color >>> 24) / 255f;
-		int i = id * FLOATS;
-		putColor(i, color, alpha);
-		if (style.hasGradient()) putColor(i + 4, style.gradient(), alpha * (style.gradient() >>> 24) / 255f);
-		else System.arraycopy(data, i, data, i + 4, 4);
-		// i + 8..11: the gradient rectangle, filled in once the frame's projection is known.
-		// Thinner with distance (to half), but an outline never drops below a pixel.
-		Vec3 eye = Minecraft.getInstance().gameRenderer.mainCamera().position();
-		float far = style.widthScale(Math.sqrt(gradientBox.distanceToSqr(eye)));
-		float outline = style.outlineWidth() * scale * far, glow = style.glow() * scale * far;
-		if (outline > 0) outline = Math.max(1, outline);
-		data[i + 12] = outline;
-		data[i + 13] = glow;
-		data[i + 14] = style.glowStrength();
-		data[i + 15] = style.fillOpacity();
-		data[i + 16] = style.fill().shaderId();
-		data[i + 17] = style.dotSpacing() * scale;
-		data[i + 18] = style.dotSize() * scale * 0.5f;
-		data[i + 19] = style.throughWalls() ? 0 : 1;
-		maxReach = Math.max(maxReach, outline + glow);
-		maxOutline = Math.max(maxOutline, outline);
-		anyDepthTested |= !style.throughWalls();
-		int b = id * 12;
-		putBox(b, gradientBox);
-		putBox(b + 6, around);
-		return encode(id, group);
+		styles[id] = style;
+		colors[id] = color;
+		groupOf[id] = group;
+		layerOf[id] = (byte) layer;
+		putBox(id * 12, gradientBox);
+		putBox(id * 12 + 6, around);
+		nearest[id] = distance(gradientBox);
+		Layer l = layers[layer];
+		l.count++;
+		l.anyDepthTested |= !style.throughWalls();
+		if (style.fill().isCustom()) l.customFills.add(style.fill().shaderId());
+		return id;
 	}
 
-	private void putColor(int i, int argb, float alpha) {
-		data[i] = (argb >> 16 & 0xFF) / 255f;
-		data[i + 1] = (argb >> 8 & 0xFF) / 255f;
-		data[i + 2] = (argb & 0xFF) / 255f;
-		data[i + 3] = alpha;
+	/** Grows highlight {@code id}'s boxes to cover {@code box}; its widths follow its nearest part. */
+	private void grow(int id, AABB box) {
+		int b = id * 12;
+		for (int o : new int[]{b, b + 6}) {
+			bounds[o] = Math.min(bounds[o], box.minX);
+			bounds[o + 1] = Math.min(bounds[o + 1], box.minY);
+			bounds[o + 2] = Math.min(bounds[o + 2], box.minZ);
+			bounds[o + 3] = Math.max(bounds[o + 3], box.maxX);
+			bounds[o + 4] = Math.max(bounds[o + 4], box.maxY);
+			bounds[o + 5] = Math.max(bounds[o + 5], box.maxZ);
+		}
+		nearest[id] = Math.min(nearest[id], distance(box));
+	}
+
+	private double distance(AABB box) {
+		return Math.sqrt(box.distanceToSqr(new Vec3(camX, camY, camZ)));
 	}
 
 	private void putBox(int b, AABB box) {
@@ -324,8 +439,43 @@ public final class HighlightRenderer {
 		bounds[b + 5] = box.maxZ;
 	}
 
-	/** Highlights per frame: their ids take 16 bits of the mask, the merge group the other 8. */
-	static final int MAX_HIGHLIGHTS = 1 << 16;
+	/** Fills in the shader data of every highlight; returns {reach, outline} in pixels, the most any highlight needs. */
+	private float[] fillData() {
+		float scale = (float) Minecraft.getInstance().getWindow().getGuiScale();
+		float maxReach = 0, maxOutline = 0;
+		for (int id = 0; id < count; id++) {
+			HighlightStyle style = styles[id];
+			int color = colors[id], i = id * FLOATS;
+			float alpha = (color >>> 24) / 255f;
+			putColor(i, color, alpha);
+			if (style.hasGradient()) putColor(i + 4, style.gradient(), alpha * (style.gradient() >>> 24) / 255f);
+			else System.arraycopy(data, i, data, i + 4, 4);
+			// i + 8..11: the gradient rectangle, from screenArea.
+			// Thinner with distance (to half), but an outline never drops below a pixel.
+			float far = style.widthScale(nearest[id]);
+			float outline = style.outlineWidth() * scale * far, glow = style.glow() * scale * far;
+			if (outline > 0) outline = Math.max(1, outline);
+			data[i + 12] = outline;
+			data[i + 13] = glow;
+			data[i + 14] = style.glowStrength();
+			data[i + 15] = style.fillOpacity();
+			data[i + 16] = style.fill().shaderId();
+			data[i + 17] = style.dotSpacing() * scale;
+			data[i + 18] = style.dotSize() * scale * 0.5f;
+			// Bit 0: hidden parts are dropped; above it the merge group (the mesh mask shader reads it from here).
+			data[i + 19] = (style.throughWalls() ? 0 : 1) + 2 * groupOf[id];
+			maxReach = Math.max(maxReach, outline + glow);
+			maxOutline = Math.max(maxOutline, outline);
+		}
+		return new float[]{maxReach, maxOutline};
+	}
+
+	private void putColor(int i, int argb, float alpha) {
+		data[i] = (argb >> 16 & 0xFF) / 255f;
+		data[i + 1] = (argb >> 8 & 0xFF) / 255f;
+		data[i + 2] = (argb & 0xFF) / 255f;
+		data[i + 3] = alpha;
+	}
 
 	/**
 	 * A highlight id and merge group as an opaque outline colour: the outline shader writes it to the mask's RGB
@@ -360,57 +510,115 @@ public final class HighlightRenderer {
 		this.projection.set(projection);
 	}
 
-	/** Whether this frame's outline target holds highlight ids (so vanilla mustn't post-process or blit it). */
+	/** Whether this frame's entity outline target holds highlight ids (so vanilla mustn't post-process or blit it). */
 	public boolean ownsOutlines() {
-		return count > 0 && outlinesShown;
+		return layers[ENTITIES].count > 0 && outlinesShown;
 	}
 
 	/**
-	 * Right after the outline target is drawn, before translucent terrain: resolve hidden pixels and run the row pass.
+	 * Right after the masks are drawn, before translucent terrain: draw retained meshes into the shapes mask, then for
+	 * each layer resolve hidden pixels and run the row pass.
 	 */
 	public void afterMask() {
-		prepared = false;
-		if (!ownsOutlines()) return;
-		RenderTarget mask = Minecraft.getInstance().levelRenderer.entityOutlineTarget;
+		for (Layer l : layers) l.prepared = false;
+		boolean entities = ownsOutlines(), shapes = shapesMasked && layers[SHAPES].count > 0;
+		if (!entities && !shapes) return;
 		RenderTarget main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-		if (mask == null || mask.getColorTextureView() == null || main.getDepthTextureView() == null) return;
-		int w = mask.width, h = mask.height;
-		int radius = Math.min(MAX_RADIUS, (int) Math.ceil(maxReach) + 1);
-		int boundary = Math.min(radius, (int) Math.ceil(maxOutline) + 1);
-		int[] area = screenArea(w, h);
-		if (area == null) return;
-		resize(w, h);
+		if (main.getDepthTextureView() == null) return;
+		int w = main.width, h = main.height;
+		screenArea(w, h);
+		float[] widths = fillData();
+		int radius = Math.min(MAX_RADIUS, (int) Math.ceil(widths[0]) + 1);
+		int boundary = Math.min(radius, (int) Math.ceil(widths[1]) + 1);
 		GpuBuffer gpuData = upload(radius, boundary);
-
 		CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-		GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-		GpuTextureView source = mask.getColorTextureView();
-		if (anyDepthTested) {
-			try (RenderPass pass = begin(encoder, MyriadPipelines.HIGHLIGHT_RESOLVE, resolved.getColorTextureView(), gpuData, grow(area, 2 * radius, 2 * radius, w, h))) {
-				pass.bindTexture("Mask", source, nearest);
-				pass.bindTexture("MaskDepth", mask.getDepthTextureView(), nearest);
-				pass.bindTexture("SceneDepth", main.getDepthTextureView(), nearest);
-				pass.draw(3, 1, 0, 0);
-			}
-			source = resolved.getColorTextureView();
-		}
-		try (RenderPass pass = begin(encoder, MyriadPipelines.HIGHLIGHT_SPREAD, spread.getColorTextureView(), gpuData, grow(area, radius, 2 * radius, w, h))) {
-			pass.bindTexture("InSampler", source, nearest);
-			pass.draw(3, 1, 0, 0);
-		}
-		int[] c = grow(area, radius, radius, w, h);
-		System.arraycopy(c, 0, compositeRect, 0, 4);
-		prepared = true;
+		if (shapes && !meshes.isEmpty()) drawMeshes(encoder, gpuData);
+		if (shapes) prepare(encoder, layers[SHAPES], shapeMask, main, gpuData, radius, w, h);
+		if (entities) prepare(encoder, layers[ENTITIES], Minecraft.getInstance().levelRenderer.entityOutlineTarget, main, gpuData, radius, w, h);
 	}
 
-	/** After the level is drawn, before the hand: outline, glow and fill onto the main target. */
+	/** Retained meshes into the shapes mask: their quads, with each vertex's palette index added to the base id. */
+	private void drawMeshes(CommandEncoder encoder, GpuBuffer gpuData) {
+		// Inside the level pass: the model-view matrix is the camera's view, as for MeshRenderer.
+		Matrix4f modelView = RenderSystem.getModelViewMatrixCopy();
+		int maxIndices = 0;
+		for (MeshDraw d : meshes) maxIndices = Math.max(maxIndices, Math.max(d.mesh().indexCount(0), d.mesh().indexCount(2)));
+		if (maxIndices == 0) return;
+		RenderSystem.AutoStorageIndexBuffer indices = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
+		GpuBuffer indexBuffer = indices.getBuffer(maxIndices);
+		GpuBufferSlice[] transforms = new GpuBufferSlice[meshes.size()];
+		for (int i = 0; i < meshes.size(); i++) {
+			MeshDraw d = meshes.get(i);
+			WorldMesh m = d.mesh();
+			// The base id rides in the colour modulator, the same bytes as an encoded outline colour.
+			Vector4f base = new Vector4f((d.baseId() & 0xFF) / 255f, (d.baseId() >> 8 & 0xFF) / 255f, 0, 1);
+			Vector3f offset = new Vector3f((float) (m.originX() - camX), (float) (m.originY() - camY), (float) (m.originZ() - camZ));
+			transforms[i] = RenderSystem.getDynamicUniforms().writeTransform(modelView, base, offset, IDENTITY);
+		}
+		try (RenderPass pass = encoder.createRenderPass(() -> "Myriad highlight meshes", shapeMask.getColorTextureView(), Optional.empty(),
+			shapeMask.getDepthTextureView(), OptionalDouble.empty())) {
+			pass.setPipeline(MyriadPipelines.HIGHLIGHT_MESH);
+			RenderSystem.bindDefaultUniforms(pass);
+			pass.setUniform("Highlights", gpuData);
+			pass.setIndexBuffer(indexBuffer, indices.type());
+			for (int i = 0; i < meshes.size(); i++) {
+				WorldMesh m = meshes.get(i).mesh();
+				pass.setUniform("DynamicTransforms", transforms[i]);
+				for (int layer : new int[]{0, 2}) {
+					GpuBuffer vertices = m.buffer(layer);
+					int n = m.indexCount(layer);
+					if (vertices == null || n == 0) continue;
+					pass.setVertexBuffer(0, vertices.slice());
+					pass.drawIndexed(n, 1, 0, 0, 0);
+				}
+			}
+		}
+	}
+
+	private void prepare(CommandEncoder encoder, Layer layer, RenderTarget mask, RenderTarget main, GpuBuffer gpuData, int radius, int w, int h) {
+		if (mask == null || mask.getColorTextureView() == null || layer.area == null) return;
+		resize(layer, w, h);
+		GpuSampler nearestSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+		GpuTextureView source = mask.getColorTextureView();
+		int[] area = layer.area;
+		if (layer.anyDepthTested) {
+			try (RenderPass pass = begin(encoder, MyriadPipelines.HIGHLIGHT_RESOLVE, layer.resolved.getColorTextureView(), gpuData, grow(area, 2 * radius, 2 * radius, w, h))) {
+				pass.bindTexture("Mask", source, nearestSampler);
+				pass.bindTexture("MaskDepth", mask.getDepthTextureView(), nearestSampler);
+				pass.bindTexture("SceneDepth", main.getDepthTextureView(), nearestSampler);
+				pass.draw(3, 1, 0, 0);
+			}
+			source = layer.resolved.getColorTextureView();
+		}
+		try (RenderPass pass = begin(encoder, MyriadPipelines.HIGHLIGHT_SPREAD, layer.spread.getColorTextureView(), gpuData, grow(area, radius, 2 * radius, w, h))) {
+			pass.bindTexture("InSampler", source, nearestSampler);
+			pass.draw(3, 1, 0, 0);
+		}
+		System.arraycopy(grow(area, radius, radius, w, h), 0, layer.compositeRect, 0, 4);
+		layer.prepared = true;
+	}
+
+	/** After the level is drawn, before the hand: shapes, then entities over them, onto the main target. */
 	public void composite() {
-		if (!prepared) return;
-		prepared = false;
 		RenderTarget main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-		CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-		try (RenderPass pass = begin(encoder, MyriadPipelines.HIGHLIGHT_COMPOSITE, main.getColorTextureView(), buffer.currentBuffer(), compositeRect)) {
-			pass.bindTexture("SpreadSampler", spread.getColorTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
+		CommandEncoder encoder = null;
+		for (int i : new int[]{SHAPES, ENTITIES}) {
+			Layer layer = layers[i];
+			if (!layer.prepared) continue;
+			layer.prepared = false;
+			if (encoder == null) encoder = RenderSystem.getDevice().createCommandEncoder();
+			composite(encoder, MyriadPipelines.HIGHLIGHT_COMPOSITE, layer, main);
+			// Addons' fills, each over its own highlights' insides.
+			for (int fill : layer.customFills) {
+				RenderPipeline pipeline = FILLS.get(fill);
+				if (pipeline != null) composite(encoder, pipeline, layer, main);
+			}
+		}
+	}
+
+	private void composite(CommandEncoder encoder, RenderPipeline pipeline, Layer layer, RenderTarget main) {
+		try (RenderPass pass = begin(encoder, pipeline, main.getColorTextureView(), buffer.currentBuffer(), layer.compositeRect)) {
+			pass.bindTexture("SpreadSampler", layer.spread.getColorTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
 			pass.draw(3, 1, 0, 0);
 		}
 	}
@@ -425,15 +633,15 @@ public final class HighlightRenderer {
 	}
 
 	/**
-	 * Projects every highlight with this frame's camera: fills in the gradient rectangles and returns the framebuffer
-	 * area {x0, y0, x1, y1} that holds every silhouette, or null if none is on screen. Pixel rows count up from the
-	 * bottom of the image (OpenGL) or down from the top (Vulkan), the same way texel rows and gl_FragCoord do on each,
-	 * so the shaders and scissor agree either way.
+	 * Projects every highlight with this frame's camera: fills in the gradient rectangles and each layer's framebuffer
+	 * area {x0, y0, x1, y1} that holds its silhouettes (null if none is on screen). Pixel rows count up from the bottom
+	 * of the image (OpenGL) or down from the top (Vulkan), the same way texel rows and gl_FragCoord do on each, so the
+	 * shaders and scissor agree either way.
 	 */
-	private int[] screenArea(int w, int h) {
+	private void screenArea(int w, int h) {
 		projection.mul(view, viewProjection);
 		float[] r = new float[4];
-		int x0 = Integer.MAX_VALUE, y0 = Integer.MAX_VALUE, x1 = Integer.MIN_VALUE, y1 = Integer.MIN_VALUE;
+		int[][] box = {{Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE}, {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE}};
 		for (int id = 0; id < count; id++) {
 			int b = id * 12, i = id * FLOATS;
 			if (!project(b, w, h, r)) {
@@ -452,16 +660,17 @@ public final class HighlightRenderer {
 				r[2] = w;
 				r[3] = h;
 			}
-			x0 = Math.min(x0, (int) Math.floor(r[0]));
-			y0 = Math.min(y0, (int) Math.floor(r[1]));
-			x1 = Math.max(x1, (int) Math.ceil(r[2]));
-			y1 = Math.max(y1, (int) Math.ceil(r[3]));
+			int[] a = box[layerOf[id]];
+			a[0] = Math.min(a[0], (int) Math.floor(r[0]));
+			a[1] = Math.min(a[1], (int) Math.floor(r[1]));
+			a[2] = Math.max(a[2], (int) Math.ceil(r[2]));
+			a[3] = Math.max(a[3], (int) Math.ceil(r[3]));
 		}
-		x0 = Math.max(0, x0 - 1);
-		y0 = Math.max(0, y0 - 1);
-		x1 = Math.min(w, x1 + 1);
-		y1 = Math.min(h, y1 + 1);
-		return x1 <= x0 || y1 <= y0 ? null : new int[]{x0, y0, x1, y1};
+		for (int l = 0; l < layers.length; l++) {
+			int[] a = box[l];
+			int x0 = Math.max(0, a[0] - 1), y0 = Math.max(0, a[1] - 1), x1 = Math.min(w, a[2] + 1), y1 = Math.min(h, a[3] + 1);
+			layers[l].area = x1 <= x0 || y1 <= y0 ? null : new int[]{x0, y0, x1, y1};
+		}
 	}
 
 	/** The pixel rectangle around the box at {@code bounds[b]}; false if part of it is behind the camera. */
@@ -493,7 +702,7 @@ public final class HighlightRenderer {
 
 	/** Writes the header and every highlight to this frame's slot of the data buffer. */
 	private GpuBuffer upload(int radius, int boundary) {
-		int bytes = (1 + count * TEXELS) * 16;
+		int bytes = (HEADER + count * TEXELS) * 16;
 		if (buffer == null || buffer.size() < bytes) {
 			if (buffer != null) GpuGarbage.close(buffer);
 			int size = Math.max(4096, Integer.highestOneBit(bytes - 1) << 1);
@@ -505,18 +714,19 @@ public final class HighlightRenderer {
 		try (GpuBufferSlice.MappedView view = gpu.map(false, true)) {
 			FloatBuffer out = view.data().order(ByteOrder.nativeOrder()).asFloatBuffer();
 			out.put(radius).put((float) Minecraft.getInstance().getWindow().getGuiScale()).put(count).put(boundary);
+			out.put((float) ((System.nanoTime() - START) / 1e9 % 3600)).put(0).put(0).put(0);
 			out.put(data, 0, count * FLOATS);
 		}
 		return gpu;
 	}
 
-	private void resize(int w, int h) {
-		if (spread == null) {
-			resolved = new TextureTarget("Myriad highlights resolved", w, h, false, GpuFormat.RGBA8_UNORM);
-			spread = new TextureTarget("Myriad highlights spread", w, h, false, GpuFormat.RGBA16_UNORM);
-		} else if (spread.width != w || spread.height != h) {
-			resolved.resize(w, h);
-			spread.resize(w, h);
+	private static void resize(Layer layer, int w, int h) {
+		if (layer.spread == null) {
+			layer.resolved = new TextureTarget("Myriad highlights resolved (" + layer.name + ")", w, h, false, GpuFormat.RGBA8_UNORM);
+			layer.spread = new TextureTarget("Myriad highlights spread (" + layer.name + ")", w, h, false, GpuFormat.RGBA16_UNORM);
+		} else if (layer.spread.width != w || layer.spread.height != h) {
+			layer.resolved.resize(w, h);
+			layer.spread.resize(w, h);
 		}
 	}
 }

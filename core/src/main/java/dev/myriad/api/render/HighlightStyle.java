@@ -1,6 +1,11 @@
 package dev.myriad.api.render;
 
+import dev.myriad.impl.render.HighlightRenderer;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.ApiStatus;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * How a highlight looks: an outline traced around the silhouette of what's highlighted, an optional soft glow beyond
@@ -203,8 +208,7 @@ public final class HighlightStyle {
 	}
 
 	/**
-	 * What fills the silhouette. A class rather than an enum so more fills can be added later (including ones addons
-	 * provide) without breaking code compiled against this one.
+	 * What fills the silhouette: one of the built-in fills, or an addon's own ({@link #custom}).
 	 */
 	public static final class Fill {
 		/** Nothing inside: outline and glow only. */
@@ -214,6 +218,10 @@ public final class HighlightStyle {
 		/** A grid of round dots ({@link HighlightStyle#dotSpacing()}, {@link HighlightStyle#dotSize()}) that moves with what's highlighted. */
 		public static final Fill DOTS = new Fill("dots", 2);
 
+		private static final Map<Identifier, Fill> CUSTOM = new HashMap<>();
+		/** Addons' fills are numbered from here (the shaders tell them apart by number). */
+		private static final int FIRST_CUSTOM = 16;
+
 		private final String id;
 		private final int shaderId;
 
@@ -222,9 +230,42 @@ public final class HighlightStyle {
 			this.shaderId = shaderId;
 		}
 
-		/** A stable name, for saving and commands. */
+		/**
+		 * An addon's own fill, drawn by its fragment shader at {@code assets/<namespace>/shaders/<path>.fsh}. The shader
+		 * imports Myriad's highlight composite and defines one function, which gets a pixel inside a highlight and
+		 * returns its colour (alpha 0 leaves it clear); outlines and glow are drawn around it as for any fill:
+		 * <pre>{@code
+		 * #version 330
+		 * #moj_import <myriad:highlight_fill.glsl>
+		 *
+		 * vec4 customFill(HighlightFill f) {
+		 *     // f.pixel, f.local (from the highlight's bottom-left), f.size, f.color (gradient applied), f.opacity,
+		 *     // f.spacing and f.dotSize (the style's dot settings, in pixels: use them as the pattern's scale),
+		 *     // f.scale (pixels per GUI pixel), f.time (seconds)
+		 *     float stripe = step(0.5, fract((f.local.x + f.local.y) / f.spacing));
+		 *     return vec4(f.color.rgb, f.color.a * f.opacity * stripe);
+		 * }
+		 * }</pre>
+		 * Create fills while your addon initialises (the shader is compiled with the game's own); the same
+		 * {@code shader} always gives the same fill. Each fill in use adds one pass over its highlights' insides.
+		 */
+		public static synchronized Fill custom(Identifier shader) {
+			Fill existing = CUSTOM.get(shader);
+			if (existing != null) return existing;
+			Fill fill = new Fill(shader.toString(), FIRST_CUSTOM + CUSTOM.size());
+			CUSTOM.put(shader, fill);
+			HighlightRenderer.registerFill(fill.shaderId, shader);
+			return fill;
+		}
+
+		/** A stable name, for saving and commands: "none", "solid", "dots", or a custom fill's shader id. */
 		public String id() {
 			return id;
+		}
+
+		/** Whether this is an addon's fill ({@link #custom}). */
+		public boolean isCustom() {
+			return shaderId >= FIRST_CUSTOM;
 		}
 
 		/** The number the highlight shader switches on. */

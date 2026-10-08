@@ -8,6 +8,8 @@ import dev.myriad.api.event.events.TickEvent;
 import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.module.Module;
 import dev.myriad.api.render.MeshBuilder;
+import dev.myriad.api.event.events.HighlightEvent;
+import dev.myriad.api.render.HighlightStyle;
 import dev.myriad.api.render.WorldMesh;
 import dev.myriad.api.setting.SettingColor;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -108,6 +110,7 @@ public final class ChunkCache<T> {
 	private int paletteStamp;
 	private int valueCount;
 	private boolean loggedFailure;
+	private boolean meshesVisible = true;
 
 	private static final class Entry<T> {
 		@Nullable T value;
@@ -188,6 +191,25 @@ public final class ChunkCache<T> {
 			queue.add(en.getLongKey());
 			sortedQueue = null;
 		}
+	}
+
+	/**
+	 * Whether the chunks' meshes are drawn (they are by default). Turn it off when the meshes only serve as highlight
+	 * silhouettes ({@link #highlight}), e.g. in a module's outline mode, and back on for its box mode.
+	 */
+	public void setMeshesVisible(boolean visible) {
+		meshesVisible = visible;
+		for (Entry<T> e : entries.values()) if (e.mesh != null) e.mesh.setVisible(visible);
+	}
+
+	/**
+	 * Highlights every chunk mesh's filled faces in this frame's {@link HighlightEvent.Shapes}: the meshes stay on the GPU,
+	 * so this costs nothing per block, however many there are. Each vertex picks its colour from {@code palette} by
+	 * index ({@link HighlightEvent.Shapes#paletteColor}); build the meshes with those colours. Meshes off screen are
+	 * skipped.
+	 */
+	public void highlight(HighlightEvent.Shapes event, HighlightStyle style, int... palette) {
+		for (Entry<T> e : entries.values()) if (e.mesh != null && !e.mesh.isEmpty()) event.mesh(e.mesh, style, palette);
 	}
 
 	/** Rebuilds every chunk's mesh from its kept value, without reading the world: call it when a look changes. */
@@ -446,7 +468,10 @@ public final class ChunkCache<T> {
 				if (e.mesh != null) e.mesh.clear();
 				return;
 			}
-			if (e.mesh == null) e.mesh = WorldMesh.create();
+			if (e.mesh == null) {
+				e.mesh = WorldMesh.create();
+				e.mesh.setVisible(meshesVisible);
+			}
 			try {
 				// Chunk-relative origin: positions stay small, so the mesh is exact anywhere in the world.
 				e.mesh.build(x << 4, 0, z << 4, m -> mesher.mesh(value, m));

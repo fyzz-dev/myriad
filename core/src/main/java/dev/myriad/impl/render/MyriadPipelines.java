@@ -102,12 +102,27 @@ public final class MyriadPipelines {
 		.withCull(false)
 		.withDepthStencilState(DepthStencilState.DEFAULT)
 		.build());
+	// Drawn in the frame's outline pass (IS_OUTLINE), into Myriad's own shapes mask rather than vanilla's entity one.
 	public static final RenderType HIGHLIGHT_SHAPES = RenderType.create("myriad_highlight_shapes", RenderSetup.builder(HIGHLIGHT_SHAPES_PIPELINE)
-		.setOutputTarget(OutputTarget.OUTLINE_TARGET).setOutline(RenderSetup.OutlineProperty.IS_OUTLINE).createRenderSetup());
+		.setOutputTarget(new OutputTarget("myriad_highlight_shapes", () -> HighlightRenderer.INSTANCE.shapeMask()))
+		.setOutline(RenderSetup.OutlineProperty.IS_OUTLINE).createRenderSetup());
 
 	private static final BindGroupLayout HIGHLIGHT_DATA = BindGroupLayout.builder()
 		.withUniform("Highlights", UniformType.TEXEL_BUFFER, GpuFormat.RGBA32_FLOAT)
 		.build();
+	// Retained meshes into the shapes mask: positions relative to the mesh origin (ModelOffset), the highlight id from
+	// the colour modulator plus each vertex's palette index (highlight_mask.fsh).
+	public static final RenderPipeline HIGHLIGHT_MESH = RenderPipelines.register(RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+		.withLocation(id("pipeline/highlight_mesh"))
+		.withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
+		.withBindGroupLayout(HIGHLIGHT_DATA)
+		.withVertexShader(id("core/mesh_color"))
+		.withFragmentShader(id("core/highlight_mask"))
+		.withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
+		.withPrimitiveTopology(PrimitiveTopology.QUADS)
+		.withCull(false)
+		.withDepthStencilState(DepthStencilState.DEFAULT)
+		.build());
 	public static final RenderPipeline HIGHLIGHT_RESOLVE = RenderPipelines.register(highlight("highlight_resolve",
 		BindGroupLayout.builder().withSampler("Mask").withSampler("MaskDepth").withSampler("SceneDepth").build(), ColorTargetState.DEFAULT));
 	public static final RenderPipeline HIGHLIGHT_SPREAD = RenderPipelines.register(highlight("highlight_spread",
@@ -138,6 +153,20 @@ public final class MyriadPipelines {
 			.withColorTargetState(new ColorTargetState(Optional.empty(), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL))
 			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
 			.build();
+	}
+
+	/** An addon's fill: the composite pass with its fragment shader, for highlights whose fill is {@code shaderId}. */
+	public static RenderPipeline highlightFill(int shaderId, Identifier shader) {
+		return RenderPipelines.register(RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+			.withLocation(id("pipeline/highlight_fill_" + shaderId))
+			.withVertexShader(id("core/blur"))
+			.withFragmentShader(shader)
+			.withShaderDefine("MYRIAD_FILL_ID", shaderId)
+			.withBindGroupLayout(BindGroupLayout.builder().withSampler("SpreadSampler").build())
+			.withBindGroupLayout(HIGHLIGHT_DATA)
+			.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
+			.build());
 	}
 
 	/** A full-screen pass over a highlight mask (scissored to the highlights by the caller). */

@@ -1,6 +1,7 @@
 package dev.myriad.api.event.events;
 
 import dev.myriad.api.render.HighlightStyle;
+import dev.myriad.api.render.WorldMesh;
 import dev.myriad.impl.render.HighlightRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
@@ -12,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
  * screen-space shader after the world. Listen for these events while your module wants to highlight something; while
  * nothing listens, highlighting costs nothing. Both are posted on the render thread, every frame.
  * <p>
+ * Entities are drawn over shapes, so a wall of highlighted chests doesn't hide the highlighted players behind it.
  * Highlights that look alike (the same {@link HighlightStyle} and colour) connect: touching ones get one outline around
  * them all, so a vein of ores or a double chest is one shape. Where highlights that look different touch, the one added
  * later outlines itself across the boundary; a low-priority listener runs later, so its highlights draw over others
@@ -122,7 +124,32 @@ public abstract class HighlightEvent {
 		 * or the full block if it has no shape.
 		 */
 		public void block(BlockPos pos, HighlightStyle style, int color) {
-			HighlightRenderer.INSTANCE.block(pos, style, color);
+			HighlightRenderer.INSTANCE.block(pos, style, color, 0);
+		}
+
+		/**
+		 * As {@link #block(BlockPos, HighlightStyle, int)}, with the shape grown by {@code grow} blocks on every side. A
+		 * hair (0.002) puts it in front of other highlights of the same block, as a highlight of the block under the
+		 * crosshair wants, instead of flickering against them where their faces meet.
+		 */
+		public void block(BlockPos pos, HighlightStyle style, int color, double grow) {
+			HighlightRenderer.INSTANCE.block(pos, style, color, grow);
+		}
+
+		/**
+		 * Highlights the filled faces (quads) of a {@link WorldMesh}, which stays on the GPU: for highlights of many
+		 * blocks that change rarely, build a mesh when they change (or let a {@link dev.myriad.api.world.ChunkCache} do it
+		 * per chunk, see its {@code highlight}) instead of adding thousands of blocks every frame. Lines in the mesh are
+		 * ignored. Each vertex's colour picks a colour from {@code palette} by index: build the faces with
+		 * {@link #paletteColor}{@code (i)}. Up to 256 colours.
+		 */
+		public void mesh(WorldMesh mesh, HighlightStyle style, int... palette) {
+			HighlightRenderer.INSTANCE.mesh(mesh, style, palette);
+		}
+
+		/** The vertex colour that picks {@code index} from a mesh's palette (see {@link #mesh}). */
+		public static int paletteColor(int index) {
+			return 0xFF000000 | (index & 0xFF) << 16;
 		}
 	}
 }
