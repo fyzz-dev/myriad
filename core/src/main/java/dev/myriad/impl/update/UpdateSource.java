@@ -31,6 +31,17 @@ final class UpdateSource {
 		return resolve(updates, meta.getContact().get("sources").orElse(null));
 	}
 
+	/**
+	 * The repo to check for an addon whose metadata names {@code repo}. Core's releases are core's alone, so an addon
+	 * that names core's repository (code that came from it: Essentials 0.1.0 shipped like that) is looked for in a
+	 * repository named after its mod id under the same owner instead ({@code fyzz-dev/myriad-essentials}).
+	 */
+	static Optional<String> forAddon(Optional<String> repo, Optional<String> coreRepo, String modId, boolean isCore) {
+		if (repo.isEmpty() || isCore || !repo.equals(coreRepo)) return repo;
+		String owner = repo.get().substring(0, repo.get().indexOf('/'));
+		return REPO.matcher(owner + "/" + modId).matches() ? Optional.of(owner + "/" + modId) : Optional.empty();
+	}
+
 	/** {@code updates} is the custom value (a repo, {@code false}, or {@code null} when absent). */
 	static Optional<String> resolve(@Nullable Object updates, @Nullable String sources) {
 		if (Boolean.FALSE.equals(updates)) return Optional.empty();

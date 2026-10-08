@@ -36,4 +36,13 @@ class UpdateSourceTest {
 		assertEquals(Optional.empty(), UpdateSource.resolve(false, "https://github.com/a/code"));
 		assertEquals(Optional.empty(), UpdateSource.resolve(null, null));
 	}
+
+	@Test
+	void anAddonNamingCoresRepoIsLookedForUnderItsModId() {
+		Optional<String> core = Optional.of("fyzz-dev/myriad");
+		assertEquals(Optional.of("fyzz-dev/myriad-essentials"), UpdateSource.forAddon(core, core, "myriad-essentials", false));
+		assertEquals(core, UpdateSource.forAddon(core, core, "myriad", true));
+		assertEquals(Optional.of("a/b"), UpdateSource.forAddon(Optional.of("a/b"), core, "x", false));
+		assertEquals(Optional.empty(), UpdateSource.forAddon(Optional.empty(), core, "x", false));
+	}
 }

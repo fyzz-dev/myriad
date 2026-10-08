@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,7 +52,9 @@ public final class UpdateManager {
 		/** The check itself failed (offline, no releases yet). */
 		UNKNOWN,
 		/** Running from a folder (a dev build) or a nested jar, so there's no jar to replace. */
-		DEV_BUILD
+		DEV_BUILD,
+		/** Not checked: its {@code fabric.mod.json} names no GitHub repository (or turns updates off). */
+		NO_SOURCE
 	}
 
 	/** An addon's update state; {@code version} is the release it's about, when there is one. */
@@ -132,20 +135,22 @@ public final class UpdateManager {
 	 */
 	public void check(boolean manual) {
 		if (checking) return;
-		List<Addon> todo = new ArrayList<>();
+		Map<Addon, String> todo = new LinkedHashMap<>();
 		Addon core = addon(Myriad.MOD_ID);
 		Optional<String> coreRepo = core == null ? Optional.empty() : UpdateSource.of(core.metadata());
 		for (Addon a : Myriad.addons()) {
-			Optional<String> repo = UpdateSource.of(a.metadata());
-			// Core's releases are core's: an addon naming that repository (code from it, like Essentials 0.1.0) has none there.
-			if (repo.isEmpty() || (!a.isCore() && repo.equals(coreRepo))) continue;
+			Optional<String> repo = UpdateSource.forAddon(UpdateSource.of(a.metadata()), coreRepo, a.id(), a.isCore());
+			if (repo.isEmpty()) {
+				states.put(a.id(), new State(Kind.NO_SOURCE, null, null, "Not checked: it names no GitHub repository"));
+				continue;
+			}
 			State s = states.get(a.id());
 			if (s != null && (s.kind() == Kind.DOWNLOADING || s.kind() == Kind.STAGED)) continue;
 			if (jarOf(a) == null) {
 				states.put(a.id(), new State(Kind.DEV_BUILD, null, null, "Running from a dev build; updates are off"));
 				continue;
 			}
-			todo.add(a);
+			todo.put(a, repo.get());
 		}
 		if (todo.isEmpty()) {
 			if (manual) toast("Updates", "Nothing to check", Notifications.Level.INFO);
@@ -153,10 +158,11 @@ public final class UpdateManager {
 		}
 		checking = true;
 		AtomicInteger left = new AtomicInteger(todo.size());
-		for (Addon a : todo) {
+		for (Map.Entry<Addon, String> entry : todo.entrySet()) {
+			Addon a = entry.getKey();
 			String id = a.id(), installed = installedVersion(a);
 			states.put(id, new State(Kind.CHECKING, null, null, null));
-			GitHubReleases.latest(UpdateSource.of(a.metadata()).orElseThrow(), jarOf(a).getFileName().toString(), installed).whenComplete((r, err) -> {
+			GitHubReleases.latest(entry.getValue(), jarOf(a).getFileName().toString(), installed).whenComplete((r, err) -> {
 				if (err != null) {
 					String why = reason(err);
 					LOG.info("Could not check {} for updates: {}", id, why);
@@ -180,7 +186,18 @@ public final class UpdateManager {
 	private void announce(boolean manual) {
 		List<String> ids = updatable();
 		if (ids.isEmpty()) {
-			if (manual) toast("Up to date", "Myriad and your addons are on their latest releases", Notifications.Level.SUCCESS);
+			if (!manual) return;
+			// Only claim "up to date" for what was actually checked, and say what wasn't and why.
+			List<String> unchecked = new ArrayList<>();
+			int upToDate = 0;
+			for (Addon a : Myriad.addons()) {
+				State s = states.get(a.id());
+				if (s == null) continue;
+				if (s.kind() == Kind.UP_TO_DATE) upToDate++;
+				else if (s.kind() == Kind.UNKNOWN || s.kind() == Kind.NO_SOURCE) unchecked.add(a.name() + " (" + s.message() + ")");
+			}
+			if (unchecked.isEmpty()) toast("Up to date", upToDate + (upToDate == 1 ? " addon" : " addons") + " checked, all on their latest releases", Notifications.Level.SUCCESS);
+			else toast("Couldn't check everything", upToDate + " up to date; " + String.join(", ", unchecked), Notifications.Level.WARNING);
 			return;
 		}
 		String list = String.join(", ", ids.stream().map(id -> name(id) + " " + states.get(id).version()).toList());

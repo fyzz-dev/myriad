@@ -207,7 +207,7 @@ public final class CoreCommands {
 							case DOWNLOADING -> "downloading " + s.version() + "…";
 							case STAGED -> s.version() + " installs when you quit";
 							case FAILED -> "update to " + s.version() + " failed: " + s.message();
-							case UNKNOWN, DEV_BUILD -> s.message();
+							case UNKNOWN, DEV_BUILD, NO_SOURCE -> s.message();
 						};
 						ChatFormatting f = s.kind() == UpdateManager.Kind.AVAILABLE ? ChatFormatting.AQUA
 							: s.kind() == UpdateManager.Kind.FAILED ? ChatFormatting.RED : ChatFormatting.GRAY;

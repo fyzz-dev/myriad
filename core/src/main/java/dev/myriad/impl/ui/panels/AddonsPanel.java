@@ -163,7 +163,7 @@ public final class AddonsPanel extends WidgetPanel {
 				case STAGED -> body.add(new Label(u.version() + " is downloaded and installs when you quit."
 					+ (u.message() != null ? " " + u.message() + "." : "")).color(() -> theme().green.argb()));
 				case UP_TO_DATE -> body.add(new Label("Up to date.").dim());
-				case UNKNOWN, DEV_BUILD -> body.add(new Label(u.message() + ".").dim());
+				case UNKNOWN, DEV_BUILD, NO_SOURCE -> body.add(new Label(u.message() + ".").dim());
 			}
 		}
 
