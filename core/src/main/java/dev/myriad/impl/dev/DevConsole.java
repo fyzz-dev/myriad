@@ -12,7 +12,9 @@ import dev.myriad.impl.service.InventoryManager;
 import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.ui.panels.CorePanels;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
 import net.minecraft.client.Screenshot;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -23,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,6 +48,9 @@ import java.util.Set;
  * select 3                     hotbar slot (1-9)
  * attack | use                 a left or right click on what the crosshair is on
  * middle                       a middle click (press and release), as modules see it
+ * mouse 4 press|release|click  a mouse button (0 left, 1 right, 2 middle, 3+ side buttons) through vanilla's own
+ *                              handler, as a real one arrives (other mods' hooks on it run too)
+ * scroll 1                     the wheel, notches up (negative for down), the same way
  * wait 20                      pause the script for that many ticks
  * respawn                      respawn if dead (the death screen is closed)
  * selftest [ticks] [-module]   every module on for that many ticks (20) and off again, reporting failures; the
@@ -169,6 +175,14 @@ public final class DevConsole {
 					Myriad.events().post(new MouseButtonEvent(GLFW.GLFW_MOUSE_BUTTON_MIDDLE, GLFW.GLFW_PRESS, 0, false));
 					Myriad.events().post(new MouseButtonEvent(GLFW.GLFW_MOUSE_BUTTON_MIDDLE, GLFW.GLFW_RELEASE, 0, false));
 				}
+				case "mouse" -> {
+					int button = Integer.parseInt(a[1]);
+					String how = a.length > 2 ? a[2].toLowerCase(Locale.ROOT) : "click";
+					if (!how.equals("release")) mouseButton(button, GLFW.GLFW_PRESS);
+					if (!how.equals("press")) mouseButton(button, GLFW.GLFW_RELEASE);
+				}
+				case "scroll" -> invokeMouse("onScroll", new Class<?>[]{long.class, double.class, double.class},
+					mc.getWindow().handle(), 0.0, Double.parseDouble(a[1]));
 				case "wait" -> waitTicks = Integer.parseInt(a[1]);
 				case "respawn" -> {
 					if (mc.player != null && mc.player.isDeadOrDying()) {
@@ -204,6 +218,21 @@ public final class DevConsole {
 			}
 		} catch (RuntimeException ex) {
 			LOG.warn("[dev] failed: {} ({})", line, ex.toString());
+		}
+	}
+
+	private void mouseButton(int button, int action) {
+		invokeMouse("onButton", new Class<?>[]{long.class, MouseButtonInfo.class, int.class}, mc.getWindow().handle(), new MouseButtonInfo(button, 0), action);
+	}
+
+	/** Calls one of vanilla's (private) GLFW input callbacks on the mouse handler. */
+	private void invokeMouse(String name, Class<?>[] types, Object... args) {
+		try {
+			Method m = MouseHandler.class.getDeclaredMethod(name, types);
+			m.setAccessible(true);
+			m.invoke(mc.mouseHandler, args);
+		} catch (ReflectiveOperationException ex) {
+			throw new IllegalStateException(ex);
 		}
 	}
 
