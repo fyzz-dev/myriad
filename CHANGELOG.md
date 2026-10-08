@@ -13,6 +13,12 @@ No API changes.
 - Rotations: the yaw sent while a module holds one (an aura, Elytra Fly's lane) turns from the last yaw sent, never
   more than half a turn. It used to be kept near the camera's, so looking round past the opposite way jumped it a
   whole turn in one packet, which Grim flags (AimModulo360); handing back to the camera afterwards could too.
+- Rotations after a setback: whether a movement packet carries the rotation is now judged against the rotation the
+  server last got. A setback's reply goes out on its own with the camera's rotation, which vanilla doesn't count, so a
+  rotation a module held (Elytra Fly's pitch) wasn't sent again: the server kept simulating the camera's, set you back
+  again, and so on every round trip. At 2b2t-like ping one setback turned Altitude flight into a setback every
+  quarter second (and, with No Durability, a fall); Grim's BadPacketsJ flags on No Durability's swaps were the same
+  thing. Rotations in packets another module cancelled no longer count as sent.
 - Dev console: `mouse <button> press|release|click` and `scroll <notches>`, sent through vanilla's input handler like
   real input.
 

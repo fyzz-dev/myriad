@@ -196,7 +196,7 @@ public final class RotationManager implements Rotations {
 	/** Every rotation that reaches the server, including ones features send directly. */
 	@Subscribe(priority = Priority.LOWEST)
 	private synchronized void onSend(PacketEvent.Send e) {
-		if (e.packet() instanceof ServerboundMovePlayerPacket p && p.hasRotation()) {
+		if (!e.isCancelled() && e.packet() instanceof ServerboundMovePlayerPacket p && p.hasRotation()) {
 			serverYaw = p.getYRot(0);
 			serverPitch = p.getXRot(0);
 		}

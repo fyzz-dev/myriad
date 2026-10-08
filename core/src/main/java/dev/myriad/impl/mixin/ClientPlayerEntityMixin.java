@@ -11,6 +11,7 @@ import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -39,6 +40,22 @@ public abstract class ClientPlayerEntityMixin {
 		if (myriad$event == null) return;
 		myriad$event = null;
 		Myriad.events().post(MovementPacketsEvent.Post.INSTANCE);
+	}
+
+	/**
+	 * Whether the movement packet carries a rotation is judged against the rotation the server last got, not the last
+	 * one sent from here: a setback's reply goes out on its own, with the camera's rotation, and vanilla doesn't count
+	 * it. Judged its way, a rotation a module holds (Elytra Fly's pitch) wasn't sent again after a setback, so the
+	 * server kept simulating the camera's, set you back again, and so on every round trip.
+	 */
+	@ModifyExpressionValue(method = "sendPosition", at = @At(value = "FIELD", target = "Lnet/minecraft/client/player/LocalPlayer;yRotLast:F", opcode = Opcodes.GETFIELD))
+	private float myriad$lastSentYaw(float original) {
+		return Myriad.isReady() ? Myriad.rotations().serverYaw() : original;
+	}
+
+	@ModifyExpressionValue(method = "sendPosition", at = @At(value = "FIELD", target = "Lnet/minecraft/client/player/LocalPlayer;xRotLast:F", opcode = Opcodes.GETFIELD))
+	private float myriad$lastSentPitch(float original) {
+		return Myriad.isReady() ? Myriad.rotations().serverPitch() : original;
 	}
 
 	/** PlayerMoveEvent: lets features change this tick's movement before collisions. */
