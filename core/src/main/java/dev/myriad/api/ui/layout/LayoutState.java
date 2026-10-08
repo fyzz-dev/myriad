@@ -40,6 +40,18 @@ public interface LayoutState<W> {
 	default void resize(W window, float amount) {
 	}
 
+	/**
+	 * Scroll the tiling sideways by {@code amount} mouse-wheel notches (positive = towards the start), for layouts whose
+	 * tiles can be wider than the screen. Returns whether it scrolled; layouts that don't scroll return false.
+	 */
+	default boolean scroll(float amount) {
+		return false;
+	}
+
+	/** Scroll so {@code window} is in view, if the layout scrolls; called when a window is focused. */
+	default void reveal(W window) {
+	}
+
 	/** Draggable boundaries between tiles, valid after the last {@link #arrange}. */
 	List<Splitter> splitters();
 

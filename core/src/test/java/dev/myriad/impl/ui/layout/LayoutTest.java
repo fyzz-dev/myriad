@@ -123,4 +123,27 @@ class LayoutTest {
 		assertEquals(List.of("a", "c"), loaded.windows());
 		assertEquals(2, arrange(loaded, 0).size());
 	}
+
+	@Test
+	void columnsFitWhileTheyCanThenScrollSideways() {
+		LayoutState<String> s = new ColumnsLayout().createState();
+		for (String w : List.of("a", "b", "c", "d")) s.add(w, null);
+		assertEquals(250, arrange(s, 0).get("a").w(), 1e-3);
+		assertFalse(s.scroll(-1), "everything fits: nothing to scroll");
+
+		// Ten columns would be 100 wide: they stay readable at the minimum and the row overflows.
+		for (String w : List.of("e", "f", "g", "h", "i", "j")) s.add(w, null);
+		Map<String, Rect> r = arrange(s, 0);
+		assertEquals(ColumnsLayout.MIN_WIDTH, r.get("a").w(), 1e-3);
+		assertEquals(0, r.get("a").x(), 1e-3);
+		assertTrue(s.scroll(-1));
+		assertEquals(-60, arrange(s, 0).get("a").x(), 1e-3);
+		s.scroll(100);
+		assertEquals(0, arrange(s, 0).get("a").x(), 1e-3, "can't scroll past the start");
+
+		// Focusing the last column brings it fully into view.
+		s.reveal("j");
+		r = arrange(s, 0);
+		assertEquals(1000, r.get("j").x() + r.get("j").w(), 1e-3);
+	}
 }
