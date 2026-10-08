@@ -37,4 +37,14 @@ class RotationManagerTest {
 	void fixKeysWithNothingPressedPressesNothing() {
 		assertArrayEquals(new int[]{0, 0}, RotationManager.fixKeys(0, 90, false, false, true, true));
 	}
+
+	@Test
+	void sentYawTurnsFromTheLastOneSentNeverMoreThanHalfATurn() {
+		// Holding -90 while the camera is at 120: still -90, not 270 (120's nearest form of it).
+		assertEquals(-90f, RotationManager.continuous(-90, -90), 1e-4);
+		// Handing back to a camera at 300 from -90: 300 is -60 the short way, so -60, not a 390 degree jump.
+		assertEquals(-60f, RotationManager.continuous(-90, 300), 1e-4);
+		// A camera that has spun round a few times stays where it is when it's close anyway.
+		assertEquals(725f, RotationManager.continuous(720, 725), 1e-4);
+	}
 }

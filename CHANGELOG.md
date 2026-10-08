@@ -6,6 +6,16 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.4
+
+No API changes.
+
+- Rotations: the yaw sent while a module holds one (an aura, Elytra Fly's lane) turns from the last yaw sent, never
+  more than half a turn. It used to be kept near the camera's, so looking round past the opposite way jumped it a
+  whole turn in one packet, which Grim flags (AimModulo360); handing back to the camera afterwards could too.
+- Dev console: `mouse <button> press|release|click` and `scroll <notches>`, sent through vanilla's input handler like
+  real input.
+
 ## 0.2.3
 
 Additions to the highlight API only; addons built for 0.2.x keep working.

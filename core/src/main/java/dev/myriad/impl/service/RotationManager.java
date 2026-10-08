@@ -133,8 +133,7 @@ public final class RotationManager implements Rotations {
 		Axis pitch = plan(false, e.pitch);
 		Request yawWinner = winner(true);
 
-		// Keep the sent yaw continuous with the real one to avoid huge deltas the server would flag.
-		e.yaw = e.yaw + Mth.wrapDegrees(yaw - e.yaw);
+		e.yaw = continuous(yaw);
 		float realPitch = e.pitch;
 		e.pitch = pitch.value;
 		if (pinned != null) {
@@ -210,6 +209,19 @@ public final class RotationManager implements Rotations {
 		pinned = null;
 	}
 
+	/**
+	 * {@code yaw} as the turn from the last yaw sent, never more than half a turn: a yaw kept continuous with the camera
+	 * instead jumps a whole turn once the camera, looking round, crosses the opposite of a rotation being held (Grim's
+	 * AimModulo360), and so does handing back to the camera afterwards.
+	 */
+	private float continuous(float yaw) {
+		return continuous(serverYaw, yaw);
+	}
+
+	static float continuous(float lastSent, float yaw) {
+		return lastSent + Mth.wrapDegrees(yaw - lastSent);
+	}
+
 	/** The pitch to send so the packet carries a rotation: nudged 0.01° if nothing changed since the last one sent. */
 	private float nudged(float yaw, float pitch) {
 		if (Mth.wrapDegrees(yaw - serverYaw) != 0 || pitch != serverPitch) return pitch;
@@ -225,8 +237,8 @@ public final class RotationManager implements Rotations {
 			if (mc.player == null) return new float[]{serverYaw, serverPitch};
 			float real = mc.player.getYRot();
 			float yaw = Float.isNaN(fixYaw) ? plan(true, real).value : fixYaw;
-			// Exactly the value the movement packet will hold (its yaw is kept continuous with the real one).
-			yaw = real + Mth.wrapDegrees(yaw - real);
+			// Exactly the value the movement packet will hold.
+			yaw = continuous(yaw);
 			float pitch = plan(false, mc.player.getXRot()).value;
 			pinned = new float[]{yaw, sendRotation ? nudged(yaw, pitch) : pitch};
 		}
