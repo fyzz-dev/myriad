@@ -7,8 +7,9 @@ import com.example.myriadaddon.hud.SessionStatsHud;
 import com.example.myriadaddon.modules.AutoTool;
 import com.example.myriadaddon.modules.BlockSearch;
 import com.example.myriadaddon.modules.ChatTimestamps;
-import com.example.myriadaddon.modules.SettingsShowcase;
 import com.example.myriadaddon.modules.HoleEsp;
+import com.example.myriadaddon.modules.LogoEsp;
+import com.example.myriadaddon.modules.SettingsShowcase;
 import com.example.myriadaddon.modules.Trajectories;
 import com.example.myriadaddon.modules.Tunnel;
 import com.example.myriadaddon.modules.Waypoints;
@@ -20,6 +21,7 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.addon.AddonContext;
 import dev.myriad.api.addon.MyriadAddon;
 import dev.myriad.api.module.Category;
+import dev.myriad.api.render.HighlightStyle;
 import dev.myriad.api.setting.SettingColor;
 import dev.myriad.api.ui.PanelType;
 import dev.myriad.api.ui.Theme;
@@ -28,6 +30,7 @@ import dev.myriad.api.ui.widget.Slider;
 import dev.myriad.api.util.Keybind;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -46,6 +49,12 @@ import org.lwjgl.glfw.GLFW;
  * </ul>
  */
 public final class ExampleAddon implements MyriadAddon {
+	/**
+	 * A highlight fill of this addon's own: the shader at {@code assets/myriad-example/shaders/fill/logo_grid.fsh}.
+	 * Created once, here, while the addon class loads (before the game compiles its shaders); any module can use it.
+	 */
+	public static final HighlightStyle.Fill LOGO_FILL = HighlightStyle.Fill.custom(Identifier.fromNamespaceAndPath("myriad-example", "fill/logo_grid"));
+
 	private Category showcase;
 	private WaypointStore waypoints;
 
@@ -70,6 +79,7 @@ public final class ExampleAddon implements MyriadAddon {
 			new Tunnel(),
 			new Trajectories(),
 			new HoleEsp(),
+			new LogoEsp(),
 			new ChatTimestamps(),
 			new SettingsShowcase(showcase)
 		);
