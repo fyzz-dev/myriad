@@ -3,11 +3,11 @@
   <groupId>dev.myriad</groupId>
   <artifactId>myriad-essentials</artifactId>
   <versioning>
-    <latest>0.2.11</latest>
-    <release>0.2.11</release>
+    <latest>0.2.12</latest>
+    <release>0.2.12</release>
     <versions>
-      <version>0.2.11</version>
+      <version>0.2.12</version>
     </versions>
-    <lastUpdated>20261009054901</lastUpdated>
+    <lastUpdated>20261009170621</lastUpdated>
   </versioning>
 </metadata>
