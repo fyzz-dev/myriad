@@ -78,6 +78,10 @@ public interface Containers {
 		/** The screen slot id for an inventory index (0-35) in this container's screen. */
 		int playerSlot(int inventoryIndex);
 
+		// The clicks below do nothing on a tick the server would refuse them (while you move, see
+		// Inventory.safeToClick); your keys are then released for the next tick, so a click asked for again then works.
+		// Check Inventory.prepareClick() before a run of clicks that belong together.
+
 		/** Shift-clicks a container slot: moves its stack into your inventory. */
 		void quickMove(int slot);
 

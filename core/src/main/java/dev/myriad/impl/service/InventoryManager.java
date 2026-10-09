@@ -11,6 +11,10 @@ import dev.myriad.api.event.events.WorldEvent;
 import dev.myriad.api.service.Inventory;
 import dev.myriad.api.service.PacketLimits;
 import dev.myriad.api.util.Slots;
+import dev.myriad.api.util.Ticks;
+import dev.myriad.impl.network.ActionTiming;
+import dev.myriad.impl.network.JoinedVersion;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -29,13 +33,26 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
+import net.minecraft.network.protocol.game.ServerboundInteractPacket;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPickItemFromBlockPacket;
+import net.minecraft.network.protocol.game.ServerboundPickItemFromEntityPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
@@ -54,6 +71,25 @@ public final class InventoryManager implements Inventory {
 	private boolean userClick;
 	/** The hold stepped aside for your own click: the server has your visible slot until you're done. */
 	private boolean yielded;
+	/** Set while vanilla handles your own attack or mining. */
+	private boolean userAttack;
+
+	/**
+	 * A silent swap left the server on {@code swapSlot}: it goes back at the start of tick {@code restoreAt}, before
+	 * anything else is sent, as Grim (PacketOrderE) flags a slot change after an attack or use in the same tick.
+	 */
+	private boolean restorePending;
+	private int swapSlot;
+	private long restoreAt;
+	/** What a swap's action left to undo when it goes back (an off hand swap), done with its slot still held. */
+	private final List<Runnable> beforeRestore = new ArrayList<>();
+	private boolean restoring;
+
+	/**
+	 * An attack, use, mining or pick went out since this tick's movement: Grim (PacketOrderG) cancels an off hand swap
+	 * after one of those in the same tick.
+	 */
+	private boolean actedThisTick;
 
 	/**
 	 * What the server last heard of your movement: the keys of the last input packet (vanilla only sends one when they
@@ -70,18 +106,47 @@ public final class InventoryManager implements Inventory {
 	private ItemStack chargedItem = ItemStack.EMPTY;
 
 	/** Lowest priority: what actually goes out, after other handlers have changed it. */
-	@Subscribe(priority = Priority.LOWEST, packets = {ServerboundSetCarriedItemPacket.class, ServerboundAttackPacket.class, ServerboundPlayerInputPacket.class, ServerboundPlayerCommandPacket.class})
+	@Subscribe(priority = Priority.LOWEST, packets = {ServerboundSetCarriedItemPacket.class, ServerboundAttackPacket.class, ServerboundPlayerInputPacket.class,
+		ServerboundPlayerCommandPacket.class, ServerboundInteractPacket.class, ServerboundUseItemPacket.class, ServerboundUseItemOnPacket.class,
+		ServerboundPlayerActionPacket.class, ServerboundPickItemFromBlockPacket.class, ServerboundPickItemFromEntityPacket.class,
+		ServerboundMovePlayerPacket.class, ServerboundClientTickEndPacket.class})
 	private void onSend(PacketEvent.Send e) {
 		if (e.isCancelled()) return;
 		switch (e.packet()) {
 			case ServerboundSetCarriedItemPacket p -> serverSlot = p.getSlot();
-			case ServerboundAttackPacket p -> attackTicks = 0;
+			case ServerboundAttackPacket p -> {
+				attackTicks = 0;
+				actedThisTick = true;
+			}
 			case ServerboundPlayerInputPacket p -> sentInput = p.input();
 			case ServerboundPlayerCommandPacket p when p.getAction() == ServerboundPlayerCommandPacket.Action.START_SPRINTING -> sentSprinting = true;
 			case ServerboundPlayerCommandPacket p when p.getAction() == ServerboundPlayerCommandPacket.Action.STOP_SPRINTING -> sentSprinting = false;
+			case ServerboundPlayerActionPacket p -> {
+				var a = p.getAction();
+				if (a != ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND && a != ServerboundPlayerActionPacket.Action.DROP_ITEM
+					&& a != ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS) actedThisTick = true;
+			}
+			case ServerboundMovePlayerPacket p -> actedThisTick = false;
+			case ServerboundClientTickEndPacket p -> actedThisTick = false;
+			case ServerboundInteractPacket p -> actedThisTick = true;
+			case ServerboundUseItemPacket p -> actedThisTick = true;
+			case ServerboundUseItemOnPacket p -> actedThisTick = true;
+			case ServerboundPickItemFromBlockPacket p -> actedThisTick = true;
+			case ServerboundPickItemFromEntityPacket p -> actedThisTick = true;
 			default -> {
 			}
 		}
+	}
+
+	/**
+	 * First in line for anything that has to follow a silent swap's way back: an action going out on the tick it's due
+	 * (from a handler that runs before the tick start's own, say) takes it with it, ahead of itself.
+	 */
+	@Subscribe(priority = Priority.HIGHEST + 100, packets = {ServerboundAttackPacket.class, ServerboundInteractPacket.class, ServerboundUseItemPacket.class,
+		ServerboundUseItemOnPacket.class, ServerboundPlayerActionPacket.class, ServerboundPlayerCommandPacket.class, ServerboundSwingPacket.class,
+		ServerboundPlayerInputPacket.class})
+	private void beforeAction(PacketEvent.Send e) {
+		if (restorePending && !restoring && Ticks.current() >= restoreAt && mc.player != null && mc.isSameThread()) restore();
 	}
 
 	/** The server can set the slot itself (on join, or by a plugin); a respawn starts with no keys and no sprint. */
@@ -175,6 +240,72 @@ public final class InventoryManager implements Inventory {
 		}
 	}
 
+	/**
+	 * Takes back what a silent swap left on the last tick, before actions held over from it go out (they were made
+	 * with your visible slot) and before anything this tick does.
+	 */
+	@Subscribe(priority = ActionTiming.FLUSH_PRIORITY + 50)
+	private void restoreSwap(TickEvent.Pre e) {
+		if (!restorePending) return;
+		if (mc.player == null || mc.getConnection() == null) {
+			restorePending = false;
+			beforeRestore.clear();
+		} else if (Ticks.current() >= restoreAt) restore();
+	}
+
+	/** The slot the server should hold when no silent swap is under way: a hold's, or the one you see. */
+	private int wanted() {
+		return holder != null && !yielded ? holdSlot : mc.player.getInventory().getSelectedSlot();
+	}
+
+	/** Puts the server back on {@link #wanted()} after a silent swap, undoing what its action left first. */
+	private void restore() {
+		settle();
+		int visible = mc.player.getInventory().getSelectedSlot();
+		int target = wanted();
+		if (serverSlot != target) sendSlot(target);
+		// Vanilla's own record of the slot it sent: your visible one (a hold keeps the server elsewhere on purpose).
+		mc.gameMode.carriedIndex = visible;
+	}
+
+	/**
+	 * Undoes what a silent swap's action left for the next tick, with the client holding that slot again as it did; the
+	 * server stays where it is. Anything that changes the server's slot settles first.
+	 */
+	private void settle() {
+		if (!restorePending) return;
+		restorePending = false;
+		if (beforeRestore.isEmpty()) return;
+		List<Runnable> undo = List.copyOf(beforeRestore);
+		beforeRestore.clear();
+		// Something moved the server off that slot without settling first: undoing it now would hit another item.
+		if (serverSlot != swapSlot || mc.player == null) return;
+		var inv = mc.player.getInventory();
+		int visible = inv.getSelectedSlot();
+		restoring = true;
+		inv.setSelectedSlot(swapSlot);
+		mc.gameMode.carriedIndex = swapSlot;
+		try {
+			for (Runnable r : undo) r.run();
+		} finally {
+			inv.setSelectedSlot(visible);
+			mc.gameMode.carriedIndex = visible;
+			restoring = false;
+		}
+	}
+
+	/**
+	 * For a silent swap's action: runs {@code undo} when the swap goes back (first thing next tick), with its slot still
+	 * held at the server and in the client's hand. Air placement swaps the block back out of the off hand this way.
+	 */
+	public void afterSwap(Runnable undo) {
+		beforeRestore.add(undo);
+	}
+
+	private void sendSlot(int slot) {
+		mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
+	}
+
 	/** Whether you're still using your hand: eating or drawing a bow with it, or holding right click. */
 	private boolean userBusy() {
 		var p = mc.player;
@@ -186,16 +317,30 @@ public final class InventoryManager implements Inventory {
 		userClick = active;
 	}
 
+	/** Vanilla is handling your own attack or mining (from the mixin on {@code Minecraft}). */
+	public void userAttack(boolean active) {
+		userAttack = active;
+	}
+
 	/**
 	 * Vanilla makes sure the server holds your visible slot before an action. For your own right click while a module
 	 * holds another slot, the hold steps aside: the server gets your visible slot (what you see is what you use) until
 	 * you're done ({@link #userBusy()}), then the held slot again. Left clicks keep the hold: attacking and mining with
-	 * what a module holds is what Auto Tool and Kill Aura hold for.
+	 * what a module holds is what Auto Tool and Kill Aura hold for. A silent swap still waiting to go back goes back
+	 * now for either, or when vanilla is about to send a slot you newly selected.
 	 */
 	public void beforeCarriedSync() {
-		if (!userClick || holder == null || mc.player == null) return;
+		if (mc.player == null || restoring) return;
 		int visible = mc.player.getInventory().getSelectedSlot();
-		if (serverSlot != visible) mc.getConnection().send(new ServerboundSetCarriedItemPacket(visible));
+		if (restorePending && (userClick || userAttack || visible != mc.gameMode.carriedIndex)) {
+			settle();
+			if (userClick || userAttack) {
+				int target = userAttack && !userClick ? wanted() : visible;
+				if (serverSlot != target) sendSlot(target);
+			}
+		}
+		if (!userClick || holder == null) return;
+		if (serverSlot != visible) sendSlot(visible);
 		yielded = true;
 	}
 
@@ -218,7 +363,8 @@ public final class InventoryManager implements Inventory {
 		holdSlot = hotbarSlot;
 		// Stepped aside for your own click: taken back once you're done.
 		if (yielded) return false;
-		if (serverSlot != hotbarSlot) mc.getConnection().send(new ServerboundSetCarriedItemPacket(hotbarSlot));
+		settle();
+		if (serverSlot != hotbarSlot) sendSlot(hotbarSlot);
 		return true;
 	}
 
@@ -229,8 +375,9 @@ public final class InventoryManager implements Inventory {
 		holdTicks = 0;
 		yielded = false;
 		if (mc.player != null && mc.getConnection() != null) {
+			settle();
 			int visible = mc.player.getInventory().getSelectedSlot();
-			if (serverSlot != visible) mc.getConnection().send(new ServerboundSetCarriedItemPacket(visible));
+			if (serverSlot != visible) sendSlot(visible);
 		}
 	}
 
@@ -243,7 +390,7 @@ public final class InventoryManager implements Inventory {
 	public ItemStack serverItem() {
 		if (mc.player == null) return ItemStack.EMPTY;
 		var inv = mc.player.getInventory();
-		return holder != null && !yielded ? inv.getItem(serverSlot) : inv.getSelectedItem();
+		return holder != null && !yielded || restorePending ? inv.getItem(serverSlot) : inv.getSelectedItem();
 	}
 
 	@Override
@@ -258,31 +405,32 @@ public final class InventoryManager implements Inventory {
 		mc.gameMode.ensureHasSentCarriedItem();
 	}
 
+	/**
+	 * The server keeps the slot until the start of the next tick (see {@link #restoreSwap}): switching back in the same
+	 * tick, after the action, is what Grim's PacketOrderE flags. Another swap to the same slot meanwhile sends nothing.
+	 */
 	@Override
 	public void silentSwap(int hotbarSlot, Runnable action) {
-		if (mc.player == null || hotbarSlot < 0 || hotbarSlot > 8) return;
-		int server = serverSlot, visible = mc.player.getInventory().getSelectedSlot();
-		// Already held at the server (perhaps by a hold): nothing to send.
-		if (server == hotbarSlot) {
-			action.run();
-			return;
-		}
-		if (hotbarSlot == visible) {
-			// A hold has the server on another slot; switch it back for the action, then return to the hold.
-			mc.getConnection().send(new ServerboundSetCarriedItemPacket(hotbarSlot));
-			try {
-				action.run();
-			} finally {
-				mc.getConnection().send(new ServerboundSetCarriedItemPacket(server));
-			}
-			return;
-		}
-		select(hotbarSlot);
+		if (mc.player == null || mc.getConnection() == null || hotbarSlot < 0 || hotbarSlot > 8) return;
+		// What the last swap left to undo goes first, from its own slot.
+		if (restorePending && (swapSlot != hotbarSlot || !beforeRestore.isEmpty())) settle();
+		var inv = mc.player.getInventory();
+		int visible = inv.getSelectedSlot();
+		if (serverSlot != hotbarSlot) sendSlot(hotbarSlot);
+		// The client holds it too for the action, so what it predicts (a placement, an item used) is with that item.
+		inv.setSelectedSlot(hotbarSlot);
+		mc.gameMode.carriedIndex = hotbarSlot;
 		try {
 			action.run();
 		} finally {
-			select(visible);
-			if (server != visible) mc.getConnection().send(new ServerboundSetCarriedItemPacket(server));
+			inv.setSelectedSlot(visible);
+			mc.gameMode.carriedIndex = visible;
+			if (serverSlot != wanted() || !beforeRestore.isEmpty()) {
+				restorePending = true;
+				swapSlot = hotbarSlot;
+				// Sent after this tick's movement, it goes out with what ActionTiming holds next tick: back the tick after.
+				restoreAt = Ticks.current() + (ActionTiming.get().isLate() ? 2 : 1);
+			}
 		}
 	}
 
@@ -371,20 +519,24 @@ public final class InventoryManager implements Inventory {
 	}
 
 	/**
-	 * Grim (MultiActionsC) cancels a click while the last input packet had a movement key or jump down, or sneak, or
-	 * while you're sprinting. A click at the start of a tick goes out before that tick's input packet, so the one
-	 * that counts is the last one sent.
+	 * Grim (MultiActionsC) cancels a click while you sprint, and, depending on the version the server sees you as
+	 * ({@link ClickRules}), while the last input packet had a movement key or jump down, or sneak. A click at the start of
+	 * a tick goes out before that tick's input packet, so the one that counts is the last one sent.
 	 */
 	@Override
 	public boolean safeToClick() {
 		if (mc.player == null) return false;
 		// Only anti-cheats that simulate movement (Grim) refuse clicks while you move.
-		if (!dev.myriad.api.Myriad.antiCheat().isStrict()) return true;
-		Input sent = sentInput;
-		return !sent.forward() && !sent.backward() && !sent.left() && !sent.right() && !sent.jump() && !sent.shift() && !sentSprinting;
+		if (!Myriad.antiCheat().isStrict()) return true;
+		return !rules().refuses(sentInput, sentSprinting);
 	}
 
-	/** A still tick is wanted: the next input releases movement, jump, sneak and sprint. */
+	/** What a click has to wait for, for the version this connection joined as. */
+	public ClickRules rules() {
+		return ClickRules.forProtocol(JoinedVersion.get().protocol());
+	}
+
+	/** A still tick is wanted: the next input releases sprint, and what else {@link #rules()} counts. */
 	private boolean stillRequested;
 	/** Sprinting was stopped for a still tick; it's pressed again once you move forward. */
 	private boolean resumeSprint;
@@ -392,8 +544,9 @@ public final class InventoryManager implements Inventory {
 	@Override
 	public boolean prepareClick() {
 		if (safeToClick()) return true;
+		if (mc.player == null) return false;
 		// Letting go of sneak on an edge, with what's left of your speed, would walk you off it: wait for it to settle.
-		if (mc.player != null && mc.player.isShiftKeyDown() && mc.player.onGround() && wouldStepOffEdge()) return false;
+		if (rules().sneak() && mc.player.isShiftKeyDown() && mc.player.onGround() && wouldStepOffEdge()) return false;
 		stillRequested = true;
 		return false;
 	}
@@ -407,13 +560,20 @@ public final class InventoryManager implements Inventory {
 			box.maxX - 1e-7 + v.x, box.minY, box.maxZ - 1e-7 + v.z));
 	}
 
-	/** Last, so it has the final say over what's sent: Grim takes these keys as what you were doing at the click. */
+	/**
+	 * Last, so it has the final say over what's sent: Grim takes these keys as what you were doing at the click. Only
+	 * what counts for this version is let go: through ViaFabricPlus as 1.20.4, that's sprint alone.
+	 */
 	@Subscribe(priority = Priority.LOWEST)
 	private void onInput(InputEvent e) {
 		if (mc.player == null) return;
 		if (stillRequested) {
 			stillRequested = false;
-			e.forward = e.backward = e.left = e.right = e.jump = e.sneak = e.sprint = false;
+			ClickRules rules = rules();
+			if (rules.input()) e.forward = e.backward = e.left = e.right = e.jump = false;
+			if (rules.sneak()) e.sneak = false;
+			e.sprint = false;
+			sprintBlocked = true;
 			if (mc.player.isSprinting()) {
 				mc.player.setSprinting(false);
 				resumeSprint = true;
@@ -421,6 +581,85 @@ public final class InventoryManager implements Inventory {
 		} else if (resumeSprint) {
 			resumeSprint = false;
 			if (e.forward) e.sprint = true;
+		}
+	}
+
+	/** The still tick's sprint stays off until the player has moved. */
+	private boolean sprintBlocked;
+
+	/**
+	 * Just before the player moves: a still tick stays without sprint even if it started again since its input
+	 * (ViaFabricPlus, joined as an older version, starts it from the held sprint key as those did), so the movement and
+	 * the sprint state the server gets agree.
+	 */
+	public void beforeTravel() {
+		if (!sprintBlocked) return;
+		sprintBlocked = false;
+		if (mc.player.isSprinting()) {
+			mc.player.setSprinting(false);
+			resumeSprint = true;
+		}
+	}
+
+	// ---- your own clicks that have to wait --------------------------------------------------------------------
+
+	/**
+	 * Your own clicks in a screen made while the server would refuse them (walking with Inventory Move, say), in order:
+	 * Grim cancels such a click without telling the client, which then shows items where the server has none. They're
+	 * made at the start of the first tick after a still one ({@link #prepareClick()}) instead. Modules' clicks don't
+	 * come here: core's click methods wait for a safe tick themselves ({@link #canClick}).
+	 */
+	private record ScreenClick(int containerId, int slotId, int button, ContainerInput input) {
+	}
+
+	private final ArrayDeque<ScreenClick> waitingClicks = new ArrayDeque<>();
+	private boolean replaying;
+	private int waitedTicks;
+	/** Ticks a click waits for a still moment (sneaking at an edge never lets go) before it's made anyway. */
+	private static final int MAX_CLICK_WAIT = 40;
+
+	/** Your own click in a container screen (from the mixin on it): true if it has to wait, and was kept for later. */
+	public boolean holdScreenClick(int containerId, int slotId, int button, ContainerInput input) {
+		if (replaying || mc.player == null || mc.gameMode == null) return false;
+		if (safeToClick()) {
+			// A still moment came between ticks: what waited goes first.
+			if (!waitingClicks.isEmpty()) clickWaiting();
+			return false;
+		}
+		waitingClicks.add(new ScreenClick(containerId, slotId, button, input));
+		prepareClick();
+		return true;
+	}
+
+	/** Early in the tick, before anything else clicks, so what waited stays first. */
+	@Subscribe(priority = 960)
+	private void clickWaitingClicks(TickEvent.Pre e) {
+		if (waitingClicks.isEmpty()) return;
+		if (mc.player == null || mc.gameMode == null) {
+			waitingClicks.clear();
+			return;
+		}
+		if (!prepareClick() && ++waitedTicks < MAX_CLICK_WAIT) return;
+		clickWaiting();
+	}
+
+	/** Closing the screen: what waited is clicked first, while it's still open. */
+	@Subscribe(priority = Priority.HIGHEST, packets = ServerboundContainerClosePacket.class)
+	private void beforeClose(PacketEvent.Send e) {
+		if (!waitingClicks.isEmpty() && mc.isSameThread() && mc.player != null) clickWaiting();
+	}
+
+	private void clickWaiting() {
+		waitedTicks = 0;
+		replaying = true;
+		try {
+			while (!waitingClicks.isEmpty()) {
+				ScreenClick c = waitingClicks.poll();
+				// Clicks for a screen that has closed since are dropped: the client never showed them.
+				if (mc.player.containerMenu.containerId == c.containerId) mc.gameMode.handleContainerInput(c.containerId, c.slotId, c.button, c.input, mc.player);
+			}
+		} finally {
+			replaying = false;
 		}
 	}
 
@@ -564,12 +803,20 @@ public final class InventoryManager implements Inventory {
 	@Subscribe
 	private void onLeave(WorldEvent.Leave e) {
 		borrows.clear();
+		waitingClicks.clear();
+		restorePending = false;
+		beforeRestore.clear();
 	}
 
-	/** True if the player's own screen is the one open to clicks, and the packet budget has room for {@code clicks}. */
+	/**
+	 * True if the player's own screen is the one open to clicks, the packet budget has room for {@code clicks}, and the
+	 * server would take a click now; if that's all that's missing, your keys are released for the next tick
+	 * ({@link #prepareClick()}), so asking again then works. A refused click would leave the client showing items
+	 * where the server has none.
+	 */
 	private boolean canClick(int clicks) {
 		return mc.player != null && mc.gameMode != null && mc.player.containerMenu == mc.player.inventoryMenu
-			&& Myriad.limits().canSend(PacketLimits.Kind.INVENTORY, clicks);
+			&& Myriad.limits().canSend(PacketLimits.Kind.INVENTORY, clicks) && prepareClick();
 	}
 
 	private static boolean valid(int index) {
@@ -586,6 +833,11 @@ public final class InventoryManager implements Inventory {
 		if (from == to) return true;
 		if (Slots.isHotbar(to)) return clickSwap(from, to);
 		if (Slots.isHotbar(from)) return clickSwap(to, from);
+		// Armour into its own empty slot: a shift click puts it there.
+		if (to >= Slots.FEET && to <= Slots.HEAD && from < Slots.MAIN_END && quickMovesTo(from, to)) {
+			click(from, 0, ContainerInput.QUICK_MOVE);
+			return true;
+		}
 		// Pick up, put down (swapping with what's there), then put back whatever ended up on the cursor.
 		click(from, 0, ContainerInput.PICKUP);
 		click(to, 0, ContainerInput.PICKUP);
@@ -611,12 +863,37 @@ public final class InventoryManager implements Inventory {
 		return true;
 	}
 
+	/** Whether a shift click on {@code from} (outside the armour slots) lands the item in armour slot {@code to}. */
+	private boolean quickMovesTo(int from, int to) {
+		var inv = mc.player.getInventory();
+		ItemStack stack = inv.getItem(from);
+		if (stack.isEmpty() || !inv.getItem(to).isEmpty()) return false;
+		EquipmentSlot slot = mc.player.getEquipmentSlotForItem(stack);
+		return slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR && Slots.FEET + slot.getIndex() == to;
+	}
+
 	@Override
 	public boolean swapWithOffhand(int inventoryIndex) {
-		if (!canClick(1) || !valid(inventoryIndex) || inventoryIndex == Slots.OFF_HAND) return false;
+		if (mc.player == null || !valid(inventoryIndex) || inventoryIndex == Slots.OFF_HAND) return false;
+		// From the hotbar while a click would have to wait: the swap-hands key with that slot held, which isn't a click.
+		// Not after an attack or use this tick, which Grim (PacketOrderG) cancels it after.
+		if (Slots.isHotbar(inventoryIndex) && !safeToClick() && !actedThisTick && mc.getConnection() != null && !mc.player.isSpectator()) {
+			silentSwap(inventoryIndex, this::swapHands);
+			return true;
+		}
+		if (!canClick(1)) return false;
 		// Button 40 is the off hand swap key.
 		click(inventoryIndex, 40, ContainerInput.SWAP);
 		return true;
+	}
+
+	/** Swaps the main and off hand items, as the swap-hands key does, showing it at once. */
+	public void swapHands() {
+		var p = mc.player;
+		ItemStack off = p.getOffhandItem();
+		p.setItemInHand(InteractionHand.OFF_HAND, p.getMainHandItem());
+		p.setItemInHand(InteractionHand.MAIN_HAND, off);
+		mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
 	}
 
 	@Override

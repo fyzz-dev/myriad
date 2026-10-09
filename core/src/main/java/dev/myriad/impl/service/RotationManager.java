@@ -11,6 +11,7 @@ import dev.myriad.api.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -254,10 +255,38 @@ public final class RotationManager implements Rotations {
 	@Subscribe(priority = Priority.HIGH, packets = ServerboundUseItemPacket.class)
 	private void onSendAction(PacketEvent.Send e) {
 		if (!(e.packet() instanceof ServerboundUseItemPacket p) || mc.player == null) return;
-		ItemStack used = mc.player.getItemInHand(p.getHand());
-		boolean aimed = used.getItem() instanceof ProjectileItem && !used.is(Items.FIREWORK_ROCKET);
-		float[] r = aimed ? pinTo(p.getYRot(), p.getXRot()) : rotationForAction();
+		float[] r = useRotation(p.getHand(), p.getYRot(), p.getXRot());
 		if (p.getYRot() != r[0] || p.getXRot() != r[1]) e.setPacket(new ServerboundUseItemPacket(p.getHand(), p.getSequence(), r[0], r[1]));
+	}
+
+	/** The rotation an item use in {@code hand}, made facing {@code yaw}/{@code pitch}, goes out with (see above). */
+	private float[] useRotation(InteractionHand hand, float yaw, float pitch) {
+		ItemStack used = mc.player.getItemInHand(hand);
+		boolean aimed = used.getItem() instanceof ProjectileItem && !used.is(Items.FIREWORK_ROCKET);
+		return aimed ? pinTo(yaw, pitch) : rotationForAction();
+	}
+
+	/** The hand of the item use being made right now, or null. */
+	private volatile InteractionHand usingHand;
+
+	/** Called around {@code MultiPlayerGameMode.useItem}: {@code hand} while it runs, null after. */
+	public void usingItem(InteractionHand hand) {
+		usingHand = hand;
+	}
+
+	/**
+	 * Joined as 1.17 to 1.20.5, ViaFabricPlus sends your position and rotation just before each item use (the use
+	 * packet had no rotation then; the server and Grim take it from this one), with the camera's rotation. It gets the
+	 * use's rotation instead, so the server doesn't turn to the camera and back within the tick while a module holds a
+	 * rotation (and a thrown item flies where it was aimed).
+	 */
+	@Subscribe(priority = Priority.HIGH, packets = ServerboundMovePlayerPacket.PosRot.class)
+	private void onSendUsePosition(PacketEvent.Send e) {
+		InteractionHand hand = usingHand;
+		if (hand == null || !(e.packet() instanceof ServerboundMovePlayerPacket.PosRot p) || mc.player == null) return;
+		float[] r = useRotation(hand, p.getYRot(0), p.getXRot(0));
+		if (p.getYRot(0) == r[0] && p.getXRot(0) == r[1]) return;
+		e.setPacket(new ServerboundMovePlayerPacket.PosRot(p.getX(0), p.getY(0), p.getZ(0), r[0], r[1], p.isOnGround(), p.horizontalCollision()));
 	}
 
 	private synchronized float[] pinTo(float yaw, float pitch) {

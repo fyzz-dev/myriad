@@ -6,6 +6,58 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.8
+
+Inventory handling, rotations and placements for Grim (2b2t) by the version the server sees you as. Two additions to
+the API (`Baritone.getSetting`/`setSetting`); nothing changes or goes, so addons built for 0.2.x keep working.
+
+- Inventory clicks wait for a tick Grim takes them on, everywhere: core's click methods (`move`, `quickMove`,
+  `swapWithOffhand`, `drop`, `moveToHotbar` and the `Containers.View` clicks) return false (or, for `View`, do
+  nothing) while you'd be refused and release your keys for the next tick, so asking again then works. A refused click
+  is cancelled without the client being told, which showed items the server didn't have (a totem in your off hand
+  that wasn't there). Your own clicks in a screen while you move (Inventory Move) wait the same way and are made then.
+- What counts as moving follows the version the server sees, ViaFabricPlus's when it translates (read by
+  reflection, so it stays optional): sprinting always; movement keys and jump from 1.21.2; sneaking from 1.21.9. As
+  1.20.4, most 2b2t players' version, a click only drops sprint for a tick instead of stopping you. `.anticheat`
+  shows the version you joined as. A version that can't be told gets the strictest rules.
+- A still tick now really stops sprinting under ViaFabricPlus (it starts sprint from the held key, as older versions
+  did, after the input was read).
+- `silentSwap` keeps the server on the slot until the start of the next tick instead of switching back right after the
+  action, which Grim's PacketOrderE flags (experimental checks). Another swap to the same slot meanwhile sends nothing.
+  The client holds the slot too while the action runs, also when the server already held it, so placements and items
+  used are predicted with the right item.
+- `swapWithOffhand` from the hotbar while a click would have to wait uses the swap-hands key with a silent swap: no
+  click, no waiting.
+- `move` puts armour into its own empty slot with one shift click instead of two or three clicks.
+- Air placement swaps the block out of the off hand at the start of the next tick, not right after placing (Grim's
+  PacketOrderG cancelled that, leaving the block in the off hand); meanwhile the off hand's totem is in the hand the
+  server holds.
+- The inventory packet budget counts clicks as they're made: ViaFabricPlus sends clicks to 1.21.4 and older servers
+  past the connection, so they weren't counted.
+
+Rotations and placements, checked against Grim's source and the test server:
+
+- The rotation move fix walked 2% slow diagonally as 1.20.4 (any version up to 1.21.4): those versions don't normalise
+  a diagonal's input, and ViaFabricPlus keeps it that way, but the rewritten keys were normalised. Grim flagged
+  Simulation every tick a module turned you while you walked (Kill Aura beside you: dozens of flags a run, now none).
+- Placement reach is measured as Grim does: to the nearest point of the block clicked, from your eyes or from any eye
+  height Grim can't rule out (standing, sneaking, swimming or gliding), within your block reach, and within the
+  server's own limit (reach + 1 from your real eyes). It was the eyes to the centre of the space, which refused
+  placements Grim takes (up to 0.87 blocks more, more below you); and a click's ray was allowed a block past Grim's
+  reach, which could be refused (RotationPlace) at the edge. `Placement.Options.range()` is now that distance.
+- Clicks aim near the point of the face nearest you (not its centre), a little off it at random each time: a straight
+  scaffold turned into every block by exactly the same yaw, which Grim's DuplicateRotPlace flags (experimental checks).
+- Rotated air placements were never clicked (the check that the block clicked against is still there failed for
+  air); unrotated ones only click where your look enters the space.
+- Joined as 1.17 to 1.20.5, ViaFabricPlus sends your position and rotation before each item use, with the camera's
+  rotation; it now carries the use's, so the server doesn't turn to the camera and back while a module holds a
+  rotation.
+- Baritone's movement input is built the vanilla way for the version you joined as: Baritone's own slowed sneaking
+  twice (the player slows it again) and never normalised a diagonal, so its sneaking to an edge to bridge (and, joined
+  natively, its diagonal walking) was flagged (Simulation).
+- `Baritone.getSetting` and `Baritone.setSetting`: read or change one of Baritone's settings by name for now (not saved
+  to its settings file), e.g. to let it place blocks for a while and put it back after.
+
 ## 0.2.7
 
 An addition to the inventory API; addons built for 0.2.x keep working.

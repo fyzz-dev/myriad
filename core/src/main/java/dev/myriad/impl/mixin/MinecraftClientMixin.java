@@ -37,6 +37,32 @@ public abstract class MinecraftClientMixin {
 		if (Myriad.isReady() && Myriad.inventory() instanceof InventoryManager inventory) inventory.userClick(active);
 	}
 
+	/** Your own attacks and mining, so a silent swap still waiting to go back does before them (see Inventory.silentSwap). */
+	@Inject(method = "startAttack", at = @At("HEAD"))
+	private void myriad$attackStart(CallbackInfoReturnable<Boolean> cir) {
+		myriad$attack(true);
+	}
+
+	@Inject(method = "startAttack", at = @At("RETURN"))
+	private void myriad$attackEnd(CallbackInfoReturnable<Boolean> cir) {
+		myriad$attack(false);
+	}
+
+	@Inject(method = "continueAttack", at = @At("HEAD"))
+	private void myriad$miningStart(boolean down, CallbackInfo ci) {
+		myriad$attack(true);
+	}
+
+	@Inject(method = "continueAttack", at = @At("RETURN"))
+	private void myriad$miningEnd(boolean down, CallbackInfo ci) {
+		myriad$attack(false);
+	}
+
+	@Unique
+	private static void myriad$attack(boolean active) {
+		if (Myriad.isReady() && Myriad.inventory() instanceof InventoryManager inventory) inventory.userAttack(active);
+	}
+
 	@Inject(method = "resizeGui", at = @At("TAIL"))
 	private void myriad$onResize(CallbackInfo ci) {
 		if (Myriad.isReady()) Myriad.events().post(new WindowResizeEvent(window.getWidth(), window.getHeight()));

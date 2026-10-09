@@ -5,7 +5,9 @@ import dev.myriad.api.event.events.BlockBreakEvent;
 import dev.myriad.api.event.events.BlockBrokenEvent;
 import dev.myriad.api.event.events.InteractEvent;
 import dev.myriad.api.event.events.ItemUseEvent;
+import dev.myriad.impl.MyriadImpl;
 import dev.myriad.impl.service.InventoryManager;
+import dev.myriad.impl.service.RotationManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
@@ -15,6 +17,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -45,6 +48,17 @@ public abstract class ClientPlayerInteractionManagerMixin {
 			&& Myriad.events().post(new InteractEvent.Item(hand)).isCancelled()) cir.setReturnValue(InteractionResult.FAIL);
 	}
 
+	/** After the cancellable hook above, so only a use that goes ahead is marked (see RotationManager.usingItem). */
+	@Inject(method = "useItem", at = @At("HEAD"))
+	private void myriad$useItemStart(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
+		if (Myriad.isReady() && Myriad.rotations() instanceof RotationManager rotations) rotations.usingItem(hand);
+	}
+
+	@Inject(method = "useItem", at = @At("RETURN"))
+	private void myriad$useItemEnd(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
+		if (Myriad.isReady() && Myriad.rotations() instanceof RotationManager rotations) rotations.usingItem(null);
+	}
+
 	@Inject(method = "interact", at = @At("HEAD"), cancellable = true)
 	private void myriad$interactEntity(Player player, Entity entity, EntityHitResult hit, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
 		if (Myriad.isReady() && Myriad.events().hasListeners(InteractEvent.EntityTarget.class)
@@ -55,6 +69,12 @@ public abstract class ClientPlayerInteractionManagerMixin {
 	@Inject(method = "ensureHasSentCarriedItem", at = @At("HEAD"))
 	private void myriad$userSlot(CallbackInfo ci) {
 		if (Myriad.isReady() && Myriad.inventory() instanceof InventoryManager inventory) inventory.beforeCarriedSync();
+	}
+
+	/** Counts every click made, whichever way it then reaches the server (see PacketLimiter.recordClick). */
+	@Inject(method = "handleContainerInput", at = @At("HEAD"))
+	private void myriad$countClick(int containerId, int slotNum, int buttonNum, ContainerInput input, Player player, CallbackInfo ci) {
+		if (MyriadImpl.get() != null) MyriadImpl.get().packetLimiter().recordClick();
 	}
 
 	@Unique

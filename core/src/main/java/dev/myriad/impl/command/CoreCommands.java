@@ -22,9 +22,11 @@ import dev.myriad.impl.Diagnostics;
 import dev.myriad.impl.event.MyriadEventBus;
 import dev.myriad.impl.event.Profiler;
 import dev.myriad.impl.MyriadImpl;
+import dev.myriad.impl.network.JoinedVersion;
 import dev.myriad.impl.ui.ThemeManager;
 import dev.myriad.impl.ui.WindowManager;
 import dev.myriad.impl.update.UpdateManager;
+import net.minecraft.client.Minecraft;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -44,12 +46,13 @@ public final class CoreCommands {
 	private CoreCommands() {
 	}
 
-	/** "Anti-cheat: Auto (Grim detected)" and the like. */
+	/** "Anti-cheat: Auto (Grim detected), joined as 1.20.4 (ViaFabricPlus)" and the like. */
 	public static String antiCheatStatus() {
 		AntiCheat ac = Myriad.antiCheat();
 		String profile = ac.profile() == AntiCheat.Profile.GRIM ? "Grim" : "Vanilla";
-		return ac.mode() == AntiCheat.Mode.AUTO ? "Anti-cheat: Auto (" + profile + (ac.detected() == AntiCheat.Profile.GRIM ? " detected)" : ", none detected)")
+		String status = ac.mode() == AntiCheat.Mode.AUTO ? "Anti-cheat: Auto (" + profile + (ac.detected() == AntiCheat.Profile.GRIM ? " detected)" : ", none detected)")
 			: "Anti-cheat: " + profile;
+		return Minecraft.getInstance().getConnection() == null ? status : status + ", joined as " + JoinedVersion.get().describe();
 	}
 
 	public static void register(AddonContext ctx) {

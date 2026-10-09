@@ -239,6 +239,9 @@ public final class ContainerTracker implements Containers {
 		@Override
 		public void click(int screenSlot, int button, ContainerInput action) {
 			if (!isOpen() || mc.player == null || mc.gameMode == null) return;
+			// Grim cancels a click while you move, without telling the client: skipped, with your keys released for
+			// the next tick so it can be made then.
+			if (!Myriad.inventory().prepareClick()) return;
 			mc.gameMode.handleContainerInput(handler.containerId, screenSlot, button, action, mc.player);
 		}
 

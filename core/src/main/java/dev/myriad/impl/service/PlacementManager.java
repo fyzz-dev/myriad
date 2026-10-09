@@ -13,13 +13,12 @@ import dev.myriad.api.util.BlockInfo;
 import dev.myriad.api.util.MathUtil;
 import dev.myriad.api.util.Reach;
 import dev.myriad.impl.network.BlockAckTracker;
+import dev.myriad.impl.network.JoinedVersion;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -34,6 +33,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Places blocks and follows each one until the server acknowledges it (see {@link BlockAckTracker}).
@@ -55,10 +55,40 @@ public final class PlacementManager implements Placement {
 
 	/** How long a rotated placement may wait for its rotation before it's given up. */
 	private static final int QUEUE_TICKS = 6;
-	/** How far in from the edges of a face an air placement clicks. */
-	private static final double AIR_INSET = 0.3;
+	/**
+	 * How far in from the edges of a face a click aims, at the point nearest the eyes: off the rim, so a little error
+	 * in where the eyes are doesn't land the look on the next face, and at a different spot each time you've moved.
+	 */
+	private static final double INSET = 0.3;
+	/**
+	 * How far each click strays from that point, at random, within the face. Grim (DuplicateRotPlace, experimental)
+	 * flags placements turned into by exactly the same yaw as the last one, which a straight walk gives every block.
+	 */
+	private static final double SPREAD = 0.15;
+	/** The same near the limit of reach, where the last few tenths count. */
+	private static final double EDGE_INSET = 0.02;
+	/** Reach kept back when choosing where to aim, so the click's ray still gets there after rounding. */
+	private static final double REACH_SLACK = 0.01;
 
-	private record Queued(Object owner, BlockPos pos, BlockHitResult target, int slot, Options options, CompletableFuture<Boolean> result, int expires) {
+	/**
+	 * Heights above the feet Grim takes the eyes to be at for a click, whatever pose it thinks you're in (it can't
+	 * tell): standing, sneaking, and swimming or gliding. FarPlace, RotationPlace and PositionPlace each accept a
+	 * click that works from any of them, so a block below you reaches as far from the lowest as the attribute allows.
+	 */
+	private static final double[] EYE_HEIGHTS = {1.62, 1.27, 0.4};
+	/** Before 1.14 sneaking lowered the eyes less. */
+	private static final double[] EYE_HEIGHTS_BEFORE_1_14 = {1.62, 1.54, 0.4};
+	/** Before 1.9 there was no swimming or gliding pose. */
+	private static final double[] EYE_HEIGHTS_BEFORE_1_9 = {1.62, 1.54};
+
+	/** A click and the height above the feet it's aimed from. */
+	private record Aim(BlockHitResult hit, double eyeHeight) {
+	}
+
+	private record Queued(Object owner, BlockPos pos, Aim aim, int slot, Options options, CompletableFuture<Boolean> result, int expires) {
+		BlockHitResult target() {
+			return aim.hit;
+		}
 	}
 
 	private final Minecraft mc = Minecraft.getInstance();
@@ -95,7 +125,7 @@ public final class PlacementManager implements Placement {
 		if (isPending(pos) || Myriad.breaking().isPending(pos)) return Check.PENDING;
 		BlockState state = mc.level.getBlockState(pos);
 		if (!state.canBeReplaced()) return Check.OCCUPIED;
-		if (mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) > o.range() * o.range()) return Check.OUT_OF_RANGE;
+		if (Double.isNaN(eyeHeightFor(new AABB(pos), o.range()))) return Check.OUT_OF_RANGE;
 		boolean blocked = !mc.level.getEntities((net.minecraft.world.entity.Entity) null, new AABB(pos),
 			e -> e.isAlive() && e.isPickable() || e == mc.player && e.getBoundingBox().intersects(new AABB(pos))).isEmpty();
 		if (blocked) return Check.ENTITY_IN_WAY;
@@ -103,38 +133,179 @@ public final class PlacementManager implements Placement {
 		return Check.OK;
 	}
 
-	/** The face to click for {@code pos}: the best visible one, any one unless visible faces are required, or air. */
-	private BlockHitResult target(BlockPos pos, Options o) {
+	/**
+	 * The click for {@code pos}: on the best visible face you can reach, any reachable one unless visible faces are
+	 * required, or the empty space itself for an air placement.
+	 */
+	private Aim target(BlockPos pos, Options o) {
 		List<BlockHitResult> targets = clickTargets(pos);
-		if (!targets.isEmpty() && (!o.visibleFaces() || visible(targets.getFirst()))) return targets.getFirst();
-		if (targets.isEmpty() && o.airPlace()) return airHit(pos, o.range());
+		if (targets.isEmpty()) return o.airPlace() ? airHit(pos, o.range(), o.rotate()) : null;
+		for (BlockHitResult t : targets) {
+			Aim aim = aimAt(t.getBlockPos(), t.getDirection(), o.range());
+			if (aim == null) continue;
+			if (o.visibleFaces() && !visible(aim)) return null;
+			return aim;
+		}
 		return null;
 	}
 
 	/**
 	 * An air placement's click: where the look the server has enters the empty space, if it does (as a vanilla click
-	 * would be); otherwise on the face nearest your eyes that faces them, a little in from its edges, where you'd be
-	 * looking to aim at it. A face turned away from you (or a point out of reach) is refused by servers that check
-	 * clicks, so null if none qualifies.
+	 * would be); otherwise, if it will {@code rotate} to it, on the face nearest your eyes that faces them, where you'd
+	 * be looking to aim at it. A face turned away from you, a point out of reach or (unrotated) a click where you aren't
+	 * looking is refused by servers that check clicks, so null if none qualifies.
 	 */
-	private BlockHitResult airHit(BlockPos pos, double range) {
-		BlockHitResult look = Reach.rayHit(Myriad.rotations().serverYaw(), Myriad.rotations().serverPitch(), pos, range);
-		if (look != null && Reach.faceExposed(pos, look.getDirection())) return new BlockHitResult(look.getLocation(), look.getDirection(), pos, false);
-		Vec3 eyes = mc.player.getEyePosition();
-		BlockHitResult best = null;
-		double bestDistance = range * range;
+	private Aim airHit(BlockPos pos, double range, boolean rotate) {
+		Aim look = lookHit(Myriad.rotations().serverYaw(), Myriad.rotations().serverPitch(), pos, null, range);
+		if (look != null || !rotate) return look;
+		Aim best = null;
+		double bestDistance = Double.MAX_VALUE;
 		for (Direction face : Direction.values()) {
-			if (!Reach.faceExposed(pos, face)) continue;
-			Vec3 point = new Vec3(
-				face.getAxis() == Direction.Axis.X ? pos.getX() + (face == Direction.EAST ? 1 : 0) : Math.clamp(eyes.x, pos.getX() + AIR_INSET, pos.getX() + 1 - AIR_INSET),
-				face.getAxis() == Direction.Axis.Y ? pos.getY() + (face == Direction.UP ? 1 : 0) : Math.clamp(eyes.y, pos.getY() + AIR_INSET, pos.getY() + 1 - AIR_INSET),
-				face.getAxis() == Direction.Axis.Z ? pos.getZ() + (face == Direction.SOUTH ? 1 : 0) : Math.clamp(eyes.z, pos.getZ() + AIR_INSET, pos.getZ() + 1 - AIR_INSET));
-			double d = eyes.distanceToSqr(point);
-			if (d > bestDistance) continue;
+			Aim aim = aimAt(pos, face, range);
+			if (aim == null) continue;
+			double d = eyes(aim.eyeHeight).distanceToSqr(aim.hit.getLocation());
+			if (d >= bestDistance) continue;
 			bestDistance = d;
-			best = new BlockHitResult(point, face, pos, false);
+			best = aim;
 		}
 		return best;
+	}
+
+	/**
+	 * Where to click {@code face} of the block at {@code pos}, and from which eye height: near the point nearest the
+	 * eyes, from your own eyes if they reach it, otherwise from whichever height Grim allows that does. Null if the face
+	 * points away from all of them or none reaches.
+	 */
+	private Aim aimAt(BlockPos pos, Direction face, double range) {
+		double reach = range - REACH_SLACK;
+		for (double inset : new double[]{INSET, EDGE_INSET}) {
+			double own = mc.player.getEyeHeight();
+			Vec3 point = spread(pointOnFace(pos, face, eyes(own), inset), pos, face, inset);
+			if (exposed(pos, face, own) && eyes(own).distanceToSqr(point) <= reach * reach) return aim(point, face, pos, own);
+			Aim best = null;
+			double bestDistance = reach * reach;
+			for (double h : eyeHeights()) {
+				Vec3 p = spread(pointOnFace(pos, face, eyes(h), inset), pos, face, inset);
+				double d = eyes(h).distanceToSqr(p);
+				if (!exposed(pos, face, h) || d > bestDistance || !serverReaches(p, range)) continue;
+				best = aim(p, face, pos, h);
+				bestDistance = d;
+			}
+			if (best != null) return best;
+		}
+		return null;
+	}
+
+	private static Aim aim(Vec3 point, Direction face, BlockPos pos, double eyeHeight) {
+		return new Aim(new BlockHitResult(point, face, pos, false), eyeHeight);
+	}
+
+	/**
+	 * Where a look of {@code yaw}/{@code pitch} lands on the block at {@code pos} within {@code range}, from your own
+	 * eyes or any height Grim allows, as Grim's RotationPlace traces it; on {@code face} if given, and only on a face
+	 * pointing towards those eyes. Null if it lands nowhere that counts.
+	 */
+	private Aim lookHit(float yaw, float pitch, BlockPos pos, Direction face, double range) {
+		Vec3 direction = MathUtil.direction(yaw, pitch).scale(range);
+		Aim own = lookHitFrom(mc.player.getEyeHeight(), direction, pos, face);
+		if (own != null) return own;
+		for (double h : eyeHeights()) {
+			Aim aim = lookHitFrom(h, direction, pos, face);
+			if (aim != null && serverReaches(aim.hit.getLocation(), range)) return aim;
+		}
+		return null;
+	}
+
+	private Aim lookHitFrom(double eyeHeight, Vec3 direction, BlockPos pos, Direction face) {
+		Vec3 from = eyes(eyeHeight);
+		BlockHitResult hit = AABB.clip(FULL_BLOCK, from, from.add(direction), pos);
+		if (hit == null || face != null && hit.getDirection() != face || !exposed(pos, hit.getDirection(), eyeHeight)) return null;
+		return new Aim(new BlockHitResult(hit.getLocation(), hit.getDirection(), pos, false), eyeHeight);
+	}
+
+	private static final List<AABB> FULL_BLOCK = List.of(new AABB(0, 0, 0, 1, 1, 1));
+
+	/**
+	 * The eye height to reach {@code box} from: your own if they reach it, otherwise the nearest Grim allows. NaN if
+	 * none does.
+	 */
+	private double eyeHeightFor(AABB box, double range) {
+		double own = mc.player.getEyeHeight();
+		if (box.distanceToSqr(eyes(own)) <= range * range) return own;
+		double best = Double.NaN, bestDistance = range * range;
+		for (double h : eyeHeights()) {
+			double d = box.distanceToSqr(eyes(h));
+			if (d > bestDistance || !serverReaches(box, range)) continue;
+			best = h;
+			bestDistance = d;
+		}
+		return best;
+	}
+
+	/** The server's own limit, from your actual eyes: the reach plus one block. */
+	private boolean serverReaches(AABB box, double range) {
+		double limit = Math.min(range, Reach.blockRange()) + 1;
+		return box.distanceToSqr(mc.player.getEyePosition()) <= limit * limit;
+	}
+
+	private boolean serverReaches(Vec3 point, double range) {
+		return serverReaches(new AABB(point, point), range);
+	}
+
+	/** {@link #EYE_HEIGHTS} for the version you joined as, scaled with you. */
+	private double[] eyeHeights() {
+		int protocol = JoinedVersion.get().protocol();
+		double[] heights = protocol < 0 || protocol >= 477 ? EYE_HEIGHTS : protocol >= 107 ? EYE_HEIGHTS_BEFORE_1_14 : EYE_HEIGHTS_BEFORE_1_9;
+		float scale = mc.player.getScale();
+		if (scale == 1f) return heights;
+		double[] scaled = new double[heights.length];
+		for (int i = 0; i < heights.length; i++) scaled[i] = heights[i] * scale;
+		return scaled;
+	}
+
+	/** Your eyes at {@code eyeHeight} above your feet. */
+	private Vec3 eyes(double eyeHeight) {
+		return new Vec3(mc.player.getX(), mc.player.getY() + eyeHeight, mc.player.getZ());
+	}
+
+	/** Whether {@code face} of the block at {@code pos} points towards eyes at {@code eyeHeight} (they're past its plane). */
+	private boolean exposed(BlockPos pos, Direction face, double eyeHeight) {
+		Vec3 e = eyes(eyeHeight);
+		return switch (face) {
+			case UP -> e.y > pos.getY() + 1;
+			case DOWN -> e.y < pos.getY();
+			case EAST -> e.x > pos.getX() + 1;
+			case WEST -> e.x < pos.getX();
+			case SOUTH -> e.z > pos.getZ() + 1;
+			case NORTH -> e.z < pos.getZ();
+		};
+	}
+
+	/**
+	 * {@code point} moved up to {@link #SPREAD} along {@code face}, at random, staying half the inset in from the edges
+	 * (not at all near the edge of reach, where every bit counts).
+	 */
+	private static Vec3 spread(Vec3 point, BlockPos pos, Direction face, double inset) {
+		if (inset < INSET) return point;
+		double min = inset / 2;
+		ThreadLocalRandom r = ThreadLocalRandom.current();
+		double x = face.getAxis() == Direction.Axis.X ? point.x : Math.clamp(point.x + r.nextDouble(-SPREAD, SPREAD), pos.getX() + min, pos.getX() + 1 - min);
+		double y = face.getAxis() == Direction.Axis.Y ? point.y : Math.clamp(point.y + r.nextDouble(-SPREAD, SPREAD), pos.getY() + min, pos.getY() + 1 - min);
+		double z = face.getAxis() == Direction.Axis.Z ? point.z : Math.clamp(point.z + r.nextDouble(-SPREAD, SPREAD), pos.getZ() + min, pos.getZ() + 1 - min);
+		return new Vec3(x, y, z);
+	}
+
+	/** The point of {@code face} nearest {@code from}, at least {@code inset} in from its edges. */
+	private static Vec3 pointOnFace(BlockPos pos, Direction face, Vec3 from, double inset) {
+		double x = Math.clamp(from.x, pos.getX() + inset, pos.getX() + 1 - inset);
+		double y = Math.clamp(from.y, pos.getY() + inset, pos.getY() + 1 - inset);
+		double z = Math.clamp(from.z, pos.getZ() + inset, pos.getZ() + 1 - inset);
+		double plane = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : 0;
+		return switch (face.getAxis()) {
+			case X -> new Vec3(pos.getX() + plane, y, z);
+			case Y -> new Vec3(x, pos.getY() + plane, z);
+			case Z -> new Vec3(x, y, pos.getZ() + plane);
+		};
 	}
 
 	@Override
@@ -142,9 +313,9 @@ public final class PlacementManager implements Placement {
 		if (hotbarSlot < 0 || hotbarSlot > 8) return Attempt.refused(pos, Check.UNAVAILABLE);
 		Check space = spaceCheck(pos, o);
 		if (!space.ok()) return Attempt.refused(pos, space);
-		BlockHitResult hit = target(pos, o);
-		if (hit == null) return Attempt.refused(pos, supportCheck(pos, o));
-		return submit(owner, pos, hit, hotbarSlot, o);
+		Aim aim = target(pos, o);
+		if (aim == null) return Attempt.refused(pos, supportCheck(pos, o));
+		return submit(owner, pos, aim, hotbarSlot, o);
 	}
 
 	@Override
@@ -153,8 +324,11 @@ public final class PlacementManager implements Placement {
 		if (hotbarSlot < 0 || hotbarSlot > 8) return Attempt.refused(pos, Check.UNAVAILABLE);
 		Check check = spaceCheck(pos, o);
 		if (!check.ok()) return Attempt.refused(pos, check);
-		if (o.visibleFaces() && !visible(hit)) return Attempt.refused(pos, Check.NOT_VISIBLE);
-		return submit(owner, pos, hit, hotbarSlot, o);
+		double eyeHeight = eyeHeightFor(new AABB(hit.getLocation(), hit.getLocation()), o.range());
+		if (Double.isNaN(eyeHeight)) return Attempt.refused(pos, Check.OUT_OF_RANGE);
+		Aim aim = new Aim(hit, eyeHeight);
+		if (o.visibleFaces() && !visible(aim)) return Attempt.refused(pos, Check.NOT_VISIBLE);
+		return submit(owner, pos, aim, hotbarSlot, o);
 	}
 
 	@Override
@@ -167,13 +341,13 @@ public final class PlacementManager implements Placement {
 		}
 	}
 
-	private Attempt submit(Object owner, BlockPos pos, BlockHitResult hit, int slot, Options o) {
+	private Attempt submit(Object owner, BlockPos pos, Aim aim, int slot, Options o) {
 		BlockPos key = pos.immutable();
 		CompletableFuture<Boolean> result = new CompletableFuture<>();
 		pending.put(key, result);
 		result.whenComplete((placed, t) -> pending.remove(key, result));
-		if (o.rotate()) queue.add(new Queued(owner, key, hit, slot, o, result, tick + QUEUE_TICKS));
-		else click(key, hit, slot, o, result);
+		if (o.rotate()) queue.add(new Queued(owner, key, aim, slot, o, result, tick + QUEUE_TICKS));
+		else click(key, aim.hit, slot, o, result);
 		return new Attempt(key, Check.OK, result);
 	}
 
@@ -183,13 +357,15 @@ public final class PlacementManager implements Placement {
 		// Clicking the empty space itself: an air placement.
 		boolean air = target.getBlockPos().equals(pos);
 		Myriad.inventory().silentSwap(slot, () -> {
-			if (air) {
+			if (air && Myriad.inventory() instanceof InventoryManager inventory) {
 				// Swap the block to the off hand, place it from there, swing that hand, and swap back: how 2b2t clients
-				// place against air there, past its Grim.
-				swapHands();
+				// place against air there, past its Grim. Back first thing next tick: Grim (PacketOrderG) cancels an off
+				// hand swap after a placement in the same tick, which would leave the block in your off hand. Meanwhile
+				// what was in the off hand (a totem) is in the hand the server holds, where it still saves you.
+				inventory.swapHands();
 				mc.gameMode.useItemOn(mc.player, InteractionHand.OFF_HAND, target);
 				swing(InteractionHand.OFF_HAND, o.swing());
-				swapHands();
+				inventory.afterSwap(inventory::swapHands);
 			} else {
 				mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, target);
 				if (o.swing()) mc.player.swing(InteractionHand.MAIN_HAND);
@@ -209,8 +385,13 @@ public final class PlacementManager implements Placement {
 	 * out after you move this tick). Good enough to settle the yaw; the pitch is refined just before sending.
 	 */
 	static float[] anglesFromNextPosition(Vec3 point) {
+		return anglesFromNextPosition(point, Minecraft.getInstance().player.getEyeHeight());
+	}
+
+	/** {@link #anglesFromNextPosition(Vec3)} from eyes {@code eyeHeight} above the feet. */
+	static float[] anglesFromNextPosition(Vec3 point, double eyeHeight) {
 		Minecraft mc = Minecraft.getInstance();
-		return MathUtil.anglesTo(mc.player.getEyePosition().add(mc.player.getDeltaMovement()), point);
+		return MathUtil.anglesTo(mc.player.position().add(0, eyeHeight, 0).add(mc.player.getDeltaMovement()), point);
 	}
 
 	/** Swings {@code hand}: shown if {@code visible}, otherwise only sent (a placement without a swing is noticed). */
@@ -220,18 +401,12 @@ public final class PlacementManager implements Placement {
 	}
 
 	/** Swaps the main and off hand, on the client and the server, as the swap key does. */
-	private void swapHands() {
-		ItemStack off = mc.player.getOffhandItem();
-		mc.player.setItemInHand(InteractionHand.OFF_HAND, mc.player.getMainHandItem());
-		mc.player.setItemInHand(InteractionHand.MAIN_HAND, off);
-		mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
-	}
-
 	/** Asks to face the first queued placement; it's clicked once that rotation has been sent. */
 	@Subscribe
 	private void onTickStart(TickEvent.Pre e) {
 		if (queue.isEmpty() || mc.player == null) return;
-		float[] r = anglesFromNextPosition(queue.getFirst().target.getLocation());
+		Aim aim = queue.getFirst().aim;
+		float[] r = anglesFromNextPosition(aim.hit.getLocation(), aim.eyeHeight);
 		Myriad.rotations().request(this, r[0], r[1], Rotations.PRIORITY_HIGH, MOVE_FIX, null);
 	}
 
@@ -243,7 +418,8 @@ public final class PlacementManager implements Placement {
 	@Subscribe(priority = Priority.HIGH)
 	private void onBeforeRotationSent(MovementPacketsEvent e) {
 		if (queue.isEmpty() || mc.player == null) return;
-		float[] r = MathUtil.anglesTo(mc.player.getEyePosition(), queue.getFirst().target.getLocation());
+		Aim aim = queue.getFirst().aim;
+		float[] r = MathUtil.anglesTo(eyes(aim.eyeHeight), aim.hit.getLocation());
 		Myriad.rotations().request(this, r[0], r[1], REFINED_PRIORITY, MOVE_FIX, null);
 	}
 
@@ -263,16 +439,17 @@ public final class PlacementManager implements Placement {
 				it.remove();
 				continue;
 			}
-			BlockHitResult look = Reach.rayHit(yaw, pitch, q.target.getBlockPos(), q.options.range() + 1);
-			if (look == null || look.getDirection() != q.target.getDirection()) continue;
+			Aim look = lookHit(yaw, pitch, q.target().getBlockPos(), q.target().getDirection(), q.options.range());
+			if (look == null) continue;
 			it.remove();
-			// The world may have changed while it waited.
-			if (!mc.level.getBlockState(q.pos).canBeReplaced() || mc.level.getBlockState(q.target.getBlockPos()).canBeReplaced()
+			// The world may have changed while it waited (an air placement clicks the space itself).
+			boolean air = q.target().getBlockPos().equals(q.pos);
+			if (!mc.level.getBlockState(q.pos).canBeReplaced() || !air && mc.level.getBlockState(q.target().getBlockPos()).canBeReplaced()
 				|| !Myriad.limits().canSend(PacketLimits.Kind.INTERACT, 1)) {
 				q.result.complete(false);
 				continue;
 			}
-			click(q.pos, new BlockHitResult(look.getLocation(), look.getDirection(), q.target.getBlockPos(), false), q.slot, q.options, q.result);
+			click(q.pos, look.hit, q.slot, q.options, q.result);
 		}
 	}
 
@@ -314,8 +491,14 @@ public final class PlacementManager implements Placement {
 
 	/** The clicked face points towards the eyes and nothing stands between them and the click point. */
 	private boolean visible(BlockHitResult hit) {
-		if (!Reach.faceExposed(hit.getBlockPos(), hit.getDirection())) return false;
-		BlockHitResult ray = mc.level.clip(new ClipContext(mc.player.getEyePosition(), hit.getLocation(), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc.player));
+		return visible(new Aim(hit, mc.player.getEyeHeight()));
+	}
+
+	/** {@link #visible(BlockHitResult)} from the eyes the click is aimed from. */
+	private boolean visible(Aim aim) {
+		BlockHitResult hit = aim.hit;
+		if (!exposed(hit.getBlockPos(), hit.getDirection(), aim.eyeHeight)) return false;
+		BlockHitResult ray = mc.level.clip(new ClipContext(eyes(aim.eyeHeight), hit.getLocation(), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc.player));
 		return ray.getType() == HitResult.Type.MISS || ray.getBlockPos().equals(hit.getBlockPos());
 	}
 }

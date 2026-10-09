@@ -5,6 +5,8 @@ import dev.myriad.api.Myriad;
 import dev.myriad.api.event.events.InputEvent;
 import dev.myriad.api.event.events.MovementPacketsEvent;
 import dev.myriad.api.event.events.PlayerMoveEvent;
+import dev.myriad.impl.network.JoinedVersion;
+import dev.myriad.impl.service.InventoryManager;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.MoverType;
@@ -68,16 +70,42 @@ public abstract class ClientPlayerEntityMixin {
 	/** Posts InputEvent right after the keyboard is read, and applies any changes for this tick. */
 	@Inject(method = "aiStep", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/ClientInput;tick()V", shift = At.Shift.AFTER))
 	private void myriad$input(CallbackInfo ci) {
-		if (!Myriad.isReady() || !Myriad.events().hasListeners(InputEvent.class)) return;
 		ClientInput input = ((LocalPlayer) (Object) this).input;
+		// Baritone's input builds the vector as old versions did: sneaking slowed already (the player slows it again
+		// after this) and a diagonal never normalised. Grim simulates vanilla's, so Baritone sneaking to the edge to
+		// bridge, or walking diagonally natively, was flagged.
+		if (input.getClass().getName().startsWith("baritone.")) {
+			Input keys = input.keyPresses;
+			input.moveVector = myriad$moveVector(keys.forward(), keys.backward(), keys.left(), keys.right());
+		}
+		if (!Myriad.isReady() || !Myriad.events().hasListeners(InputEvent.class)) return;
 		Input in = input.keyPresses;
 		InputEvent e = Myriad.events().post(new InputEvent(in.forward(), in.backward(), in.left(), in.right(), in.jump(), in.shift(), in.sprint()));
 		Input out = new Input(e.forward, e.backward, e.left, e.right, e.jump, e.sneak, e.sprint);
 		if (out.equals(in)) return;
 		input.keyPresses = out;
-		float forward = e.forward == e.backward ? 0 : e.forward ? 1 : -1;
-		float left = e.left == e.right ? 0 : e.left ? 1 : -1;
-		input.moveVector = new Vec2(left, forward).normalized();
+		input.moveVector = myriad$moveVector(e.forward, e.backward, e.left, e.right);
+	}
+
+	/**
+	 * The movement vector the keyboard gives for these keys in the version the server sees. Up to 1.21.4 a diagonal
+	 * stayed (1, 1) (ViaFabricPlus keeps it that way when joined as one): normalised, walking diagonally would be 2%
+	 * slower than the server simulates, a Simulation flag every tick.
+	 */
+	@Unique
+	private static Vec2 myriad$moveVector(boolean forward, boolean backward, boolean left, boolean right) {
+		Vec2 move = new Vec2(left == right ? 0 : left ? 1 : -1, forward == backward ? 0 : forward ? 1 : -1);
+		return JoinedVersion.get().protocol() <= SQUARE_MOVEMENT_UNTIL ? move : move.normalized();
+	}
+
+	/** 1.21.4's protocol: the last version whose diagonal input isn't normalised before the player moves. */
+	@Unique
+	private static final int SQUARE_MOVEMENT_UNTIL = 769;
+
+	/** After vanilla (or ViaFabricPlus, from the sprint key) has started sprinting this tick, before the player moves. */
+	@Inject(method = "aiStep", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/AbstractClientPlayer;aiStep()V"))
+	private void myriad$beforeTravel(CallbackInfo ci) {
+		if (Myriad.isReady() && Myriad.inventory() instanceof InventoryManager inventory) inventory.beforeTravel();
 	}
 
 	@ModifyExpressionValue(method = "sendPosition", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;getX()D"))

@@ -16,9 +16,11 @@ public interface Inventory {
 	void select(int hotbarSlot);
 
 	/**
-	 * Silently switches the server-side slot to {@code hotbarSlot}, runs {@code action}, then switches back to what
-	 * the server held before (so a {@link #hold} survives it). The client's visible slot does not change. Sends
-	 * nothing when the server already holds that slot.
+	 * Silently switches the server-side slot to {@code hotbarSlot} and runs {@code action} with it in hand (the client
+	 * holds it too while the action runs, so what it predicts is with that item; the visible slot doesn't change). The
+	 * server goes back to your visible slot, or a {@link #hold}'s, first thing next tick: switching back right after an
+	 * action is what Grim flags. Sends nothing when the server already holds that slot, so swapping to the same slot
+	 * tick after tick costs one switch each way.
 	 */
 	void silentSwap(int hotbarSlot, Runnable action);
 
@@ -100,16 +102,20 @@ public interface Inventory {
 
 	/**
 	 * Whether an inventory click now would pass anti-cheats that refuse clicks while you move: Grim (2b2t) cancels a
-	 * click when the last movement keys the server heard had a direction or jump down, or sneak, or while you sprint.
-	 * Moves that can wait (refills, tools, building material) should wait for this; urgent ones (a totem) go anyway.
-	 * Always true where the server doesn't check this ({@link AntiCheat#isStrict()} is false).
+	 * click while you sprint and, depending on the version the server sees you as (ViaFabricPlus's, if it translates),
+	 * when the last movement keys it heard had a direction or jump down (from 1.21.2), or sneak (from 1.21.9). Moves
+	 * that can wait (refills, tools, building material) should wait for this. A click made anyway isn't lost: core holds
+	 * it back until a tick the server takes it on (releasing your keys for a tick, as {@link #prepareClick()} does), and
+	 * the client shows its result meanwhile. Always true where the server doesn't check this
+	 * ({@link AntiCheat#isStrict()} is false).
 	 */
 	boolean safeToClick();
 
 	/**
 	 * For a click that shouldn't wait for you to stop moving: true if one is safe now ({@link #safeToClick()});
-	 * otherwise your movement keys, jump, sneak and sprint are released for the next tick (sprint comes back after) and
-	 * it returns false, so asking again next tick gets a safe click. While sneaking at an edge it waits instead (letting
+	 * otherwise what {@link #safeToClick()} counts is released for the next tick (sprint, and for newer versions your
+	 * movement keys, jump and sneak; sprint comes back after) and it returns false, so asking again next tick gets a
+	 * safe click. While sneaking at an edge it waits instead (letting
 	 * go would walk you off). Costs a moment of slowing down, so moves that can wait (refills) should use
 	 * {@link #safeToClick()} instead.
 	 */
@@ -152,7 +158,10 @@ public interface Inventory {
 	// is spent (see PacketLimits; wrap must-happen moves in Myriad.limits().urgent). Indexes are inventory indexes
 	// (see Slots): 0-8 hotbar, 9-35 main, 36-39 armour (feet..head), 40 off hand.
 
-	/** Moves the stack at {@code from} to {@code to}, swapping with whatever is there (merging if they stack). */
+	/**
+	 * Moves the stack at {@code from} to {@code to}, swapping with whatever is there (merging if they stack). One click
+	 * with the hotbar involved, or for armour into its own empty slot; otherwise two or three.
+	 */
 	boolean move(int from, int to);
 
 	/**
@@ -161,7 +170,11 @@ public interface Inventory {
 	 */
 	boolean merge(int from, int to);
 
-	/** Swaps {@code inventoryIndex} with the off hand (like pressing F over it), e.g. to put a totem there. */
+	/**
+	 * Swaps {@code inventoryIndex} with the off hand (like pressing F over it), e.g. to put a totem there. From the
+	 * hotbar while a click would have to wait ({@link #safeToClick()}), it's done with the swap-hands key and a silent
+	 * swap instead, which isn't a click: no waiting while you move.
+	 */
 	boolean swapWithOffhand(int inventoryIndex);
 
 	/** Shift-clicks {@code inventoryIndex}: armour goes onto you, other items between the hotbar and main inventory. */

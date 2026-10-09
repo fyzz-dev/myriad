@@ -1,6 +1,7 @@
 package dev.myriad.impl.mixin;
 
 import dev.myriad.api.Myriad;
+import dev.myriad.impl.service.InventoryManager;
 import dev.myriad.api.event.events.ContainerScreenEvent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -33,7 +34,15 @@ public abstract class AbstractContainerScreenMixin {
 
 	@Inject(method = "slotClicked", at = @At("HEAD"), cancellable = true)
 	private void myriad$click(Slot slot, int slotId, int button, ContainerInput input, CallbackInfo ci) {
-		if (Myriad.isReady() && Myriad.events().hasListeners(ContainerScreenEvent.Click.class)
-			&& Myriad.events().post(new ContainerScreenEvent.Click((AbstractContainerScreen<?>) (Object) this, slot, slotId, button, input)).isCancelled()) ci.cancel();
+		if (!Myriad.isReady()) return;
+		if (Myriad.events().hasListeners(ContainerScreenEvent.Click.class)
+			&& Myriad.events().post(new ContainerScreenEvent.Click((AbstractContainerScreen<?>) (Object) this, slot, slotId, button, input)).isCancelled()) {
+			ci.cancel();
+			return;
+		}
+		// While you move (Inventory Move), the click waits for a tick the server takes it on (see InventoryManager).
+		int id = slot != null ? slot.index : slotId;
+		if (Myriad.inventory() instanceof InventoryManager inventory
+			&& inventory.holdScreenClick(((AbstractContainerScreen<?>) (Object) this).getMenu().containerId, id, button, input)) ci.cancel();
 	}
 }

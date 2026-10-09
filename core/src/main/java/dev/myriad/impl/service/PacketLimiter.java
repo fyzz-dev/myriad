@@ -3,7 +3,6 @@ package dev.myriad.impl.service;
 import dev.myriad.api.service.PacketLimits;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
@@ -42,6 +41,14 @@ public final class PacketLimiter implements PacketLimits {
 		sent.get(kind).record();
 	}
 
+	/**
+	 * Counts an inventory click as it's made. Clicks are counted there, not as packets: ViaFabricPlus sends them to
+	 * servers of 1.21.4 and older itself, past the connection where other packets are counted.
+	 */
+	public void recordClick() {
+		record(Kind.INVENTORY);
+	}
+
 	static Kind kindOf(Packet<?> packet) {
 		return switch (packet) {
 			case ServerboundPlayerActionPacket p -> Kind.BLOCK_ACTION;
@@ -49,7 +56,6 @@ public final class PacketLimiter implements PacketLimits {
 			case ServerboundUseItemPacket p -> Kind.INTERACT;
 			case ServerboundInteractPacket p -> Kind.INTERACT;
 			case ServerboundAttackPacket p -> Kind.INTERACT;
-			case ServerboundContainerClickPacket p -> Kind.INVENTORY;
 			default -> null;
 		};
 	}

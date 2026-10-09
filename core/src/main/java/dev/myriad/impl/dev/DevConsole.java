@@ -82,6 +82,7 @@ public final class DevConsole {
 	private final Set<Key> held = EnumSet.noneOf(Key.class);
 	private long read;
 	private int waitTicks, holdTicks;
+	private boolean sprintKeyDown;
 	private SelfTest selfTest;
 
 	public DevConsole(Path inbox, CommandManager commands) {
@@ -105,6 +106,12 @@ public final class DevConsole {
 	private void onTick(TickEvent.Pre e) {
 		poll();
 		if (holdTicks > 0 && --holdTicks == 0) held.clear();
+		// The sprint key itself too: ViaFabricPlus, joined as an older version, starts sprinting from the key as those did.
+		boolean sprint = held.contains(Key.SPRINT);
+		if (sprint != sprintKeyDown) {
+			sprintKeyDown = sprint;
+			mc.options.keySprint.setDown(sprint);
+		}
 		if (selfTest != null) {
 			if (selfTest.tick()) return;
 			selfTest = null;

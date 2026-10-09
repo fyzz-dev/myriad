@@ -73,7 +73,11 @@ public interface Placement {
 			return swing;
 		}
 
-		/** Maximum distance from the eyes to the block centre. */
+		/**
+		 * How far a click may reach: from the eyes to the point clicked, as the server measures it (Grim also takes the
+		 * eye heights of the other poses it can't rule out, which reach farther below you). Use
+		 * {@link dev.myriad.api.util.Reach#blockRange()} for all the server allows.
+		 */
 		public double range() {
 			return range;
 		}

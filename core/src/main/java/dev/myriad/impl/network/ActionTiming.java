@@ -63,6 +63,11 @@ public final class ActionTiming {
 			|| p instanceof ServerboundPlayerCommandPacket || p instanceof ServerboundPlayerActionPacket;
 	}
 
+	/** Whether this tick's movement has gone out, so an action sent now is held for the next tick. */
+	public boolean isLate() {
+		return afterMovement;
+	}
+
 	/** Called for every packet that went out: a movement or tick-end packet closes this tick's window for actions. */
 	public void sent(Packet<?> p) {
 		if (p instanceof ServerboundMovePlayerPacket || p instanceof ServerboundClientTickEndPacket) afterMovement = true;
