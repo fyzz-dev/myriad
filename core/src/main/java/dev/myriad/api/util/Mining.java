@@ -1,5 +1,6 @@
 package dev.myriad.api.util;
 
+import dev.myriad.api.Myriad;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
@@ -23,12 +24,16 @@ public final class Mining {
 		return ItemInfo.enchantmentLevel(stack, Enchantments.EFFICIENCY);
 	}
 
-	/** The inventory slot in [from, to) whose item mines {@code state} fastest, or -1. */
+	/**
+	 * The inventory slot in [from, to) whose item mines {@code state} fastest, or -1. Items a module
+	 * {@link dev.myriad.api.service.Inventory#spare spares} (gear about to break) don't count.
+	 */
 	public static int fastestSlot(BlockState state, int from, int to) {
 		double best = -1;
 		int slot = -1;
 		for (int i = from; i < to; i++) {
 			ItemStack stack = mc().player.getInventory().getItem(i);
+			if (Myriad.inventory().isSpared(stack)) continue;
 			double score = stack.getDestroySpeed(state);
 			if (score > 1) {
 				int eff = efficiency(stack);

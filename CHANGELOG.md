@@ -6,6 +6,14 @@ release first with its replacement in the javadoc; a **patch** release never cha
 and may change in any release. Addons declare the oldest core they support in `fabric.mod.json`
 (`"depends": {"myriad": ">=0.1.0"}`) and can check `Myriad.isAtLeast("0.2.0")` for newer features.
 
+## 0.2.7
+
+An addition to the inventory API; addons built for 0.2.x keep working.
+
+- `Inventory.spare(owner, predicate)` and `Inventory.isSpared(stack)`: a module can ask for items to be left alone, such
+  as gear about to break that it put away to be mended. `bestInHotbar`, `bestInInventory` and `Mining.fastestSlot`
+  (the tools breaks pick, and borrow from the inventory) pass them over.
+
 ## 0.2.6
 
 No API changes.

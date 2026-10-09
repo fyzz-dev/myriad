@@ -13,7 +13,9 @@ import dev.myriad.api.service.PacketLimits;
 import dev.myriad.api.util.Slots;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
@@ -39,6 +41,7 @@ import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
+import org.jetbrains.annotations.Nullable;
 
 public final class InventoryManager implements Inventory {
 	private final Minecraft mc = Minecraft.getInstance();
@@ -293,6 +296,22 @@ public final class InventoryManager implements Inventory {
 		return find(predicate, 9, 36);
 	}
 
+	/** What modules asked to be left alone, by owner. */
+	private final Map<Object, Predicate<ItemStack>> spared = new IdentityHashMap<>();
+
+	@Override
+	public void spare(Object owner, @Nullable Predicate<ItemStack> spared) {
+		if (spared == null) this.spared.remove(owner);
+		else this.spared.put(owner, spared);
+	}
+
+	@Override
+	public boolean isSpared(ItemStack stack) {
+		if (spared.isEmpty() || stack.isEmpty()) return false;
+		for (Predicate<ItemStack> p : spared.values()) if (p.test(stack)) return true;
+		return false;
+	}
+
 	@Override
 	public int bestInHotbar(ToDoubleFunction<ItemStack> score) {
 		return best(score, 0, 9);
@@ -308,7 +327,9 @@ public final class InventoryManager implements Inventory {
 		int best = -1;
 		double bestScore = 0;
 		for (int i = from; i < to; i++) {
-			double s = score.applyAsDouble(mc.player.getInventory().getItem(i));
+			ItemStack stack = mc.player.getInventory().getItem(i);
+			if (isSpared(stack)) continue;
+			double s = score.applyAsDouble(stack);
 			if (s > bestScore) {
 				bestScore = s;
 				best = i;

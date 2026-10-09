@@ -4,6 +4,7 @@ import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Nullable;
 
 /** Hotbar helpers that track the slot the server thinks is selected. */
 @ApiStatus.NonExtendable
@@ -63,11 +64,22 @@ public interface Inventory {
 	/** First main-inventory slot (9-35) matching, or -1. */
 	int findInInventory(Predicate<ItemStack> predicate);
 
-	/** The hotbar slot whose item scores highest; items scoring 0 or less don't count. -1 if none. */
+	/** The hotbar slot whose item scores highest; items scoring 0 or less don't count, nor {@link #spare spared} ones. -1 if none. */
 	int bestInHotbar(ToDoubleFunction<ItemStack> score);
 
 	/** Like {@link #bestInHotbar} over the hotbar and main inventory (0-35). */
 	int bestInInventory(ToDoubleFunction<ItemStack> score);
+
+	/**
+	 * Asks for items {@code spared} accepts to be left alone, e.g. gear about to break that's been put away to be
+	 * mended later: {@link #bestInHotbar}, {@link #bestInInventory} and the tools breaks pick (see
+	 * {@link dev.myriad.api.util.Mining#fastestSlot}) pass them over, and modules choosing gear should too
+	 * ({@link #isSpared}). One predicate per {@code owner}; null withdraws it.
+	 */
+	void spare(Object owner, @Nullable Predicate<ItemStack> spared);
+
+	/** Whether a module asked for {@code stack} to be left alone ({@link #spare}). */
+	boolean isSpared(ItemStack stack);
 
 	/** Total item count matching across the hotbar, main inventory and off hand. */
 	int count(Predicate<ItemStack> predicate);
